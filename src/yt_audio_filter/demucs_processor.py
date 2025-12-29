@@ -25,27 +25,46 @@ class ProgressCaptureTqdm(original_tqdm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._last_reported = -1
+        self._last_reported_pct = -1
+        self._start_time = None
 
-    def update(self, n=1):
-        super().update(n)
+    def __iter__(self):
+        """Override __iter__ to capture progress on every iteration."""
+        import time as time_module
+        self._start_time = time_module.time()
+
+        iterable = self.iterable
+        if self.disable:
+            for obj in iterable:
+                yield obj
+            return
+
+        n = self.n
+        try:
+            for obj in iterable:
+                yield obj
+                n += 1
+                self._report_progress(n, time_module.time())
+        finally:
+            self.n = n
+            self.close()
+
+    def _report_progress(self, current_n, current_time):
+        """Report progress to callback."""
         try:
             if _progress_callback and self.total and self.total > 0:
-                # Calculate percentage
-                pct = int(100 * self.n / self.total)
+                pct = int(100 * current_n / self.total)
                 # Only report on significant changes (every 1%)
-                if pct != self._last_reported:
-                    self._last_reported = pct
-                    # Build progress info similar to tqdm display
-                    # Use getattr for safer access to format_dict
-                    fmt_dict = getattr(self, 'format_dict', {}) or {}
-                    elapsed = fmt_dict.get('elapsed', 0) or 0
-                    rate = fmt_dict.get('rate', 0) or 0
-                    remaining = (self.total - self.n) / rate if rate and rate > 0 else 0
+                if pct != self._last_reported_pct:
+                    self._last_reported_pct = pct
+
+                    elapsed = current_time - self._start_time if self._start_time else 0
+                    rate = current_n / elapsed if elapsed > 0 else 0
+                    remaining = (self.total - current_n) / rate if rate > 0 else 0
 
                     progress_info = {
                         'percent': pct,
-                        'current': self.n,
+                        'current': current_n,
                         'total': self.total,
                         'elapsed_seconds': elapsed,
                         'remaining_seconds': remaining,
@@ -56,6 +75,14 @@ class ProgressCaptureTqdm(original_tqdm):
         except Exception:
             # Don't let progress reporting break the actual processing
             pass
+
+    def update(self, n=1):
+        """Also capture progress when update() is called manually."""
+        import time as time_module
+        if self._start_time is None:
+            self._start_time = time_module.time()
+        super().update(n)
+        self._report_progress(self.n, time_module.time())
 
 
 def get_device(device: str = "auto") -> torch.device:

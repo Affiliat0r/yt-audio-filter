@@ -39,16 +39,24 @@ def validate_youtube_url(url: str) -> bool:
     return any(p in url for p in patterns)
 
 
-def process_video_async(item_id: str, url: str, config):
-    """Process a video in the background."""
+def process_video_async(queue, item_id: str, url: str, config):
+    """Process a video in the background.
+
+    Note: queue must be passed explicitly because st.session_state is not accessible
+    from background threads in Streamlit.
+    """
+    import traceback
+    print(f"[DEBUG] process_video_async started for {url}")
+
     from yt_audio_filter.youtube import download_youtube_video
     from yt_audio_filter.pipeline import process_video
     from yt_audio_filter.uploader import upload_to_youtube
     from yt_audio_filter.utils import create_temp_dir
 
-    queue = st.session_state.queue
+    print(f"[DEBUG] Queue obtained, item_id={item_id}")
 
     try:
+        print("[DEBUG] Setting initial status to Download...")
         queue.update_status(item_id, QueueStatus.PROCESSING, current_stage="Download", progress=0)
 
         with create_temp_dir(prefix="yt_app_") as temp_dir:
@@ -57,7 +65,9 @@ def process_video_async(item_id: str, url: str, config):
                 pct = info.get("percent", 0)
                 queue.update_status(item_id, QueueStatus.PROCESSING, current_stage="Download", progress=int(pct * 0.2))
 
+            print(f"[DEBUG] Starting download to {temp_dir}...")
             metadata = download_youtube_video(url, temp_dir, progress_callback=download_progress)
+            print(f"[DEBUG] Download complete: {metadata.file_path}")
 
             # Update title with actual video title
             queue.update_status(item_id, QueueStatus.PROCESSING, progress=20)
@@ -125,6 +135,8 @@ def process_video_async(item_id: str, url: str, config):
             )
 
     except Exception as e:
+        print(f"[DEBUG] EXCEPTION: {e}")
+        print(traceback.format_exc())
         queue.update_status(item_id, QueueStatus.FAILED, error_message=str(e))
 
 
@@ -183,9 +195,10 @@ def main():
                 config.audio_bitrate = bitrate
 
                 # Start processing in background
+                # Pass queue explicitly since st.session_state isn't accessible from threads
                 thread = threading.Thread(
                     target=process_video_async,
-                    args=(item.id, url, config),
+                    args=(st.session_state.queue, item.id, url, config),
                     daemon=True,
                 )
                 thread.start()
@@ -207,6 +220,8 @@ def main():
 
             # Helper to check if current stage matches (handles verbose display strings)
             def is_current_stage(stage_name: str, current_display: str) -> bool:
+                if not current_display:
+                    return False
                 if stage_name == current_display:
                     return True
                 # Handle verbose progress strings
