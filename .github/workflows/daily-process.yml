@@ -10,7 +10,7 @@ on:
       dry_run:
         description: 'Dry run (show what would be processed)'
         required: false
-        default: 'false'
+        default: false
         type: boolean
       videos_per_channel:
         description: 'Videos to process per channel'
@@ -54,10 +54,12 @@ jobs:
 
       - name: Download youtubeuploader binary
         run: |
-          # Download the Linux version of youtubeuploader
-          curl -L -o youtubeuploader_linux_amd64.tar.gz \
-            https://github.com/porjo/youtubeuploader/releases/download/24.06/youtubeuploader_linux_amd64.tar.gz
-          tar -xzf youtubeuploader_linux_amd64.tar.gz
+          # Download the Linux version of youtubeuploader (latest release)
+          curl -L -o youtubeuploader.tar.gz \
+            "https://github.com/porjo/youtubeuploader/releases/download/v1.25.5/youtubeuploader_1.25.5_Linux_amd64.tar.gz"
+          # Verify it's a valid gzip file
+          file youtubeuploader.tar.gz
+          tar -xzf youtubeuploader.tar.gz
           chmod +x youtubeuploader
           ./youtubeuploader --version || echo "youtubeuploader ready"
 
