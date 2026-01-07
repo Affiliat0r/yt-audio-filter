@@ -52,6 +52,7 @@ app = [
 [project.scripts]
 yt-audio-filter = "yt_audio_filter.cli:main"
 yt-channel-scrape = "yt_audio_filter.scraper:main"
+yt-scheduler = "yt_audio_filter.scheduler:main"
 
 [project.urls]
 Homepage = "https://github.com/example/yt-audio-filter"
