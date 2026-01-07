@@ -48,10 +48,18 @@ jobs:
         env:
           YOUTUBE_CLIENT_SECRETS: ${{ secrets.YOUTUBE_CLIENT_SECRETS }}
           YOUTUBE_REQUEST_TOKEN: ${{ secrets.YOUTUBE_REQUEST_TOKEN }}
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
           # Write credentials to files
           echo "$YOUTUBE_CLIENT_SECRETS" > client_secrets.json
           echo "$YOUTUBE_REQUEST_TOKEN" > request.token
+          # Write cookies file for yt-dlp (to bypass bot detection on datacenter IPs)
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            echo "$YOUTUBE_COOKIES" > cookies.txt
+            echo "Cookie file created for yt-dlp"
+          else
+            echo "Warning: YOUTUBE_COOKIES secret not set - downloads may fail"
+          fi
 
       - name: Download youtubeuploader binary
         run: |
@@ -62,6 +70,8 @@ jobs:
           file youtubeuploader.tar.gz
           tar -xzf youtubeuploader.tar.gz
           chmod +x youtubeuploader
+          # Add to PATH so it can be found from any directory
+          echo "$GITHUB_WORKSPACE" >> $GITHUB_PATH
           ./youtubeuploader --version || echo "youtubeuploader ready"
 
       - name: Run scheduler (dry run)

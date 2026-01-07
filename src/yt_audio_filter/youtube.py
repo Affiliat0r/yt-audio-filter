@@ -192,6 +192,19 @@ def download_youtube_video(
         ydl_opts["ffmpeg_location"] = ffmpeg_location
         logger.debug(f"Using ffmpeg from: {ffmpeg_location}")
 
+    # Check for cookie file to bypass bot detection
+    # Look in common locations for cookies.txt (Netscape format)
+    cookie_locations = [
+        Path.cwd() / "cookies.txt",
+        project_root / "cookies.txt",
+        Path.home() / ".yt-dlp" / "cookies.txt",
+    ]
+    for cookie_file in cookie_locations:
+        if cookie_file.exists():
+            ydl_opts["cookiefile"] = str(cookie_file)
+            logger.debug(f"Using cookie file: {cookie_file}")
+            break
+
     try:
         logger.info(f"Downloading from YouTube: {url}")
 
