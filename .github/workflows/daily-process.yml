@@ -39,7 +39,24 @@ jobs:
             Write-Host "Using existing venv"
           } else {
             Write-Host "Creating new venv..."
-            python -m venv venv
+            # Find a compatible Python version (3.10-3.12, not 3.14 which lacks wheel support)
+            $pythonCmd = $null
+            foreach ($ver in @("3.12", "3.11", "3.10")) {
+              try {
+                $result = py -$ver --version 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                  $pythonCmd = "py -$ver"
+                  Write-Host "Found Python $ver"
+                  break
+                }
+              } catch {}
+            }
+            if (-not $pythonCmd) {
+              Write-Host "ERROR: No compatible Python (3.10-3.12) found. Install Python 3.12 from python.org"
+              exit 1
+            }
+            Invoke-Expression "$pythonCmd -m venv venv"
+            .\venv\Scripts\pip.exe install --upgrade pip
             .\venv\Scripts\pip.exe install -e ".[upload]"
           }
 
