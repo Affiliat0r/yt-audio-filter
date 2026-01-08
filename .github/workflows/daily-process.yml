@@ -64,6 +64,25 @@ jobs:
         run: |
           python -c "import yt_dlp; import demucs; import soundfile; print('Dependencies OK')"
           ffmpeg -version | head -1
+          # Show yt-dlp version (must be 2025.05.22+)
+          yt-dlp --version
+          echo "Checking POT provider plugin..."
+          python -c "import yt_dlp_plugins; print('Plugins directory:', yt_dlp_plugins.__path__)" || true
+
+      - name: Test POT provider
+        run: |
+          # Start POT server for testing
+          node pot-provider/server/build/main.js &
+          POT_PID=$!
+          sleep 3
+
+          echo "Testing POT provider with a short video..."
+          # Test download with verbose output to verify POT is working
+          yt-dlp -v --skip-download "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | head -100 || true
+
+          # Kill test server
+          kill $POT_PID 2>/dev/null || true
+          echo "POT provider test completed"
 
       - name: Download youtubeuploader
         run: |
