@@ -133,8 +133,9 @@ jobs:
           # - Node.js runtime for JS challenges
           # - player_client=web to force web client (which uses POT)
           # - getpot_bgutil_baseurl for POT server location
+          # Note: semicolons separate multiple extractor args
           yt-dlp -v --skip-download --js-runtimes node \
-            --extractor-args "youtube:player_client=web,getpot_bgutil_baseurl=http://127.0.0.1:4416" \
+            --extractor-args "youtube:player_client=web;getpot_bgutil_baseurl=http://127.0.0.1:4416" \
             "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | tee yt_dlp_test.log
 
           echo ""
