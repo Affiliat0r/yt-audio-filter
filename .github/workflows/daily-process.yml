@@ -124,9 +124,13 @@ jobs:
           fi
 
           echo ""
+          echo "=== Verifying Node.js is available for yt-dlp ==="
+          which node && node --version
+
+          echo ""
           echo "=== Testing POT provider with verbose output ==="
-          # Run yt-dlp and capture output to check for POT usage
-          yt-dlp -v --skip-download "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | tee yt_dlp_test.log
+          # Run yt-dlp with explicit Node.js runtime for JS challenge solving
+          yt-dlp -v --skip-download --js-runtimes node "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | tee yt_dlp_test.log
 
           echo ""
           echo "=== Checking for POT-related messages ==="

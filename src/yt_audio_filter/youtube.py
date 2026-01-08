@@ -185,6 +185,11 @@ def download_youtube_video(
         # Reduce console noise (we use our own logging)
         "quiet": True,
         "no_warnings": True,
+        # Enable Node.js runtime for YouTube JS challenge solving
+        # Required for POT provider to work on GitHub Actions
+        "extractor_args": {"youtube": {"player_client": ["web"]}},
+        # Explicitly use Node.js for JavaScript challenge solving (needed for POT provider)
+        "js_runtimes": "node",
     }
 
     # Add ffmpeg location if found
