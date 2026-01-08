@@ -187,7 +187,13 @@ def download_youtube_video(
         "no_warnings": True,
         # Enable Node.js runtime for YouTube JS challenge solving
         # Required for POT provider to work on GitHub Actions
-        "extractor_args": {"youtube": {"player_client": ["web"]}},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web"],
+                # POT server URL for bot detection bypass (bgutil-ytdlp-pot-provider)
+                "getpot_bgutil_baseurl": ["http://127.0.0.1:4416"],
+            }
+        },
         # Explicitly use Node.js for JavaScript challenge solving (needed for POT provider)
         "js_runtimes": "node",
     }
