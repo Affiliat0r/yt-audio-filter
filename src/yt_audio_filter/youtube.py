@@ -190,8 +190,10 @@ def download_youtube_video(
         # Note: bgutil-ytdlp-pot-provider v1.0.0+ uses new extractor args syntax
         "extractor_args": {
             # POT server URL for bot detection bypass (bgutil-ytdlp-pot-provider v1.0.0+ syntax)
+            # disable_innertube=1 restores legacy behavior and helps trigger POT usage
             "youtubepot-bgutilhttp": {
                 "base_url": ["http://127.0.0.1:4416"],
+                "disable_innertube": ["1"],
             }
         },
         # Explicitly use Node.js for JavaScript challenge solving (needed for POT provider)

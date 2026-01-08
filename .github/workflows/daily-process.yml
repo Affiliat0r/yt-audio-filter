@@ -132,9 +132,10 @@ jobs:
           # Run yt-dlp with:
           # - Node.js runtime for JS challenges
           # - POT provider base URL (new syntax for bgutil-ytdlp-pot-provider v1.0.0+)
-          # Note: extractor args use NEW syntax: youtubepot-bgutilhttp:base_url (not youtube:getpot_bgutil_baseurl)
+          # - disable_innertube=1 restores legacy behavior and may help token requests
+          # Note: extractor args use NEW syntax: youtubepot-bgutilhttp:key=value;key2=value2
           yt-dlp -v --skip-download --js-runtimes node \
-            --extractor-args "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416" \
+            --extractor-args "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416;disable_innertube=1" \
             "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | tee yt_dlp_test.log
 
           echo ""
