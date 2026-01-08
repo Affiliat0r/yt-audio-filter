@@ -34,7 +34,7 @@ jobs:
 
       - name: Setup Python environment
         run: |
-          # Use the existing venv in the repo
+          # Check if venv exists, create if not
           if (Test-Path ".\venv\Scripts\python.exe") {
             Write-Host "Using existing venv"
           } else {
@@ -56,13 +56,14 @@ jobs:
               exit 1
             }
             Invoke-Expression "$pythonCmd -m venv venv"
-            .\venv\Scripts\pip.exe install --upgrade pip
-            .\venv\Scripts\pip.exe install -e ".[upload]"
           }
+          # Always update dependencies to catch new packages
+          .\venv\Scripts\pip.exe install --upgrade pip
+          .\venv\Scripts\pip.exe install -e ".[upload]"
 
       - name: Verify dependencies
         run: |
-          .\venv\Scripts\python.exe -c "import yt_dlp; import demucs; print('Dependencies OK')"
+          .\venv\Scripts\python.exe -c "import yt_dlp; import demucs; import soundfile; print('Dependencies OK')"
           # Check ffmpeg
           ffmpeg -version | Select-Object -First 1
 
