@@ -51,6 +51,9 @@ jobs:
           pip install -U "yt-dlp>=2025.05.22"
           # Install POT provider plugin for YouTube bot detection bypass
           pip install -U bgutil-ytdlp-pot-provider
+          # Install Playwright for automatic cookie refresh
+          pip install playwright
+          playwright install chromium
 
       - name: Build POT provider server
         run: |
@@ -169,17 +172,34 @@ jobs:
           echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
           echo '${{ secrets.YOUTUBE_REQUEST_TOKEN }}' > request.token
 
-      - name: Setup YouTube cookies (for bot detection bypass)
+      - name: Refresh YouTube cookies (automatic login)
         env:
+          YOUTUBE_EMAIL: ${{ secrets.YOUTUBE_EMAIL }}
+          YOUTUBE_PASSWORD: ${{ secrets.YOUTUBE_PASSWORD }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
-          # Create cookies.txt from secret (Netscape format)
-          # This bypasses YouTube bot detection on datacenter IPs
-          if [ -n "$YOUTUBE_COOKIES" ]; then
+          # Automatic cookie refresh using Playwright
+          # Falls back to static cookies if credentials not available
+          if [ -n "$YOUTUBE_EMAIL" ] && [ -n "$YOUTUBE_PASSWORD" ]; then
+            echo "Refreshing YouTube cookies via automatic login..."
+            python -m yt_audio_filter.cookie_refresh || {
+              echo "⚠ Automatic cookie refresh failed, falling back to static cookies"
+              if [ -n "$YOUTUBE_COOKIES" ]; then
+                echo "$YOUTUBE_COOKIES" > cookies.txt
+                echo "✓ Using static YouTube cookies from secret"
+              fi
+            }
+          elif [ -n "$YOUTUBE_COOKIES" ]; then
+            # Fallback: use static cookies from secret
             echo "$YOUTUBE_COOKIES" > cookies.txt
-            echo "✓ YouTube cookies file created"
+            echo "✓ Using static YouTube cookies (no auto-refresh credentials)"
           else
-            echo "⚠ No YOUTUBE_COOKIES secret set - bot detection may occur"
+            echo "⚠ No YouTube credentials or cookies set - bot detection may occur"
+          fi
+
+          # Verify cookies file exists
+          if [ -f cookies.txt ]; then
+            echo "Cookie file created with $(wc -l < cookies.txt) lines"
           fi
 
       - name: Run scheduler (dry run)
@@ -257,8 +277,10 @@ jobs:
           name: processing-logs
           path: |
             *.log
+            *.png
             yt_dlp_test.log
             pot_server.log
             pot_scheduler.log
+            cookies.txt
             processed_videos.json
           retention-days: 7
