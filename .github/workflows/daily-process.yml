@@ -25,7 +25,7 @@ jobs:
 
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
         working-directory: ${{ github.workspace }}
 
     steps:
