@@ -129,10 +129,12 @@ jobs:
 
           echo ""
           echo "=== Testing POT provider with verbose output ==="
-          # Run yt-dlp with explicit Node.js runtime and POT server URL
-          # The getpot_bgutil_baseurl tells yt-dlp where to request POT tokens
+          # Run yt-dlp with:
+          # - Node.js runtime for JS challenges
+          # - player_client=web to force web client (which uses POT)
+          # - getpot_bgutil_baseurl for POT server location
           yt-dlp -v --skip-download --js-runtimes node \
-            --extractor-args "youtube:getpot_bgutil_baseurl=http://127.0.0.1:4416" \
+            --extractor-args "youtube:player_client=web,getpot_bgutil_baseurl=http://127.0.0.1:4416" \
             "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | tee yt_dlp_test.log
 
           echo ""
