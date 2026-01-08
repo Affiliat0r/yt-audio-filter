@@ -19,9 +19,13 @@ from .logger import get_logger
 logger = get_logger()
 
 # Public Cobalt API instances (try multiple in case one is down)
+# Source: https://instances.cobalt.best/
 COBALT_API_URLS = [
-    "https://api.cobalt.tools",
-    "https://cobalt-api.hyper.lol",
+    "https://cobalt-api.meowing.de",      # Score: 92%
+    "https://cobalt-backend.canine.tools", # Score: 76%
+    "https://kityune.imput.net",           # Score: 68%
+    "https://capi.3kh0.net",               # Score: 68%
+    "https://nachos.imput.net",            # Score: 64%
 ]
 
 
@@ -72,18 +76,19 @@ def download_with_cobalt(
 
     logger.info(f"Downloading {video_id} via Cobalt API...")
 
-    # Request body
+    # Request body - per Cobalt API docs
+    # https://github.com/imputnet/cobalt/blob/main/docs/api.md
     request_body = json.dumps({
         "url": url,
         "videoQuality": video_quality,
         "youtubeVideoCodec": "h264",
         "downloadMode": "auto",
+        "filenameStyle": "basic",
     }).encode("utf-8")
 
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": "yt-audio-filter/1.0",
     }
 
     download_url = None
@@ -93,25 +98,31 @@ def download_with_cobalt(
     # Try each Cobalt API instance
     for api_base in COBALT_API_URLS:
         try:
-            logger.debug(f"Trying Cobalt API: {api_base}")
+            # Ensure URL ends with / for root endpoint
+            api_url = api_base.rstrip("/") + "/"
+            logger.debug(f"Trying Cobalt API: {api_url}")
 
-            req = Request(api_base, data=request_body, headers=headers, method="POST")
+            req = Request(api_url, data=request_body, headers=headers, method="POST")
 
             with urlopen(req, timeout=30) as response:
                 result = json.loads(response.read().decode("utf-8"))
 
             status = result.get("status")
             logger.debug(f"Cobalt response status: {status}")
+            logger.debug(f"Cobalt full response: {result}")
 
             if status == "error":
-                error_code = result.get("error", {}).get("code", "unknown")
-                logger.warning(f"Cobalt error: {error_code}")
+                error_obj = result.get("error", {})
+                error_code = error_obj.get("code", "unknown") if isinstance(error_obj, dict) else str(error_obj)
+                error_context = error_obj.get("context", {}) if isinstance(error_obj, dict) else {}
+                logger.warning(f"Cobalt error: {error_code}, context: {error_context}")
                 last_error = f"Cobalt API error: {error_code}"
                 continue
 
             if status in ("tunnel", "redirect"):
                 download_url = result.get("url")
                 filename = result.get("filename", f"{video_id}.mp4")
+                logger.info(f"Got download URL from {api_base}")
                 break
 
             if status == "picker":
@@ -120,12 +131,20 @@ def download_with_cobalt(
                 if picker:
                     download_url = picker[0].get("url")
                     filename = f"{video_id}.mp4"
+                    logger.info(f"Got picker URL from {api_base}")
                     break
 
             last_error = f"Unexpected Cobalt status: {status}"
+            logger.warning(last_error)
 
         except HTTPError as e:
-            last_error = f"HTTP error from {api_base}: {e.code}"
+            # Try to read error response body for more details
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8")
+            except:
+                pass
+            last_error = f"HTTP {e.code} from {api_base}: {error_body[:200]}"
             logger.warning(last_error)
             continue
         except URLError as e:
