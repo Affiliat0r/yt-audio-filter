@@ -33,6 +33,11 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -42,6 +47,18 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e ".[upload]"
+          # Install POT provider plugin for YouTube bot detection bypass
+          pip install -U bgutil-ytdlp-pot-provider
+
+      - name: Build POT provider server
+        run: |
+          # Clone and build the POT provider server (for YouTube bot detection bypass)
+          git clone --single-branch --branch 1.2.2 \
+            https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git pot-provider
+          cd pot-provider/server
+          npm install
+          npx tsc
+          echo "POT provider server built successfully"
 
       - name: Verify dependencies
         run: |
@@ -69,6 +86,11 @@ jobs:
       - name: Run scheduler (dry run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
+          # Start POT provider server in background
+          node pot-provider/server/build/main.js &
+          sleep 3
+          echo "POT server started on port 4416"
+
           VIDEOS="${{ github.event.inputs.videos_per_channel }}"
           python -m yt_audio_filter.scheduler --dry-run -n ${VIDEOS:-1} -v
 
@@ -77,6 +99,11 @@ jobs:
         env:
           CUDA_VISIBLE_DEVICES: ""
         run: |
+          # Start POT provider server in background
+          node pot-provider/server/build/main.js &
+          sleep 3
+          echo "POT server started on port 4416"
+
           VIDEOS="${{ github.event.inputs.videos_per_channel }}"
           python -m yt_audio_filter.scheduler --device cpu -n ${VIDEOS:-1} --privacy unlisted -v
 
