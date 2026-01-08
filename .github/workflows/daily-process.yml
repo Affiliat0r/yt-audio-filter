@@ -50,9 +50,17 @@ jobs:
           YOUTUBE_REQUEST_TOKEN: ${{ secrets.YOUTUBE_REQUEST_TOKEN }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
-          # Write credentials to files
+          # Create credentials directory
+          mkdir -p ~/.yt-audio-filter
+
+          # Write credentials to expected locations
+          echo "$YOUTUBE_CLIENT_SECRETS" > ~/.yt-audio-filter/client_secrets.json
+          echo "$YOUTUBE_REQUEST_TOKEN" > ~/.yt-audio-filter/request.token
+
+          # Also write to repo root for youtubeuploader binary
           echo "$YOUTUBE_CLIENT_SECRETS" > client_secrets.json
           echo "$YOUTUBE_REQUEST_TOKEN" > request.token
+
           # Write cookies file for yt-dlp (to bypass bot detection on datacenter IPs)
           if [ -n "$YOUTUBE_COOKIES" ]; then
             echo "$YOUTUBE_COOKIES" > cookies.txt

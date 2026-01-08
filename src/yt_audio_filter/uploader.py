@@ -22,7 +22,7 @@ CLIENT_SECRETS_FILE = CREDENTIALS_DIR / "client_secrets.json"
 OAUTH_TOKEN_FILE = CREDENTIALS_DIR / "oauth_token.pickle"
 
 # youtubeuploader binary support
-YOUTUBEUPLOADER_TOKEN_FILE = CREDENTIALS_DIR / "youtubeuploader_token.json"
+YOUTUBEUPLOADER_TOKEN_FILE = CREDENTIALS_DIR / "request.token"
 
 
 class YouTubeUploadError(YTAudioFilterError):
