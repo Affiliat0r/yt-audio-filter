@@ -30,7 +30,7 @@ dependencies = [
     "demucs>=4.0.0",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
-    "yt-dlp>=2024.12.0",
+    "yt-dlp>=2025.05.22",  # Required for POT provider bot detection bypass
     "soundfile>=0.12.0",
 ]
 
