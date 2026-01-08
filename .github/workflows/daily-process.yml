@@ -43,22 +43,9 @@ jobs:
           pip install --upgrade pip
           pip install -e ".[upload]"
 
-      - name: Install Playwright browsers
-        run: |
-          playwright install chromium
-          playwright install-deps chromium
-
-      - name: Extract fresh YouTube cookies
-        run: |
-          echo "Extracting cookies using headless browser..."
-          python -m yt_audio_filter.cookie_extractor -v
-          echo "Cookie file created:"
-          ls -la cookies.txt
-          head -20 cookies.txt
-
       - name: Verify dependencies
         run: |
-          python -c "import yt_dlp; import demucs; import soundfile; import playwright; print('Dependencies OK')"
+          python -c "import yt_dlp; import demucs; import soundfile; print('Dependencies OK')"
           ffmpeg -version | head -1
 
       - name: Download youtubeuploader
@@ -115,5 +102,4 @@ jobs:
           path: |
             *.log
             processed_videos.json
-            cookies.txt
           retention-days: 7

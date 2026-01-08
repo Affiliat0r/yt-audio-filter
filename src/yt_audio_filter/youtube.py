@@ -264,6 +264,11 @@ def download_youtube_video(
 
     except yt_dlp.utils.DownloadError as e:
         error_msg = str(e)
+        # Check if this is bot detection - if so, try Cobalt fallback
+        if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+            logger.warning("Bot detection triggered, trying Cobalt fallback...")
+            return _download_with_cobalt_fallback(url, output_dir, progress_callback)
+
         # Provide friendlier error messages for common issues
         if "Private video" in error_msg:
             raise YouTubeDownloadError("Cannot download private video", error_msg)
@@ -281,3 +286,38 @@ def download_youtube_video(
         if isinstance(e, (YouTubeDownloadError, PrerequisiteError, ValidationError)):
             raise
         raise YouTubeDownloadError(f"Unexpected download error: {e}")
+
+
+def _download_with_cobalt_fallback(
+    url: str,
+    output_dir: Path,
+    progress_callback: Optional[Callable[[dict], None]] = None,
+) -> VideoMetadata:
+    """
+    Fallback download using Cobalt API when yt-dlp fails due to bot detection.
+    """
+    from .cobalt_downloader import download_with_cobalt, get_video_metadata_yt_dlp
+
+    # Try to get metadata first (usually works even when download is blocked)
+    metadata = get_video_metadata_yt_dlp(url)
+
+    if progress_callback:
+        progress_callback({"status": "downloading", "percent": 10, "speed": None, "eta": None})
+
+    # Download via Cobalt
+    cobalt_result = download_with_cobalt(url, output_dir)
+
+    if progress_callback:
+        progress_callback({"status": "finished", "percent": 100, "speed": None, "eta": None})
+
+    # Merge metadata
+    return VideoMetadata(
+        video_id=cobalt_result.video_id,
+        title=metadata.get("title", cobalt_result.title),
+        description=metadata.get("description", ""),
+        channel=metadata.get("channel", "Unknown"),
+        tags=metadata.get("tags", []),
+        duration=metadata.get("duration", 0),
+        view_count=metadata.get("view_count", 0),
+        file_path=cobalt_result.file_path,
+    )
