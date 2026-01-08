@@ -169,6 +169,19 @@ jobs:
           echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
           echo '${{ secrets.YOUTUBE_REQUEST_TOKEN }}' > request.token
 
+      - name: Setup YouTube cookies (for bot detection bypass)
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          # Create cookies.txt from secret (Netscape format)
+          # This bypasses YouTube bot detection on datacenter IPs
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            echo "$YOUTUBE_COOKIES" > cookies.txt
+            echo "✓ YouTube cookies file created"
+          else
+            echo "⚠ No YOUTUBE_COOKIES secret set - bot detection may occur"
+          fi
+
       - name: Run scheduler (dry run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
