@@ -197,7 +197,8 @@ def download_youtube_video(
             }
         },
         # Explicitly use Node.js for JavaScript challenge solving (needed for POT provider)
-        "js_runtimes": "node",
+        # Format is dict of {runtime: config_dict}
+        "js_runtimes": {"node": {}},
     }
 
     # Add ffmpeg location if found
