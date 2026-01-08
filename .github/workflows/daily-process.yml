@@ -47,6 +47,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e ".[upload]"
+          # Ensure latest yt-dlp (2025.05.22+ required for POT provider)
+          pip install -U "yt-dlp>=2025.05.22"
           # Install POT provider plugin for YouTube bot detection bypass
           pip install -U bgutil-ytdlp-pot-provider
 
@@ -65,23 +67,78 @@ jobs:
           python -c "import yt_dlp; import demucs; import soundfile; print('Dependencies OK')"
           ffmpeg -version | head -1
           # Show yt-dlp version (must be 2025.05.22+)
+          echo "yt-dlp version:"
           yt-dlp --version
-          echo "Checking POT provider plugin..."
-          python -c "import yt_dlp_plugins; print('Plugins directory:', yt_dlp_plugins.__path__)" || true
+
+          # Verify POT provider plugin is installed and detected
+          echo ""
+          echo "=== Checking POT provider plugin ==="
+          pip show bgutil-ytdlp-pot-provider || echo "WARNING: POT provider pip package not found!"
+
+          echo ""
+          echo "=== yt-dlp plugin paths ==="
+          python -c "
+          import sys
+          import site
+          print('Site packages:', site.getsitepackages())
+          try:
+              import yt_dlp_plugins
+              print('yt_dlp_plugins path:', yt_dlp_plugins.__path__)
+          except ImportError as e:
+              print('yt_dlp_plugins import error:', e)
+          "
+
+          echo ""
+          echo "=== Listing yt-dlp extractor plugins ==="
+          yt-dlp --list-extractors 2>&1 | grep -i pot || echo "No POT extractor found (this is normal)"
+
+          echo ""
+          echo "=== Checking bgutil plugin files ==="
+          python -c "
+          import importlib.util
+          spec = importlib.util.find_spec('yt_dlp_plugins.extractor.getpot_bgutil')
+          if spec:
+              print('POT plugin found at:', spec.origin)
+          else:
+              print('POT plugin NOT found in yt_dlp_plugins.extractor')
+          "
 
       - name: Test POT provider
         run: |
           # Start POT server for testing
-          node pot-provider/server/build/main.js &
+          echo "Starting POT server..."
+          node pot-provider/server/build/main.js > pot_server.log 2>&1 &
           POT_PID=$!
-          sleep 3
+          sleep 5
 
-          echo "Testing POT provider with a short video..."
-          # Test download with verbose output to verify POT is working
-          yt-dlp -v --skip-download "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | head -100 || true
+          # Verify server is running
+          echo "Checking if POT server is running on port 4416..."
+          if netstat -tlnp 2>/dev/null | grep -q ":4416"; then
+            echo "✓ POT server is listening on port 4416"
+          else
+            echo "✗ POT server NOT listening on port 4416"
+            echo "Server log:"
+            cat pot_server.log || true
+            # Try ss command as alternative
+            ss -tlnp | grep 4416 || echo "Port 4416 not found with ss either"
+          fi
+
+          echo ""
+          echo "=== Testing POT provider with verbose output ==="
+          # Run yt-dlp and capture output to check for POT usage
+          yt-dlp -v --skip-download "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | tee yt_dlp_test.log
+
+          echo ""
+          echo "=== Checking for POT-related messages ==="
+          grep -i "pot\|getpot\|bgutil" yt_dlp_test.log || echo "No POT-related messages found in output"
+
+          echo ""
+          echo "POT server log:"
+          cat pot_server.log || true
 
           # Kill test server
           kill $POT_PID 2>/dev/null || true
+          echo ""
           echo "POT provider test completed"
 
       - name: Download youtubeuploader
@@ -106,12 +163,27 @@ jobs:
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
           # Start POT provider server in background
-          node pot-provider/server/build/main.js &
-          sleep 3
-          echo "POT server started on port 4416"
+          echo "Starting POT server for scheduler..."
+          node pot-provider/server/build/main.js > pot_scheduler.log 2>&1 &
+          POT_PID=$!
+          sleep 5
+
+          # Verify server is running
+          echo "Verifying POT server status..."
+          if ss -tlnp 2>/dev/null | grep -q ":4416"; then
+            echo "✓ POT server confirmed on port 4416"
+          else
+            echo "✗ WARNING: POT server not detected on port 4416"
+            cat pot_scheduler.log || true
+          fi
 
           VIDEOS="${{ github.event.inputs.videos_per_channel }}"
           python -m yt_audio_filter.scheduler --dry-run -n ${VIDEOS:-1} -v
+
+          # Show POT server activity
+          echo ""
+          echo "=== POT Server Log ==="
+          cat pot_scheduler.log || true
 
       - name: Run scheduler
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -119,12 +191,27 @@ jobs:
           CUDA_VISIBLE_DEVICES: ""
         run: |
           # Start POT provider server in background
-          node pot-provider/server/build/main.js &
-          sleep 3
-          echo "POT server started on port 4416"
+          echo "Starting POT server for scheduler..."
+          node pot-provider/server/build/main.js > pot_scheduler.log 2>&1 &
+          POT_PID=$!
+          sleep 5
+
+          # Verify server is running
+          echo "Verifying POT server status..."
+          if ss -tlnp 2>/dev/null | grep -q ":4416"; then
+            echo "✓ POT server confirmed on port 4416"
+          else
+            echo "✗ WARNING: POT server not detected on port 4416"
+            cat pot_scheduler.log || true
+          fi
 
           VIDEOS="${{ github.event.inputs.videos_per_channel }}"
           python -m yt_audio_filter.scheduler --device cpu -n ${VIDEOS:-1} --privacy unlisted -v
+
+          # Show POT server activity
+          echo ""
+          echo "=== POT Server Log ==="
+          cat pot_scheduler.log || true
 
       - name: Commit processed videos tracking
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -147,5 +234,8 @@ jobs:
           name: processing-logs
           path: |
             *.log
+            yt_dlp_test.log
+            pot_server.log
+            pot_scheduler.log
             processed_videos.json
           retention-days: 7
