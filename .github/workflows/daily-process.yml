@@ -20,68 +20,78 @@ on:
 
 jobs:
   process-videos:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 360  # 6 hour timeout
-
-    defaults:
-      run:
-        shell: powershell
-        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install system dependencies
         run: |
-          # Check if venv exists, create if not
-          if (Test-Path ".\venv\Scripts\python.exe") {
-            Write-Host "Using existing venv"
-          } else {
-            Write-Host "Creating new venv..."
-            # Find a compatible Python version (3.10-3.12, not 3.14 which lacks wheel support)
-            $pythonCmd = $null
-            foreach ($ver in @("3.12", "3.11", "3.10")) {
-              try {
-                $result = py -$ver --version 2>$null
-                if ($LASTEXITCODE -eq 0) {
-                  $pythonCmd = "py -$ver"
-                  Write-Host "Found Python $ver"
-                  break
-                }
-              } catch {}
-            }
-            if (-not $pythonCmd) {
-              Write-Host "ERROR: No compatible Python (3.10-3.12) found. Install Python 3.12 from python.org"
-              exit 1
-            }
-            Invoke-Expression "$pythonCmd -m venv venv"
-          }
-          # Always update dependencies to catch new packages
-          .\venv\Scripts\pip.exe install --upgrade pip
-          .\venv\Scripts\pip.exe install -e ".[upload]"
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[upload]"
+
+      - name: Install Playwright browsers
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Extract fresh YouTube cookies
+        run: |
+          echo "Extracting cookies using headless browser..."
+          python -m yt_audio_filter.cookie_extractor -v
+          echo "Cookie file created:"
+          ls -la cookies.txt
+          head -20 cookies.txt
 
       - name: Verify dependencies
         run: |
-          .\venv\Scripts\python.exe -c "import yt_dlp; import demucs; import soundfile; print('Dependencies OK')"
-          # Check ffmpeg
-          ffmpeg -version | Select-Object -First 1
+          python -c "import yt_dlp; import demucs; import soundfile; import playwright; print('Dependencies OK')"
+          ffmpeg -version | head -1
+
+      - name: Download youtubeuploader
+        run: |
+          # Download Linux binary
+          curl -L -o youtubeuploader_linux_amd64.tar.gz \
+            "https://github.com/porjo/youtubeuploader/releases/download/24.06/youtubeuploader_linux_amd64.tar.gz"
+          tar -xzf youtubeuploader_linux_amd64.tar.gz
+          chmod +x youtubeuploader
+          ./youtubeuploader -version || echo "Version check done"
+
+      - name: Setup YouTube credentials
+        run: |
+          mkdir -p ~/.yt-audio-filter
+          echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > ~/.yt-audio-filter/client_secrets.json
+          echo '${{ secrets.YOUTUBE_REQUEST_TOKEN }}' > ~/.yt-audio-filter/request.token
+          # Also in repo root for uploader binary
+          echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+          echo '${{ secrets.YOUTUBE_REQUEST_TOKEN }}' > request.token
 
       - name: Run scheduler (dry run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          $videosPerChannel = "${{ github.event.inputs.videos_per_channel }}"
-          if (-not $videosPerChannel) { $videosPerChannel = "1" }
-          .\venv\Scripts\python.exe -m yt_audio_filter.scheduler --dry-run -n $videosPerChannel -v
+          VIDEOS="${{ github.event.inputs.videos_per_channel }}"
+          python -m yt_audio_filter.scheduler --dry-run -n ${VIDEOS:-1} -v
 
       - name: Run scheduler
         if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
           CUDA_VISIBLE_DEVICES: ""
         run: |
-          $videosPerChannel = "${{ github.event.inputs.videos_per_channel }}"
-          if (-not $videosPerChannel) { $videosPerChannel = "1" }
-          .\venv\Scripts\python.exe -m yt_audio_filter.scheduler --device auto -n $videosPerChannel --privacy unlisted -v
+          VIDEOS="${{ github.event.inputs.videos_per_channel }}"
+          python -m yt_audio_filter.scheduler --device cpu -n ${VIDEOS:-1} --privacy unlisted -v
 
       - name: Commit processed videos tracking
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -89,14 +99,13 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          $diff = git diff processed_videos.json 2>$null
-          if ($diff) {
+          if git diff --quiet processed_videos.json 2>/dev/null; then
+            echo "No changes to processed_videos.json"
+          else
             git add processed_videos.json
             git commit -m "Update processed videos tracking [skip ci]"
             git push
-          } else {
-            Write-Host "No changes to processed_videos.json"
-          }
+          fi
 
       - name: Upload logs as artifact
         if: always()
@@ -106,4 +115,5 @@ jobs:
           path: |
             *.log
             processed_videos.json
+            cookies.txt
           retention-days: 7
