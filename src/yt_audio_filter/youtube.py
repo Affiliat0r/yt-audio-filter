@@ -257,12 +257,39 @@ def download_youtube_video(
         # Reduce console noise (we use our own logging)
         "quiet": True,
         "no_warnings": True,
+        # Enable Node.js runtime for YouTube JS challenge solving
+        # Required for POT provider to work on GitHub Actions
+        # Note: bgutil-ytdlp-pot-provider v1.0.0+ uses new extractor args syntax
+        "extractor_args": {
+            # POT server URL for bot detection bypass (bgutil-ytdlp-pot-provider v1.0.0+ syntax)
+            # disable_innertube=1 restores legacy behavior and helps trigger POT usage
+            "youtubepot-bgutilhttp": {
+                "base_url": ["http://127.0.0.1:4416"],
+                "disable_innertube": ["1"],
+            }
+        },
+        # Explicitly use Node.js for JavaScript challenge solving (needed for POT provider)
+        # Format is dict of {runtime: config_dict}
+        "js_runtimes": {"node": {}},
     }
 
     # Add ffmpeg location if found
     if ffmpeg_location:
         ydl_opts["ffmpeg_location"] = ffmpeg_location
         logger.debug(f"Using ffmpeg from: {ffmpeg_location}")
+
+    # Check for cookie file to bypass bot detection
+    # Look in common locations for cookies.txt (Netscape format)
+    cookie_locations = [
+        Path.cwd() / "cookies.txt",
+        project_root / "cookies.txt",
+        Path.home() / ".yt-dlp" / "cookies.txt",
+    ]
+    for cookie_file in cookie_locations:
+        if cookie_file.exists():
+            ydl_opts["cookiefile"] = str(cookie_file)
+            logger.debug(f"Using cookie file: {cookie_file}")
+            break
 
     try:
         logger.info(f"Downloading from YouTube: {url}")
@@ -323,6 +350,11 @@ def download_youtube_video(
 
     except yt_dlp.utils.DownloadError as e:
         error_msg = str(e)
+        # Check if this is bot detection - if so, try Cobalt fallback
+        if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+            logger.warning("Bot detection triggered, trying Cobalt fallback...")
+            return _download_with_cobalt_fallback(url, output_dir, progress_callback)
+
         # Provide friendlier error messages for common issues
         if "Private video" in error_msg:
             raise YouTubeDownloadError("Cannot download private video", error_msg)
@@ -340,3 +372,38 @@ def download_youtube_video(
         if isinstance(e, (YouTubeDownloadError, PrerequisiteError, ValidationError)):
             raise
         raise YouTubeDownloadError(f"Unexpected download error: {e}")
+
+
+def _download_with_cobalt_fallback(
+    url: str,
+    output_dir: Path,
+    progress_callback: Optional[Callable[[dict], None]] = None,
+) -> VideoMetadata:
+    """
+    Fallback download using Cobalt API when yt-dlp fails due to bot detection.
+    """
+    from .cobalt_downloader import download_with_cobalt, get_video_metadata_yt_dlp
+
+    # Try to get metadata first (usually works even when download is blocked)
+    metadata = get_video_metadata_yt_dlp(url)
+
+    if progress_callback:
+        progress_callback({"status": "downloading", "percent": 10, "speed": None, "eta": None})
+
+    # Download via Cobalt
+    cobalt_result = download_with_cobalt(url, output_dir)
+
+    if progress_callback:
+        progress_callback({"status": "finished", "percent": 100, "speed": None, "eta": None})
+
+    # Merge metadata
+    return VideoMetadata(
+        video_id=cobalt_result.video_id,
+        title=metadata.get("title", cobalt_result.title),
+        description=metadata.get("description", ""),
+        channel=metadata.get("channel", "Unknown"),
+        tags=metadata.get("tags", []),
+        duration=metadata.get("duration", 0),
+        view_count=metadata.get("view_count", 0),
+        file_path=cobalt_result.file_path,
+    )

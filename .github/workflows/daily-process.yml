@@ -1,0 +1,286 @@
+name: Daily Video Processing
+
+on:
+  schedule:
+    # Run daily at 3:00 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+    inputs:
+      dry_run:
+        description: 'Dry run (show what would be processed)'
+        required: false
+        default: false
+        type: boolean
+      videos_per_channel:
+        description: 'Videos to process per channel'
+        required: false
+        default: '1'
+        type: string
+
+jobs:
+  process-videos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hour timeout
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[upload]"
+          # Ensure latest yt-dlp (2025.05.22+ required for POT provider)
+          pip install -U "yt-dlp>=2025.05.22"
+          # Install POT provider plugin for YouTube bot detection bypass
+          pip install -U bgutil-ytdlp-pot-provider
+          # Install Playwright for automatic cookie refresh
+          pip install playwright
+          playwright install chromium
+
+      - name: Build POT provider server
+        run: |
+          # Clone and build the POT provider server (for YouTube bot detection bypass)
+          git clone --single-branch --branch 1.2.2 \
+            https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git pot-provider
+          cd pot-provider/server
+          npm install
+          npx tsc
+          echo "POT provider server built successfully"
+
+      - name: Verify dependencies
+        run: |
+          python -c "import yt_dlp; import demucs; import soundfile; print('Dependencies OK')"
+          ffmpeg -version | head -1
+          # Show yt-dlp version (must be 2025.05.22+)
+          echo "yt-dlp version:"
+          yt-dlp --version
+
+          # Verify POT provider plugin is installed and detected
+          echo ""
+          echo "=== Checking POT provider plugin ==="
+          pip show bgutil-ytdlp-pot-provider || echo "WARNING: POT provider pip package not found!"
+
+          echo ""
+          echo "=== yt-dlp plugin paths ==="
+          python -c "
+          import sys
+          import site
+          print('Site packages:', site.getsitepackages())
+          try:
+              import yt_dlp_plugins
+              print('yt_dlp_plugins path:', yt_dlp_plugins.__path__)
+          except ImportError as e:
+              print('yt_dlp_plugins import error:', e)
+          "
+
+          echo ""
+          echo "=== Listing yt-dlp extractor plugins ==="
+          yt-dlp --list-extractors 2>&1 | grep -i pot || echo "No POT extractor found (this is normal)"
+
+          echo ""
+          echo "=== Checking bgutil plugin files ==="
+          python -c "
+          import importlib.util
+          spec = importlib.util.find_spec('yt_dlp_plugins.extractor.getpot_bgutil')
+          if spec:
+              print('POT plugin found at:', spec.origin)
+          else:
+              print('POT plugin NOT found in yt_dlp_plugins.extractor')
+          "
+
+      - name: Test POT provider
+        run: |
+          # Start POT server for testing
+          echo "Starting POT server..."
+          node pot-provider/server/build/main.js > pot_server.log 2>&1 &
+          POT_PID=$!
+          sleep 5
+
+          # Verify server is running
+          echo "Checking if POT server is running on port 4416..."
+          if netstat -tlnp 2>/dev/null | grep -q ":4416"; then
+            echo "✓ POT server is listening on port 4416"
+          else
+            echo "✗ POT server NOT listening on port 4416"
+            echo "Server log:"
+            cat pot_server.log || true
+            # Try ss command as alternative
+            ss -tlnp | grep 4416 || echo "Port 4416 not found with ss either"
+          fi
+
+          echo ""
+          echo "=== Verifying Node.js is available for yt-dlp ==="
+          which node && node --version
+
+          echo ""
+          echo "=== Testing POT provider with verbose output ==="
+          # Run yt-dlp with:
+          # - Node.js runtime for JS challenges
+          # - POT provider base URL (new syntax for bgutil-ytdlp-pot-provider v1.0.0+)
+          # - disable_innertube=1 restores legacy behavior and may help token requests
+          # Note: extractor args use NEW syntax: youtubepot-bgutilhttp:key=value;key2=value2
+          yt-dlp -v --skip-download --js-runtimes node \
+            --extractor-args "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416;disable_innertube=1" \
+            "https://www.youtube.com/watch?v=jNQXAC9IVRw" 2>&1 | tee yt_dlp_test.log
+
+          echo ""
+          echo "=== Checking for POT-related messages ==="
+          grep -i "pot\|getpot\|bgutil" yt_dlp_test.log || echo "No POT-related messages found in output"
+
+          echo ""
+          echo "POT server log:"
+          cat pot_server.log || true
+
+          # Kill test server
+          kill $POT_PID 2>/dev/null || true
+          echo ""
+          echo "POT provider test completed"
+
+      - name: Download youtubeuploader
+        run: |
+          # Download Linux binary (v1.25.5)
+          curl -L -o youtubeuploader.tar.gz \
+            "https://github.com/porjo/youtubeuploader/releases/download/v1.25.5/youtubeuploader_1.25.5_Linux_amd64.tar.gz"
+          tar -xzf youtubeuploader.tar.gz
+          chmod +x youtubeuploader
+          ./youtubeuploader -version || echo "Version check done"
+
+      - name: Setup YouTube credentials
+        run: |
+          mkdir -p ~/.yt-audio-filter
+          echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > ~/.yt-audio-filter/client_secrets.json
+          echo '${{ secrets.YOUTUBE_REQUEST_TOKEN }}' > ~/.yt-audio-filter/request.token
+          # Also in repo root for uploader binary
+          echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+          echo '${{ secrets.YOUTUBE_REQUEST_TOKEN }}' > request.token
+
+      - name: Refresh YouTube cookies (automatic login)
+        env:
+          YOUTUBE_EMAIL: ${{ secrets.YOUTUBE_EMAIL }}
+          YOUTUBE_PASSWORD: ${{ secrets.YOUTUBE_PASSWORD }}
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          # Automatic cookie refresh using Playwright
+          # Falls back to static cookies if credentials not available
+          if [ -n "$YOUTUBE_EMAIL" ] && [ -n "$YOUTUBE_PASSWORD" ]; then
+            echo "Refreshing YouTube cookies via automatic login..."
+            python -m yt_audio_filter.cookie_refresh || {
+              echo "⚠ Automatic cookie refresh failed, falling back to static cookies"
+              if [ -n "$YOUTUBE_COOKIES" ]; then
+                echo "$YOUTUBE_COOKIES" > cookies.txt
+                echo "✓ Using static YouTube cookies from secret"
+              fi
+            }
+          elif [ -n "$YOUTUBE_COOKIES" ]; then
+            # Fallback: use static cookies from secret
+            echo "$YOUTUBE_COOKIES" > cookies.txt
+            echo "✓ Using static YouTube cookies (no auto-refresh credentials)"
+          else
+            echo "⚠ No YouTube credentials or cookies set - bot detection may occur"
+          fi
+
+          # Verify cookies file exists
+          if [ -f cookies.txt ]; then
+            echo "Cookie file created with $(wc -l < cookies.txt) lines"
+          fi
+
+      - name: Run scheduler (dry run)
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          # Start POT provider server in background
+          echo "Starting POT server for scheduler..."
+          node pot-provider/server/build/main.js > pot_scheduler.log 2>&1 &
+          POT_PID=$!
+          sleep 5
+
+          # Verify server is running
+          echo "Verifying POT server status..."
+          if ss -tlnp 2>/dev/null | grep -q ":4416"; then
+            echo "✓ POT server confirmed on port 4416"
+          else
+            echo "✗ WARNING: POT server not detected on port 4416"
+            cat pot_scheduler.log || true
+          fi
+
+          VIDEOS="${{ github.event.inputs.videos_per_channel }}"
+          python -m yt_audio_filter.scheduler --dry-run -n ${VIDEOS:-1} -v
+
+          # Show POT server activity
+          echo ""
+          echo "=== POT Server Log ==="
+          cat pot_scheduler.log || true
+
+      - name: Run scheduler
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          CUDA_VISIBLE_DEVICES: ""
+        run: |
+          # Start POT provider server in background
+          echo "Starting POT server for scheduler..."
+          node pot-provider/server/build/main.js > pot_scheduler.log 2>&1 &
+          POT_PID=$!
+          sleep 5
+
+          # Verify server is running
+          echo "Verifying POT server status..."
+          if ss -tlnp 2>/dev/null | grep -q ":4416"; then
+            echo "✓ POT server confirmed on port 4416"
+          else
+            echo "✗ WARNING: POT server not detected on port 4416"
+            cat pot_scheduler.log || true
+          fi
+
+          VIDEOS="${{ github.event.inputs.videos_per_channel }}"
+          python -m yt_audio_filter.scheduler --device cpu -n ${VIDEOS:-1} --privacy unlisted -v
+
+          # Show POT server activity
+          echo ""
+          echo "=== POT Server Log ==="
+          cat pot_scheduler.log || true
+
+      - name: Commit processed videos tracking
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          if git diff --quiet processed_videos.json 2>/dev/null; then
+            echo "No changes to processed_videos.json"
+          else
+            git add processed_videos.json
+            git commit -m "Update processed videos tracking [skip ci]"
+            git push
+          fi
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: processing-logs
+          path: |
+            *.log
+            *.png
+            yt_dlp_test.log
+            pot_server.log
+            pot_scheduler.log
+            cookies.txt
+            processed_videos.json
+          retention-days: 7

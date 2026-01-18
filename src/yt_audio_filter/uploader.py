@@ -22,7 +22,7 @@ CLIENT_SECRETS_FILE = CREDENTIALS_DIR / "client_secrets.json"
 OAUTH_TOKEN_FILE = CREDENTIALS_DIR / "oauth_token.pickle"
 
 # youtubeuploader binary support
-YOUTUBEUPLOADER_TOKEN_FILE = CREDENTIALS_DIR / "youtubeuploader_token.json"
+YOUTUBEUPLOADER_TOKEN_FILE = CREDENTIALS_DIR / "request.token"
 
 
 class YouTubeUploadError(YTAudioFilterError):
@@ -279,19 +279,36 @@ def find_youtubeuploader_binary() -> Optional[Path]:
     Returns:
         Path to binary if found, None otherwise
     """
+    import shutil
+    import sys
+
+    # Determine binary names based on platform
+    if sys.platform == "win32":
+        binary_names = ["youtubeuploader.exe"]
+    else:
+        binary_names = ["youtubeuploader"]
+
     # Check common locations
-    locations = [
+    base_locations = [
         # In the package directory (where cli.py lives)
-        Path(__file__).parent.parent.parent / "youtubeuploader.exe",
+        Path(__file__).parent.parent.parent,
         # In project root
-        Path.cwd() / "youtubeuploader.exe",
+        Path.cwd(),
         # In credentials directory
-        CREDENTIALS_DIR / "youtubeuploader.exe",
+        CREDENTIALS_DIR,
     ]
 
-    for loc in locations:
-        if loc.exists():
-            return loc
+    for base in base_locations:
+        for name in binary_names:
+            loc = base / name
+            if loc.exists():
+                return loc
+
+    # Also check system PATH
+    for name in binary_names:
+        found = shutil.which(name)
+        if found:
+            return Path(found)
 
     return None
 
