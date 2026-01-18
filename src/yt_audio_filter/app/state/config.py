@@ -15,7 +15,8 @@ class AppConfig:
     """Application configuration settings."""
 
     # Processing options
-    device: str = "auto"  # auto, cpu, cuda
+    # CUDA now works via subprocess which ensures clean GPU memory
+    device: str = "cuda"
     audio_bitrate: str = "192k"
     model_name: str = "htdemucs"
     max_parallel_workers: int = 2  # Number of videos to process simultaneously

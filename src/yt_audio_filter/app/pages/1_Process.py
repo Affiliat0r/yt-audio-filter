@@ -14,6 +14,8 @@ from yt_audio_filter.app.state.queue import QueueManager, QueueStatus
 from yt_audio_filter.app.state.config import load_config
 from yt_audio_filter.app.components.video_card import render_video_preview
 from yt_audio_filter.app.components.progress import render_pipeline_progress
+from yt_audio_filter.uploader import is_video_already_uploaded, check_credentials_configured
+from yt_audio_filter.app.subprocess_runner import run_processing_subprocess
 
 st.set_page_config(page_title="Process Video - YT Audio Filter", page_icon="\U0001f3ac", layout="wide")
 
@@ -30,6 +32,12 @@ if "processing_item" not in st.session_state:
 if "processing_logs" not in st.session_state:
     st.session_state.processing_logs = []
 
+if "cancel_requested" not in st.session_state:
+    st.session_state.cancel_requested = False
+
+if "processing_thread" not in st.session_state:
+    st.session_state.processing_thread = None
+
 
 def validate_youtube_url(url: str) -> bool:
     """Check if URL is a valid YouTube URL."""
@@ -39,14 +47,60 @@ def validate_youtube_url(url: str) -> bool:
     return any(p in url for p in patterns)
 
 
+def process_video_async_cuda(queue, item_id: str, url: str, config):
+    """Process a video using subprocess for CUDA (fresh process = clean GPU memory).
+
+    This runs the CLI in a subprocess, which works reliably with CUDA because
+    each run gets a fresh GPU memory state (just like running from terminal).
+    """
+    import traceback
+    print(f"[DEBUG] process_video_async_cuda (subprocess) started for {url}")
+
+    try:
+        queue.update_status(item_id, QueueStatus.PROCESSING, current_stage="Starting...", progress=0)
+
+        def on_progress(info):
+            stage = info.get("stage", "Processing")
+            pct = info.get("percent", 0)
+            detail = info.get("detail", "")
+            print(f"[DEBUG] Subprocess progress: {stage} {pct}% - {detail}")
+            queue.update_status(item_id, QueueStatus.PROCESSING, current_stage=stage, progress=pct)
+
+        result = run_processing_subprocess(
+            url=url,
+            privacy=config.default_privacy,
+            device=config.device,
+            bitrate=config.audio_bitrate,
+            progress_callback=on_progress,
+        )
+
+        if result["success"]:
+            queue.update_status(
+                item_id,
+                QueueStatus.COMPLETED,
+                progress=100,
+                current_stage="Complete",
+                uploaded_url=result.get("uploaded_url", ""),
+            )
+        else:
+            queue.update_status(item_id, QueueStatus.FAILED, error_message=result.get("error", "Unknown error"))
+
+    except Exception as e:
+        print(f"[DEBUG] EXCEPTION: {e}")
+        print(traceback.format_exc())
+        queue.update_status(item_id, QueueStatus.FAILED, error_message=str(e))
+
+
 def process_video_async(queue, item_id: str, url: str, config):
-    """Process a video in the background.
+    """Process a video in the background using in-process method.
 
     Note: queue must be passed explicitly because st.session_state is not accessible
     from background threads in Streamlit.
+
+    For CPU processing, this works fine. For CUDA, use process_video_async_cuda.
     """
     import traceback
-    print(f"[DEBUG] process_video_async started for {url}")
+    print(f"[DEBUG] process_video_async (in-process) started for {url}")
 
     from yt_audio_filter.youtube import download_youtube_video
     from yt_audio_filter.pipeline import process_video
@@ -155,28 +209,26 @@ def main():
         if validate_youtube_url(url):
             video_info = render_video_preview(url)
 
+            # Check if already uploaded
+            already_uploaded = None
+            if video_info and check_credentials_configured():
+                video_id = video_info.get("video_id", "")
+                if video_id:
+                    already_uploaded = is_video_already_uploaded(video_id)
+
+            if already_uploaded:
+                st.warning(
+                    f"**This video has already been uploaded to your channel!**\n\n"
+                    f"[View existing upload]({already_uploaded['url']})"
+                )
+
             st.divider()
 
-            # Processing options
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                privacy = st.selectbox(
-                    "Privacy",
-                    ["public", "unlisted", "private"],
-                    index=["public", "unlisted", "private"].index(st.session_state.config.default_privacy),
-                )
-            with col2:
-                device = st.selectbox(
-                    "Device",
-                    ["auto", "cpu", "cuda"],
-                    index=["auto", "cpu", "cuda"].index(st.session_state.config.device),
-                )
-            with col3:
-                bitrate = st.selectbox(
-                    "Audio Bitrate",
-                    ["128k", "192k", "256k", "320k"],
-                    index=["128k", "192k", "256k", "320k"].index(st.session_state.config.audio_bitrate),
-                )
+            # Processing info - uses run_filter.bat for 100% reliability
+            st.info(
+                "**Processing uses run_filter.bat** - GPU auto-detected, uploads as public. "
+                "This is the same as running from terminal."
+            )
 
             # Start processing
             if st.button("\U0001f680 Process & Upload", type="primary"):
@@ -188,16 +240,12 @@ def main():
                 )
                 st.session_state.processing_item = item
 
-                # Update config for this run
+                # Always use run_filter.bat via subprocess for 100% reliability
                 config = st.session_state.config
-                config.default_privacy = privacy
-                config.device = device
-                config.audio_bitrate = bitrate
 
-                # Start processing in background
-                # Pass queue explicitly since st.session_state isn't accessible from threads
+                # Start processing in background using run_filter.bat
                 thread = threading.Thread(
-                    target=process_video_async,
+                    target=process_video_async_cuda,
                     args=(st.session_state.queue, item.id, url, config),
                     daemon=True,
                 )
@@ -277,14 +325,35 @@ def main():
                 st.success("Processing complete!")
                 st.markdown(f"[View on YouTube]({item.uploaded_url})")
                 st.session_state.processing_item = None
+                st.session_state.cancel_requested = False
 
             elif item.status == QueueStatus.FAILED:
                 st.error(f"Processing failed: {item.error_message}")
-                if st.button("Retry"):
-                    st.session_state.processing_item = None
-                    st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Retry", use_container_width=True):
+                        st.session_state.processing_item = None
+                        st.session_state.cancel_requested = False
+                        st.rerun()
+                with col2:
+                    if st.button("Clear", use_container_width=True):
+                        st.session_state.processing_item = None
+                        st.session_state.cancel_requested = False
+                        st.rerun()
 
             elif item.status == QueueStatus.PROCESSING:
+                # Cancel button
+                if st.button("Cancel Processing", type="secondary", use_container_width=True):
+                    st.session_state.cancel_requested = True
+                    st.session_state.queue.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        error_message="Cancelled by user"
+                    )
+                    st.session_state.processing_item = None
+                    st.warning("Processing cancelled. Note: Background process may still be running.")
+                    st.rerun()
+
                 # Auto-refresh while processing
                 time.sleep(1)
                 st.rerun()

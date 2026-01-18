@@ -103,19 +103,63 @@ def ensure_ytdlp_available() -> None:
         )
 
 
+def extract_video_id(url: str) -> str:
+    """
+    Extract the video ID from a YouTube URL without downloading.
+
+    Args:
+        url: YouTube video URL
+
+    Returns:
+        Video ID string
+
+    Raises:
+        ValidationError: If URL is not a valid YouTube URL
+        YouTubeDownloadError: If video ID extraction fails
+    """
+    ensure_ytdlp_available()
+    validate_youtube_url(url)
+
+    import yt_dlp
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info is None:
+                raise YouTubeDownloadError("Failed to extract video information")
+            return info.get("id", "unknown")
+    except Exception as e:
+        # Fallback: try to extract from URL pattern
+        match = re.search(r"(?:v=|/shorts/|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
+        if match:
+            return match.group(1)
+        raise YouTubeDownloadError(f"Failed to extract video ID: {e}")
+
+
 def download_youtube_video(
     url: str,
     output_dir: Path,
     progress_callback: Optional[Callable[[dict], None]] = None,
+    use_cache: bool = True,
 ) -> VideoMetadata:
     """
     Download a YouTube video as MP4 to the specified directory.
+
+    If the video has already been downloaded to the cache directory, it will
+    be reused instead of re-downloading.
 
     Args:
         url: YouTube video URL
         output_dir: Directory to save the downloaded video
         progress_callback: Optional callback for progress updates.
             Called with dict containing 'status', 'percent', 'speed', 'eta'.
+        use_cache: If True, check cache and skip download if already exists (default: True)
 
     Returns:
         VideoMetadata containing file path and original video info
@@ -133,6 +177,34 @@ def download_youtube_video(
     # Ensure output directory exists
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if video already exists in cache
+    if use_cache:
+        try:
+            video_id = extract_video_id(url)
+
+            # Check for existing file with common extensions
+            for ext in ["mp4", "mkv", "webm"]:
+                cached_file = output_dir / f"{video_id}.{ext}"
+                if cached_file.exists() and cached_file.stat().st_size > 0:
+                    logger.info(f"Using cached video: {cached_file.name} (skipping download)")
+
+                    # Extract metadata without downloading
+                    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
+                        info = ydl.extract_info(url, download=False)
+
+                        return VideoMetadata(
+                            video_id=info.get("id", video_id),
+                            title=info.get("title", "Unknown"),
+                            description=info.get("description", ""),
+                            channel=info.get("channel", info.get("uploader", "Unknown")),
+                            tags=info.get("tags", []) or [],
+                            duration=info.get("duration", 0) or 0,
+                            view_count=info.get("view_count", 0) or 0,
+                            file_path=cached_file,
+                        )
+        except Exception as e:
+            logger.debug(f"Cache check failed, proceeding with download: {e}")
 
     # Find ffmpeg location (bundled with project)
     project_root = Path(__file__).parent.parent.parent

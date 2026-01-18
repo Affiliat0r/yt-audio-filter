@@ -67,6 +67,7 @@ def render_video_card(
     on_select: Optional[Callable[[str, bool], None]] = None,
     show_checkbox: bool = True,
     key_prefix: str = "",
+    already_uploaded_info: Optional[Dict] = None,
 ) -> bool:
     """
     Render a single video card.
@@ -77,6 +78,8 @@ def render_video_card(
         on_select: Callback when selection changes
         show_checkbox: Whether to show selection checkbox
         key_prefix: Prefix for Streamlit widget keys
+        already_uploaded_info: If set, dict with info about already uploaded version
+            {"uploaded_id": str, "title": str, "url": str}
 
     Returns:
         Current selection state
@@ -100,15 +103,17 @@ def render_video_card(
         # Checkbox column
         with cols[0]:
             if show_checkbox:
+                # Disable checkbox if already uploaded
                 new_selected = st.checkbox(
                     "Select",
-                    value=selected,
+                    value=selected if not already_uploaded_info else False,
                     key=f"{key_prefix}select_{video_id}",
                     label_visibility="hidden",
+                    disabled=already_uploaded_info is not None,
                 )
-                if on_select and new_selected != selected:
+                if on_select and new_selected != selected and not already_uploaded_info:
                     on_select(video_id, new_selected)
-                selected = new_selected
+                selected = new_selected if not already_uploaded_info else False
 
         # Thumbnail column
         with cols[1]:
@@ -119,7 +124,13 @@ def render_video_card(
 
         # Info column
         with cols[2]:
-            st.markdown(f"**{title}**")
+            # Show "Already Uploaded" badge if applicable
+            if already_uploaded_info:
+                st.markdown(f":white_check_mark: **Already Uploaded** - {title}")
+                st.caption(f"[View uploaded version]({already_uploaded_info['url']})")
+            else:
+                st.markdown(f"**{title}**")
+
             meta_parts = []
             if view_count:
                 meta_parts.append(f"Views: {format_view_count(view_count)}")
@@ -127,7 +138,7 @@ def render_video_card(
                 meta_parts.append(format_relative_date(upload_date))
             if meta_parts:
                 st.caption(" | ".join(meta_parts))
-            if url:
+            if url and not already_uploaded_info:
                 st.caption(url)
 
         # Duration column
@@ -145,6 +156,7 @@ def render_video_grid(
     on_selection_change: Optional[Callable[[Set[str]], None]] = None,
     page_size: int = 20,
     key_prefix: str = "",
+    uploaded_source_ids: Optional[Dict[str, Dict]] = None,
 ) -> Set[str]:
     """
     Render a grid of video cards with selection.
@@ -155,6 +167,8 @@ def render_video_grid(
         on_selection_change: Callback when selection changes
         page_size: Number of videos per page
         key_prefix: Prefix for widget keys
+        uploaded_source_ids: Dict mapping source video IDs to upload info
+            {source_id: {"uploaded_id": str, "title": str, "url": str}}
 
     Returns:
         Updated set of selected video IDs
@@ -163,11 +177,24 @@ def render_video_grid(
         st.info("No videos found")
         return selected_ids
 
+    uploaded_source_ids = uploaded_source_ids or {}
+
+    # Count already uploaded
+    already_uploaded_count = sum(
+        1 for v in videos
+        if v.get("video_id", v.get("id", "")) in uploaded_source_ids
+    )
+
     # Selection controls
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
-        if st.button("Select All", key=f"{key_prefix}select_all"):
-            selected_ids = {v.get("video_id", v.get("id", "")) for v in videos}
+        if st.button("Select All (New)", key=f"{key_prefix}select_all"):
+            # Only select videos that haven't been uploaded yet
+            selected_ids = {
+                v.get("video_id", v.get("id", ""))
+                for v in videos
+                if v.get("video_id", v.get("id", "")) not in uploaded_source_ids
+            }
             if on_selection_change:
                 on_selection_change(selected_ids)
     with col2:
@@ -176,7 +203,10 @@ def render_video_grid(
             if on_selection_change:
                 on_selection_change(selected_ids)
     with col3:
-        st.write(f"Selected: {len(selected_ids)} videos")
+        if already_uploaded_count > 0:
+            st.write(f"Selected: {len(selected_ids)} | Already uploaded: {already_uploaded_count}")
+        else:
+            st.write(f"Selected: {len(selected_ids)} videos")
 
     st.divider()
 
@@ -208,11 +238,13 @@ def render_video_grid(
 
     for video in page_videos:
         video_id = video.get("video_id", video.get("id", ""))
+        already_uploaded_info = uploaded_source_ids.get(video_id)
         render_video_card(
             video=video,
             selected=video_id in selected_ids,
             on_select=handle_select,
             key_prefix=f"{key_prefix}{video_id}_",
+            already_uploaded_info=already_uploaded_info,
         )
 
     return selected_ids

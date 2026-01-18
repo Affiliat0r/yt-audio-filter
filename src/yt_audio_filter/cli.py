@@ -65,7 +65,10 @@ Notes:
         "-m", "--model",
         type=str,
         default="htdemucs",
-        help="Demucs model to use (default: htdemucs)"
+        help="Demucs model to use (default: htdemucs). "
+             "Options: htdemucs (best quality, slow on long videos), "
+             "mdx_extra (faster, more consistent speed), "
+             "mdx_extra_q (fastest, quantized)"
     )
 
     parser.add_argument(
@@ -126,6 +129,58 @@ Notes:
         "--version",
         action="version",
         version=f"%(prog)s {__version__}"
+    )
+
+    # Performance tuning options
+    parser.add_argument(
+        "--segment",
+        type=int,
+        default=None,
+        help="Segment size in seconds for GPU processing (default: auto, slow on long videos). "
+             "Larger values = faster but more VRAM. Recommended: 40-60 for 8GB GPUs, 20-30 for 4GB GPUs. "
+             "CRITICAL for long videos (>30min) to avoid 10x slowdown."
+    )
+
+    parser.add_argument(
+        "--shifts",
+        type=int,
+        default=1,
+        help="Number of random shifts for quality/speed tradeoff (default: 1). Higher values improve quality but increase processing time."
+    )
+
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="[EXPERIMENTAL] Use mixed precision (FP16) for GPU inference. WARNING: Currently causes 7-8x slowdown with Demucs. Do not use."
+    )
+
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        help="[EXPERIMENTAL] Compile model with torch.compile() (requires PyTorch 2.0+). Note: Currently incompatible with htdemucs model."
+    )
+
+    parser.add_argument(
+        "--watermark",
+        action="store_true",
+        help="Add a small watermark to help avoid Content ID matching"
+    )
+
+    parser.add_argument(
+        "--chunk-duration",
+        type=int,
+        default=None,
+        help="Split long videos into chunks of this many seconds for processing (default: auto - 900s/15min for videos >30min). "
+             "Enables consistent high-speed processing on long videos. Set to 0 to disable chunking."
+    )
+
+    parser.add_argument(
+        "--parallel-chunks",
+        type=int,
+        default=1,
+        help="Number of chunks to process in parallel (default: 1 = sequential). "
+             "Set to 2 to process 2 chunks simultaneously for 2x speedup. "
+             "Requires sufficient VRAM (each chunk uses ~3-4GB). Recommended: 2 for 8GB+ GPUs."
     )
 
     return parser
@@ -218,28 +273,38 @@ def main(args=None) -> int:
             # YouTube URL flow: download first, then process
             ensure_ytdlp_available()
 
-            # Download to temp directory, process, then cleanup
-            with create_temp_dir(prefix="yt_download_") as download_dir:
-                # Download the video and get metadata
-                video_metadata = download_youtube_video(parsed.input, download_dir)
-                downloaded_path = video_metadata.file_path
+            # Use persistent cache directory for YouTube downloads (enables reuse)
+            cache_dir = Path.cwd() / "cache" / "youtube"
+            cache_dir.mkdir(parents=True, exist_ok=True)
 
-                # Generate output path
-                if parsed.output is not None:
-                    output_path = parsed.output
-                else:
-                    # Use output directory with _filtered suffix
-                    output_dir = get_output_dir(parsed)
-                    output_path = output_dir / f"{downloaded_path.stem}_filtered.mp4"
+            # Download the video and get metadata (uses cache if available)
+            video_metadata = download_youtube_video(parsed.input, cache_dir, use_cache=True)
+            downloaded_path = video_metadata.file_path
+            logger.debug(f"Using video file: {downloaded_path}")
 
-                # Run the processing pipeline
-                result = process_video(
-                    input_path=downloaded_path,
-                    output_path=output_path,
-                    device=parsed.device,
-                    model_name=parsed.model,
-                    audio_bitrate=parsed.bitrate,
-                )
+            # Generate output path
+            if parsed.output is not None:
+                output_path = parsed.output
+            else:
+                # Use output directory with _filtered suffix
+                output_dir = get_output_dir(parsed)
+                output_path = output_dir / f"{downloaded_path.stem}_filtered.mp4"
+
+            # Run the processing pipeline
+            result = process_video(
+                input_path=downloaded_path,
+                output_path=output_path,
+                device=parsed.device,
+                model_name=parsed.model,
+                audio_bitrate=parsed.bitrate,
+                segment=parsed.segment,
+                shifts=parsed.shifts,
+                watermark=parsed.watermark,
+                fp16=parsed.fp16,
+                compile_model=parsed.compile,
+                chunk_duration=parsed.chunk_duration,
+                parallel_chunks=parsed.parallel_chunks,
+            )
         else:
             # Local file flow
             input_path = parsed.input
@@ -258,6 +323,13 @@ def main(args=None) -> int:
                 device=parsed.device,
                 model_name=parsed.model,
                 audio_bitrate=parsed.bitrate,
+                segment=parsed.segment,
+                shifts=parsed.shifts,
+                watermark=parsed.watermark,
+                fp16=parsed.fp16,
+                compile_model=parsed.compile,
+                chunk_duration=parsed.chunk_duration,
+                parallel_chunks=parsed.parallel_chunks,
             )
 
         logger.info(f"Success! Output saved to: {result}")

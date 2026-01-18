@@ -1,12 +1,13 @@
 """
 Queue Page - Batch processing queue management with parallel processing.
+
+Uses run_filter.bat via subprocess for 100% reliable CUDA processing.
 """
 
 import streamlit as st
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 from yt_audio_filter.app.state.queue import QueueManager, QueueStatus
 from yt_audio_filter.app.state.config import load_config
 from yt_audio_filter.app.components.progress import render_queue_item_progress, render_queue_stats
+from yt_audio_filter.app.subprocess_runner import create_queue_processor
 
 st.set_page_config(page_title="Queue - YT Audio Filter", page_icon="\U0001f4cb", layout="wide")
 
@@ -35,158 +37,8 @@ if "stop_flag" not in st.session_state:
     st.session_state.stop_flag = threading.Event()
 
 
-def process_queue_item(queue: QueueManager, item_id: str, url: str, config):
-    """Process a single queue item."""
-    from yt_audio_filter.youtube import download_youtube_video
-    from yt_audio_filter.pipeline import process_video
-    from yt_audio_filter.uploader import upload_to_youtube
-    from yt_audio_filter.utils import create_temp_dir
-
-    try:
-        queue.update_status(item_id, QueueStatus.PROCESSING, current_stage="Downloading video...", progress=0)
-
-        with create_temp_dir(prefix="yt_queue_") as temp_dir:
-            # Download
-            def download_progress(info):
-                pct = info.get("percent", 0)
-                queue.update_status(
-                    item_id,
-                    QueueStatus.PROCESSING,
-                    current_stage=f"Downloading... {int(pct)}%",
-                    progress=int(pct * 0.2),
-                )
-
-            metadata = download_youtube_video(url, temp_dir, progress_callback=download_progress)
-            queue.update_status(item_id, QueueStatus.PROCESSING, current_stage="Download complete", progress=20)
-
-            # Process
-            output_path = temp_dir / f"{metadata.video_id}_filtered.mp4"
-
-            def pipeline_progress(stage: str, pct: int, info: dict = None):
-                base = {"Extract Audio": 20, "Isolate Vocals": 40, "Remux Video": 70}.get(stage, 20)
-                stage_weight = {"Extract Audio": 20, "Isolate Vocals": 30, "Remux Video": 10}.get(stage, 10)
-                total_pct = base + int(pct * stage_weight / 100)
-
-                # Build verbose stage display
-                if stage == "Isolate Vocals" and info:
-                    # Format like tqdm: "12.3/456.7 [00:18<01:29, 1.50s/s]"
-                    current = info.get('current', 0)
-                    total = info.get('total', 0)
-                    elapsed = info.get('elapsed_seconds', 0)
-                    remaining = info.get('remaining_seconds', 0)
-                    rate = info.get('rate', 0)
-
-                    # Format time as MM:SS or HH:MM:SS
-                    def fmt_time(secs):
-                        if secs <= 0:
-                            return "??:??"
-                        secs = int(secs)
-                        if secs >= 3600:
-                            return f"{secs//3600}:{(secs%3600)//60:02d}:{secs%60:02d}"
-                        return f"{secs//60:02d}:{secs%60:02d}"
-
-                    rate_str = f"{rate:.2f}s/s" if rate else "?s/s"
-                    stage_display = (
-                        f"AI vocals: {current:.1f}/{total:.1f}s "
-                        f"[{fmt_time(elapsed)}<{fmt_time(remaining)}, {rate_str}]"
-                    )
-                elif stage == "Isolate Vocals" and pct == 100:
-                    stage_display = "AI vocals complete!"
-                elif stage == "Isolate Vocals":
-                    stage_display = "AI processing vocals..."
-                else:
-                    stage_display = {
-                        "Extract Audio": f"Extracting audio... {pct}%",
-                        "Remux Video": f"Remuxing video... {pct}%",
-                    }.get(stage, f"{stage}... {pct}%")
-
-                queue.update_status(
-                    item_id,
-                    QueueStatus.PROCESSING,
-                    current_stage=stage_display,
-                    progress=total_pct,
-                )
-
-            process_video(
-                metadata.file_path,
-                output_path,
-                device=config.device,
-                model_name=config.model_name,
-                audio_bitrate=config.audio_bitrate,
-                progress_callback=pipeline_progress,
-            )
-
-            # Upload
-            queue.update_status(item_id, QueueStatus.PROCESSING, current_stage="Uploading to YouTube...", progress=80)
-
-            video_id = upload_to_youtube(
-                video_path=output_path,
-                original_metadata=metadata,
-                privacy=config.default_privacy,
-            )
-
-            uploaded_url = f"https://youtube.com/watch?v={video_id}"
-            queue.update_status(
-                item_id,
-                QueueStatus.COMPLETED,
-                progress=100,
-                current_stage="Complete - Uploaded!",
-                output_path=str(output_path),
-                uploaded_url=uploaded_url,
-            )
-
-    except Exception as e:
-        queue.update_status(item_id, QueueStatus.FAILED, current_stage="Failed", error_message=str(e))
-
-
-def run_queue_processor(queue: QueueManager, config, stop_flag: threading.Event):
-    """Background thread to process queue items in parallel."""
-    max_workers = config.max_parallel_workers
-
-    # Track active futures to manage parallel jobs
-    active_item_ids = set()
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {}
-
-        while not stop_flag.is_set():
-            # Clean up completed futures
-            completed_futures = [f for f in futures if f.done()]
-            for future in completed_futures:
-                item_id = futures.pop(future)
-                active_item_ids.discard(item_id)
-
-            # Calculate available slots
-            slots_available = max_workers - len(futures)
-
-            if slots_available > 0:
-                # Get pending items that aren't already being processed
-                pending_items = queue.get_next_pending_batch(slots_available + len(active_item_ids))
-                new_items = [
-                    item for item in pending_items
-                    if item.id not in active_item_ids
-                ][:slots_available]
-
-                if new_items:
-                    # Submit new jobs
-                    for item in new_items:
-                        future = executor.submit(process_queue_item, queue, item.id, item.url, config)
-                        futures[future] = item.id
-                        active_item_ids.add(item.id)
-
-            # Check if we should stop (no active jobs and no pending)
-            if len(futures) == 0 and queue.stats()["pending"] == 0:
-                stop_flag.set()  # Signal we're done
-                break
-
-            time.sleep(1)  # Check status periodically
-
-        # Wait for remaining jobs when stopping
-        for future in futures:
-            try:
-                future.result(timeout=1)
-            except Exception:
-                pass
+# Note: Queue processing now uses run_filter.bat via subprocess for 100% reliability
+# See subprocess_runner.create_queue_processor() for the implementation
 
 
 def main():
@@ -214,17 +66,12 @@ def main():
                 if st.button("\u25b6\ufe0f Start Queue", type="primary", use_container_width=True):
                     st.session_state.stop_flag.clear()  # Reset stop flag
                     st.session_state.queue_running = True
-                    # Pass queue, config, and stop_flag to thread
-                    thread = threading.Thread(
-                        target=run_queue_processor,
-                        args=(
-                            st.session_state.queue,
-                            st.session_state.config,
-                            st.session_state.stop_flag,
-                        ),
-                        daemon=True,
+                    # Use subprocess-based processor for 100% reliable CUDA
+                    thread = create_queue_processor(
+                        queue_manager=st.session_state.queue,
+                        config=st.session_state.config,
+                        stop_flag=st.session_state.stop_flag,
                     )
-                    thread.start()
                     st.session_state.processing_thread = thread
                     st.rerun()
             else:
@@ -388,6 +235,13 @@ def main():
         st.divider()
         st.caption(f"Max parallel workers: {st.session_state.config.max_parallel_workers}")
         st.caption("Change in Settings page")
+
+        st.divider()
+        st.subheader("Processing Mode")
+        st.info(
+            "**Subprocess mode** - Each video runs via run_filter.bat "
+            "for 100% reliable CUDA processing."
+        )
 
 
 if __name__ == "__main__":

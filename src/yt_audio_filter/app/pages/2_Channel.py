@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 from yt_audio_filter.app.state.queue import QueueManager
 from yt_audio_filter.app.state.config import load_config, save_config, add_recent_channel
 from yt_audio_filter.app.components.video_card import render_video_grid
+from yt_audio_filter.uploader import get_uploaded_source_ids, check_credentials_configured
 
 st.set_page_config(page_title="Channel Scraper - YT Audio Filter", page_icon="\U0001f4fa", layout="wide")
 
@@ -29,6 +30,9 @@ if "selected_videos" not in st.session_state:
 
 if "current_channel" not in st.session_state:
     st.session_state.current_channel = ""
+
+if "uploaded_source_ids" not in st.session_state:
+    st.session_state.uploaded_source_ids = {}
 
 
 def filter_and_sort_videos(videos, search_query, sort_by, min_duration, max_duration):
@@ -66,6 +70,14 @@ def filter_and_sort_videos(videos, search_query, sort_by, min_duration, max_dura
 def main():
     st.title("\U0001f4fa Channel Scraper")
     st.caption("Scrape videos from a YouTube channel and add them to the processing queue")
+
+    # Check for duplicates on page load (if credentials configured and not loaded yet)
+    if check_credentials_configured() and not st.session_state.uploaded_source_ids:
+        with st.spinner("Checking for already-uploaded videos..."):
+            try:
+                st.session_state.uploaded_source_ids = get_uploaded_source_ids()
+            except Exception as e:
+                st.warning(f"Could not check for duplicates: {e}")
 
     # Channel input
     col1, col2 = st.columns([3, 1])
@@ -175,7 +187,7 @@ def main():
 
         # Filtering and Sorting options
         st.subheader("\U0001f50e Filter & Sort")
-        col1, col2, col3, col4 = st.columns([3, 2, 1.5, 1.5])
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 1.5, 1.5, 1.5])
 
         with col1:
             search_query = st.text_input(
@@ -210,6 +222,13 @@ def main():
                 help="Maximum duration in minutes",
             )
 
+        with col5:
+            hide_uploaded = st.checkbox(
+                "Hide uploaded",
+                value=True,
+                help="Hide videos already uploaded to your channel",
+            )
+
         # Apply filters
         filtered_videos = filter_and_sort_videos(
             st.session_state.channel_videos,
@@ -218,6 +237,13 @@ def main():
             min_duration,
             max_duration,
         )
+
+        # Apply "hide uploaded" filter
+        if hide_uploaded and st.session_state.uploaded_source_ids:
+            filtered_videos = [
+                v for v in filtered_videos
+                if v.get("video_id", v.get("id", "")) not in st.session_state.uploaded_source_ids
+            ]
 
         if len(filtered_videos) != len(st.session_state.channel_videos):
             st.info(f"Showing {len(filtered_videos)} of {len(st.session_state.channel_videos)} videos")
@@ -234,6 +260,7 @@ def main():
             on_selection_change=on_selection_change,
             page_size=st.session_state.config.videos_per_page,
             key_prefix="channel_",
+            uploaded_source_ids=st.session_state.uploaded_source_ids if not hide_uploaded else None,
         )
 
         # Add to queue section
@@ -295,6 +322,25 @@ def main():
 
         if st.button("Process Single Video", use_container_width=True):
             st.switch_page("pages/1_Process.py")
+
+        st.divider()
+
+        # Duplicate check status
+        st.subheader("Duplicate Detection")
+        if st.session_state.uploaded_source_ids:
+            st.success(f"{len(st.session_state.uploaded_source_ids)} videos tracked")
+        else:
+            st.info("Not loaded")
+
+        if st.button("Refresh Duplicates", use_container_width=True):
+            with st.spinner("Checking uploads..."):
+                try:
+                    from yt_audio_filter.uploader import clear_upload_cache
+                    clear_upload_cache()
+                    st.session_state.uploaded_source_ids = get_uploaded_source_ids(force_refresh=True)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed: {e}")
 
 
 if __name__ == "__main__":

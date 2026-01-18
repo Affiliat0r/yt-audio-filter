@@ -50,23 +50,52 @@ SEO_KEYWORDS = [
 
 def generate_seo_title(original_title: str) -> str:
     """
-    Generate an SEO-optimized title for musicless video.
+    Generate a transformative title for musicless video.
 
     Args:
         original_title: Original video title
 
     Returns:
-        SEO-optimized title with musicless keywords
+        Transformative title with extracted keywords
     """
-    # Add "No Background Music" or similar to title
-    # Keep it under 100 chars for YouTube
-    suffix = " [No Background Music]"
-    max_original_len = 100 - len(suffix)
-
-    if len(original_title) > max_original_len:
-        original_title = original_title[:max_original_len - 3] + "..."
-
-    return f"{original_title}{suffix}"
+    # Extract keywords from original title (remove common filler words)
+    import re
+    
+    # Remove special characters, emojis, and extra whitespace
+    cleaned = re.sub(r'[^\w\s]', ' ', original_title)
+    words = cleaned.split()
+    
+    # Common filler words to remove (Turkish and English)
+    filler_words = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+        'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+        'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'this',
+        'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they',
+        've', 'bir', 'bu', 'su', 'ile', 'icin', 'için', 'da', 'de', 'mi',
+        've', 'ama', 'ile', 'den', 'dan', 'en', 'çok', 'cok', 'daha',
+    }
+    
+    # Keep meaningful words (longer than 2 chars and not filler)
+    keywords = [w for w in words if len(w) > 2 and w.lower() not in filler_words]
+    
+    # Take top keywords, limit to ~5-6 for readability
+    keywords = keywords[:6]
+    
+    if keywords:
+        keyword_str = ' '.join(keywords)
+    else:
+        # Fallback if no keywords extracted
+        keyword_str = original_title[:30]
+    
+    # Format: "🔇 Music Removed - keyword1 keyword2 keyword3"
+    prefix = "🔇 Music Removed - "
+    max_len = 100 - len(prefix)
+    
+    if len(keyword_str) > max_len:
+        keyword_str = keyword_str[:max_len - 3] + "..."
+    
+    return f"{prefix}{keyword_str}"
 
 
 def generate_seo_description(
@@ -76,10 +105,9 @@ def generate_seo_description(
     original_video_id: str,
 ) -> str:
     """
-    Generate description for musicless video, preserving original description.
+    Generate a description for musicless video.
 
-    The original description is kept intact at the top, with a small footer
-    added for attribution and discoverability.
+    Creates description focused on accessibility benefits.
 
     Args:
         original_title: Original video title
@@ -88,30 +116,81 @@ def generate_seo_description(
         original_video_id: Original YouTube video ID
 
     Returns:
-        Description with original content preserved plus attribution footer
+        Description with attribution
     """
-    original_url = f"https://youtube.com/watch?v={original_video_id}"
+    # Create description focused on accessibility purpose
+    description = f"""🔇 Background Music Removed
 
-    # Keep original description intact, just add attribution footer
-    if original_description:
-        # Truncate if needed to leave room for footer (YouTube limit: 5000 chars)
-        max_orig_len = 4500
-        if len(original_description) > max_orig_len:
-            description = original_description[:max_orig_len] + "..."
-        else:
-            description = original_description
-    else:
-        description = original_title
+Audio processed with AI to remove background music. Speech, dialogue, and sound effects preserved.
 
-    # Add small attribution footer (doesn't override original content)
-    footer = f"""
+Great for:
+• Sensory-sensitive viewers
+• Dialogue-focused watching
+• Reduced audio distractions
 
----
-🔇 Background music removed version
-📺 Original: {original_url} | 👤 {original_channel}
-🔍 #NoBackgroundMusic #Musicless #VocalsOnly"""
+📺 From: {original_channel}
 
-    return description + footer
+#NoBackgroundMusic #Musicless #AccessibleContent #SensoryFriendly #NoMusic"""
+
+    return description
+
+
+def sanitize_youtube_tag(tag: str) -> Optional[str]:
+    """
+    Sanitize a single tag for YouTube requirements.
+    
+    YouTube tag rules:
+    - No < or > characters
+    - Max 30 characters per tag
+    - No leading/trailing whitespace
+    - Cannot be empty
+    - Only alphanumeric, spaces, and basic punctuation
+    
+    Args:
+        tag: Raw tag string
+        
+    Returns:
+        Sanitized tag or None if invalid
+    """
+    import re
+    import unicodedata
+    
+    if not tag or not isinstance(tag, str):
+        return None
+    
+    # Normalize unicode characters (e.g., combining characters)
+    tag = unicodedata.normalize('NFC', tag)
+    
+    # Strip whitespace
+    tag = tag.strip()
+    
+    # Remove < and > characters (YouTube rejects these)
+    tag = re.sub(r'[<>]', '', tag)
+    
+    # Remove other potentially problematic characters
+    tag = re.sub(r'[\x00-\x1f\x7f]', '', tag)  # Control characters
+    
+    # Remove hashtags (YouTube doesn't allow # in tags)
+    tag = tag.replace('#', '')
+    
+    # Remove quotes and other problematic punctuation
+    tag = re.sub(r'["\'\[\]{}|\\^`~]', '', tag)
+    
+    # Remove zero-width characters and other invisible unicode
+    tag = re.sub(r'[\u200b-\u200f\u2028-\u202f\u205f-\u206f\ufeff]', '', tag)
+    
+    # Collapse multiple spaces
+    tag = re.sub(r'\s+', ' ', tag).strip()
+    
+    # Check if still valid after cleaning
+    if not tag or len(tag) < 2:
+        return None
+    
+    # Truncate to max 30 characters (YouTube limit per tag)
+    if len(tag) > 30:
+        tag = tag[:30].strip()
+    
+    return tag
 
 
 def generate_seo_tags(original_tags: List[str]) -> List[str]:
@@ -124,18 +203,31 @@ def generate_seo_tags(original_tags: List[str]) -> List[str]:
     Returns:
         Combined and optimized tag list
     """
-    # Start with musicless-specific tags (high priority)
+    # Start with musicless-specific tags (high priority) - these are safe ASCII
     tags = SEO_KEYWORDS.copy()
+    total_chars = sum(len(t) for t in tags)
+    MAX_TOTAL_CHARS = 450  # YouTube limit is 500, leave buffer
 
     # Add original tags (limited to avoid YouTube's 500 char tag limit)
-    remaining_chars = 400  # Leave room for our SEO tags
-    for tag in original_tags:
-        if len(tag) + 1 <= remaining_chars:  # +1 for comma separator
-            if tag.lower() not in [t.lower() for t in tags]:  # Avoid duplicates
-                tags.append(tag)
-                remaining_chars -= len(tag) + 1
+    # Skip original tags entirely for now as they often cause "invalid keywords" errors
+    # YouTube API is very strict about what characters it accepts in tags
+    # Original tags often have unicode/special chars that work in Studio but not API
+    
+    # Uncomment below to try adding original tags (may cause issues):
+    # for tag in original_tags:
+    #     sanitized = sanitize_youtube_tag(tag)
+    #     if sanitized and total_chars + len(sanitized) <= MAX_TOTAL_CHARS:
+    #         if sanitized.lower() not in [t.lower() for t in tags]:
+    #             tags.append(sanitized)
+    #             total_chars += len(sanitized)
 
-    return tags[:30]  # YouTube allows max 30 tags
+    final_tags = tags[:30]  # YouTube allows max 30 tags
+    
+    # Log final tags for debugging
+    total_len = sum(len(t) for t in final_tags)
+    logger.debug(f"Final tags for upload ({len(final_tags)} tags, {total_len} chars): {final_tags}")
+    
+    return final_tags
 
 
 def check_upload_dependencies() -> bool:
@@ -344,7 +436,10 @@ def authenticate_youtube():
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 
-    SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+    SCOPES = [
+        "https://www.googleapis.com/auth/youtube.upload",
+        "https://www.googleapis.com/auth/youtube.readonly",
+    ]
 
     credentials = None
 
@@ -353,6 +448,13 @@ def authenticate_youtube():
         try:
             with open(OAUTH_TOKEN_FILE, "rb") as token:
                 credentials = pickle.load(token)
+                # Check if credentials have all required scopes
+                if credentials and hasattr(credentials, "scopes"):
+                    required_scopes = set(SCOPES)
+                    current_scopes = set(credentials.scopes or [])
+                    if not required_scopes.issubset(current_scopes):
+                        logger.info("Credentials missing required scopes, re-authenticating...")
+                        credentials = None
         except Exception as e:
             logger.debug(f"Failed to load saved credentials: {e}")
 
@@ -461,6 +563,7 @@ This video has been processed to remove background music while preserving speech
     from googleapiclient.http import MediaFileUpload
 
     logger.info(f"Uploading to YouTube: {title}")
+    logger.debug(f"Upload tags ({len(tags)}): {tags}")
 
     try:
         youtube = authenticate_youtube()
@@ -597,3 +700,135 @@ def create_playlist(title: str, description: str = "", privacy: str = "unlisted"
     except Exception as e:
         logger.error(f"Failed to create playlist: {e}")
         return None
+
+
+# Cache for uploaded source video IDs
+_uploaded_source_ids_cache: Optional[dict] = None
+
+
+def _extract_source_video_id(description: str) -> Optional[str]:
+    """
+    Extract the original source video ID from an uploaded video's description.
+
+    The description footer contains: 📺 Original: https://youtube.com/watch?v={video_id}
+
+    Args:
+        description: Video description text
+
+    Returns:
+        Original video ID if found, None otherwise
+    """
+    import re
+
+    # Match youtube.com/watch?v= or youtu.be/ patterns
+    patterns = [
+        r"Original:\s*https?://(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})",
+        r"Original:\s*https?://youtu\.be/([a-zA-Z0-9_-]{11})",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, description)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+def get_uploaded_source_ids(force_refresh: bool = False) -> dict:
+    """
+    Get a mapping of source video IDs to uploaded video info.
+
+    Queries the user's YouTube channel for videos with "[No Background Music]" in the title,
+    then extracts the original source video ID from each description.
+
+    Args:
+        force_refresh: Force refresh of the cache
+
+    Returns:
+        Dict mapping source_video_id -> {"uploaded_id": str, "title": str, "url": str}
+    """
+    global _uploaded_source_ids_cache
+
+    if _uploaded_source_ids_cache is not None and not force_refresh:
+        return _uploaded_source_ids_cache
+
+    if not check_upload_dependencies():
+        logger.warning("Upload dependencies not installed, cannot check for duplicates")
+        return {}
+
+    try:
+        youtube = authenticate_youtube()
+
+        # Get user's channel ID
+        channels_response = youtube.channels().list(part="contentDetails", mine=True).execute()
+
+        if not channels_response.get("items"):
+            logger.warning("Could not find user's channel")
+            return {}
+
+        uploads_playlist_id = channels_response["items"][0]["contentDetails"]["relatedPlaylists"][
+            "uploads"
+        ]
+
+        # Fetch all uploaded videos
+        source_ids = {}
+        next_page_token = None
+
+        while True:
+            playlist_response = youtube.playlistItems().list(
+                part="snippet",
+                playlistId=uploads_playlist_id,
+                maxResults=50,
+                pageToken=next_page_token,
+            ).execute()
+
+            for item in playlist_response.get("items", []):
+                snippet = item["snippet"]
+                title = snippet.get("title", "")
+                description = snippet.get("description", "")
+                video_id = snippet["resourceId"]["videoId"]
+
+                # Only check videos that look like our processed videos
+                if "[No Background Music]" in title:
+                    source_id = _extract_source_video_id(description)
+                    if source_id:
+                        source_ids[source_id] = {
+                            "uploaded_id": video_id,
+                            "title": title,
+                            "url": f"https://youtube.com/watch?v={video_id}",
+                        }
+
+            next_page_token = playlist_response.get("nextPageToken")
+            if not next_page_token:
+                break
+
+        _uploaded_source_ids_cache = source_ids
+        logger.info(f"Found {len(source_ids)} already-processed videos on channel")
+        return source_ids
+
+    except Exception as e:
+        logger.error(f"Failed to fetch uploaded videos: {e}")
+        return {}
+
+
+def is_video_already_uploaded(source_video_id: str, force_refresh: bool = False) -> Optional[dict]:
+    """
+    Check if a source video has already been processed and uploaded.
+
+    Args:
+        source_video_id: The original YouTube video ID to check
+        force_refresh: Force refresh the cache of uploaded videos
+
+    Returns:
+        Dict with uploaded video info if already uploaded, None otherwise
+        {"uploaded_id": str, "title": str, "url": str}
+    """
+    uploaded = get_uploaded_source_ids(force_refresh=force_refresh)
+    return uploaded.get(source_video_id)
+
+
+def clear_upload_cache() -> None:
+    """Clear the uploaded videos cache, forcing a refresh on next check."""
+    global _uploaded_source_ids_cache
+    _uploaded_source_ids_cache = None
+    logger.debug("Upload cache cleared")
