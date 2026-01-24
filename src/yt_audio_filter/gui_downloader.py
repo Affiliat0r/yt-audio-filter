@@ -304,26 +304,73 @@ def download_with_gui(
                 logger.info("Clicked Save button")
                 time.sleep(1)  # Wait for potential replacement confirmation dialog
 
-                # Check for "Yes" button in file replacement confirmation dialog
+                # Check for file replacement confirmation dialog
                 logger.info("Checking for file replacement confirmation...")
-                yes_button = None
+                no_button = None
                 for window in app.windows():
                     for ctrl in window.descendants():
                         if ctrl.element_info.control_type == "Button":
                             try:
                                 button_text = ctrl.window_text()
-                                if button_text and button_text.strip().upper() == "YES":
-                                    yes_button = ctrl
-                                    logger.info(f"Found Yes button: {button_text}")
+                                # Look for No button (to skip redownload)
+                                if button_text and button_text.strip().upper() == "NO":
+                                    no_button = ctrl
+                                    logger.info(f"Found No button: {button_text}")
                                     break
                             except:
                                 continue
-                    if yes_button:
+                    if no_button:
                         break
 
-                if yes_button:
-                    yes_button.click()
-                    logger.info("Clicked Yes to replace existing file, download starting...")
+                if no_button:
+                    # File already exists! Click No to cancel download and use existing file
+                    no_button.click()
+                    logger.info("File already exists - clicked No to use existing file instead of redownloading")
+
+                    # Find the existing file from the filename in the Save As dialog
+                    # The filename should be visible in an Edit control
+                    existing_filename = None
+                    for window in app.windows():
+                        for ctrl in window.descendants():
+                            try:
+                                if ctrl.element_info.control_type == "Edit":
+                                    ctrl_text = ctrl.window_text()
+                                    if ctrl_text and ".mp4" in ctrl_text.lower():
+                                        existing_filename = ctrl_text.strip()
+                                        logger.info(f"Found existing filename: {existing_filename}")
+                                        break
+                            except:
+                                continue
+                        if existing_filename:
+                            break
+
+                    # Find the file in output_dir
+                    if existing_filename:
+                        existing_path = output_dir / existing_filename
+                        if existing_path.exists():
+                            logger.info(f"Using existing file: {existing_path.name} ({existing_path.stat().st_size / 1024 / 1024:.1f} MB)")
+                            title = existing_path.stem
+                            return GuiDownloadResult(
+                                video_path=existing_path,
+                                title=title
+                            )
+
+                    # Fallback: find most recently modified .mp4 in output_dir
+                    logger.info("Looking for most recently modified .mp4 file in output directory...")
+                    mp4_files = list(output_dir.glob("*.mp4"))
+                    if mp4_files:
+                        most_recent = max(mp4_files, key=lambda p: p.stat().st_mtime)
+                        logger.info(f"Using most recent file: {most_recent.name} ({most_recent.stat().st_size / 1024 / 1024:.1f} MB)")
+                        title = most_recent.stem
+                        return GuiDownloadResult(
+                            video_path=most_recent,
+                            title=title
+                        )
+                    else:
+                        raise YouTubeDownloadError(
+                            "Could not find existing file",
+                            "File replacement dialog appeared but could not locate the existing file"
+                        )
                 else:
                     logger.info("No replacement dialog found, download starting...")
             else:
