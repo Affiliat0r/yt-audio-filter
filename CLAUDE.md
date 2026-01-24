@@ -39,14 +39,33 @@ pytest
 - **yt-dlp**: Required for YouTube URL support. Installed automatically with package.
 - **PyTorch with CUDA** (optional): For GPU acceleration, install from https://pytorch.org
 - **Google API Client** (optional): For YouTube upload feature. Install with `pip install -e ".[upload]"`
+- **pywinauto** (optional, Windows only): For GUI automation fallback when bot detection blocks downloads. Install with `pip install pywinauto`
+- **YoutubeDownloader.exe** (optional): GUI application for manual/automated downloads. Get from https://github.com/Tyrrrz/YoutubeDownloader
 
 ## Architecture
 
 ### Input Flow
 
 The CLI ([cli.py](src/yt_audio_filter/cli.py)) detects whether input is a YouTube URL or local file:
-- **YouTube URL**: Downloads video to temp directory via yt-dlp, processes it, then cleans up
+- **YouTube URL**: Downloads video to cache directory via download fallback chain, processes it
 - **Local file**: Processes directly
+
+### YouTube Download Fallback Chain
+
+When YouTube bot detection blocks downloads, the tool automatically tries multiple methods in sequence:
+
+1. **yt-dlp with Android client** - Uses Android player client API + browser cookies (Firefox/Chrome) + proxy support
+2. **Invidious API** - Free YouTube frontend API (GitHub: iv-org/invidious)
+3. **Piped API** - Privacy-focused YouTube frontend (GitHub: TeamPiped/Piped)
+4. **Cobalt API** - Media downloader service (GitHub: imputnet/cobalt)
+5. **GUI Automation** - Automates YoutubeDownloader.exe using pywinauto (Windows only)
+
+CLI arguments for bot detection bypass:
+- `--cookies-from-browser firefox` - Extract authentication cookies from Firefox
+- `--proxy socks5://127.0.0.1:1080` - Route downloads through SOCKS5/HTTP proxy
+- `--gui-downloader-path C:\path\to\YoutubeDownloader.exe` - Specify GUI app path
+
+See [GUI_AUTOMATION.md](GUI_AUTOMATION.md) for detailed documentation.
 
 ### Processing Pipeline
 
@@ -61,7 +80,11 @@ Three stages orchestrated by [pipeline.py](src/yt_audio_filter/pipeline.py):
 | Module | Responsibility |
 |--------|----------------|
 | `cli.py` | Argparse CLI, URL/file detection, entry point via `main()` |
-| `youtube.py` | YouTube URL validation and video download via yt-dlp |
+| `youtube.py` | YouTube URL validation and video download via yt-dlp, fallback orchestration |
+| `gui_downloader.py` | GUI automation for YoutubeDownloader.exe (final fallback) |
+| `invidious_downloader.py` | Fallback downloader using Invidious API (GitHub: iv-org/invidious) |
+| `piped_downloader.py` | Fallback downloader using Piped API (GitHub: TeamPiped/Piped) |
+| `cobalt_downloader.py` | Fallback downloader using Cobalt API (GitHub: imputnet/cobalt) |
 | `pipeline.py` | `process_video()` orchestrates the 3-stage pipeline |
 | `ffmpeg.py` | Subprocess calls to ffmpeg/ffprobe |
 | `ffmpeg_path.py` | Auto-detection and PATH setup for bundled FFmpeg |

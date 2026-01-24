@@ -147,9 +147,12 @@ def download_youtube_video(
     output_dir: Path,
     progress_callback: Optional[Callable[[dict], None]] = None,
     use_cache: bool = True,
+    cookies_from_browser: Optional[str] = None,
+    proxy: Optional[str] = None,
+    gui_exe_path: Optional[Path] = None,
 ) -> VideoMetadata:
     """
-    Download a YouTube video as MP4 to the specified directory.
+    Download a YouTube video using GUI automation (YoutubeDownloader.exe).
 
     If the video has already been downloaded to the cache directory, it will
     be reused instead of re-downloading.
@@ -160,19 +163,21 @@ def download_youtube_video(
         progress_callback: Optional callback for progress updates.
             Called with dict containing 'status', 'percent', 'speed', 'eta'.
         use_cache: If True, check cache and skip download if already exists (default: True)
+        cookies_from_browser: Browser to extract cookies from (chrome, firefox, edge, etc.) [IGNORED]
+        proxy: Proxy URL [IGNORED]
+        gui_exe_path: Path to YoutubeDownloader.exe for GUI automation
 
     Returns:
         VideoMetadata containing file path and original video info
 
     Raises:
         ValidationError: If URL is not a valid YouTube URL
-        PrerequisiteError: If yt-dlp is not installed
         YouTubeDownloadError: If download fails
     """
-    ensure_ytdlp_available()
     validate_youtube_url(url)
 
-    import yt_dlp
+    from .gui_downloader import download_with_gui
+    from .invidious_downloader import get_video_metadata_invidious
 
     # Ensure output directory exists
     output_dir = Path(output_dir)
@@ -189,221 +194,76 @@ def download_youtube_video(
                 if cached_file.exists() and cached_file.stat().st_size > 0:
                     logger.info(f"Using cached video: {cached_file.name} (skipping download)")
 
-                    # Extract metadata without downloading
-                    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
-                        info = ydl.extract_info(url, download=False)
-
+                    # Try to get metadata from Invidious
+                    metadata = get_video_metadata_invidious(url)
+                    if metadata:
                         return VideoMetadata(
-                            video_id=info.get("id", video_id),
-                            title=info.get("title", "Unknown"),
-                            description=info.get("description", ""),
-                            channel=info.get("channel", info.get("uploader", "Unknown")),
-                            tags=info.get("tags", []) or [],
-                            duration=info.get("duration", 0) or 0,
-                            view_count=info.get("view_count", 0) or 0,
+                            video_id=metadata.get("video_id", video_id),
+                            title=metadata.get("title", cached_file.stem),
+                            description=metadata.get("description", ""),
+                            channel=metadata.get("channel", "Unknown"),
+                            tags=metadata.get("tags", []),
+                            duration=metadata.get("duration", 0),
+                            view_count=metadata.get("view_count", 0),
+                            file_path=cached_file,
+                        )
+                    else:
+                        # Fallback to filename
+                        return VideoMetadata(
+                            video_id=video_id,
+                            title=cached_file.stem,
+                            description="",
+                            channel="Unknown",
+                            tags=[],
+                            duration=0,
+                            view_count=0,
                             file_path=cached_file,
                         )
         except Exception as e:
             logger.debug(f"Cache check failed, proceeding with download: {e}")
 
-    # Find ffmpeg location (bundled with project)
-    project_root = Path(__file__).parent.parent.parent
-    ffmpeg_dir = project_root / "ffmpeg-8.0.1-essentials_build" / "bin"
-    ffmpeg_location = str(ffmpeg_dir) if ffmpeg_dir.exists() else None
-
-    # Output template: use video ID for consistent naming
-    output_template = str(output_dir / "%(id)s.%(ext)s")
-
-    def _progress_hook(d: dict) -> None:
-        """Internal progress hook that formats data for callback."""
-        if progress_callback is None:
-            return
-
-        status = d.get("status", "unknown")
-        percent = 0.0
-
-        if status == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
-            downloaded = d.get("downloaded_bytes", 0)
-            if total > 0:
-                percent = (downloaded / total) * 100
-
-            progress_callback(
-                {
-                    "status": "downloading",
-                    "percent": percent,
-                    "speed": d.get("speed"),
-                    "eta": d.get("eta"),
-                }
-            )
-        elif status == "finished":
-            progress_callback({"status": "finished", "percent": 100.0, "speed": None, "eta": None})
-
-    ydl_opts = {
-        # Format: download highest quality video + audio streams, merge with ffmpeg
-        # This ensures we get the best available resolution (1080p, 4K, etc.)
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
-        # Ensure output is MP4 when merging is needed
-        "merge_output_format": "mp4",
-        # Output path template
-        "outtmpl": output_template,
-        # Single video only, no playlists
-        "noplaylist": True,
-        # Progress tracking
-        "progress_hooks": [_progress_hook],
-        # Retry settings for reliability
-        "retries": 10,
-        "fragment_retries": 10,
-        # Reduce console noise (we use our own logging)
-        "quiet": True,
-        "no_warnings": True,
-        # Enable Node.js runtime for YouTube JS challenge solving
-        # Required for POT provider to work on GitHub Actions
-        # Note: bgutil-ytdlp-pot-provider v1.0.0+ uses new extractor args syntax
-        "extractor_args": {
-            # POT server URL for bot detection bypass (bgutil-ytdlp-pot-provider v1.0.0+ syntax)
-            # disable_innertube=1 restores legacy behavior and helps trigger POT usage
-            "youtubepot-bgutilhttp": {
-                "base_url": ["http://127.0.0.1:4416"],
-                "disable_innertube": ["1"],
-            }
-        },
-        # Explicitly use Node.js for JavaScript challenge solving (needed for POT provider)
-        # Format is dict of {runtime: config_dict}
-        "js_runtimes": {"node": {}},
-    }
-
-    # Add ffmpeg location if found
-    if ffmpeg_location:
-        ydl_opts["ffmpeg_location"] = ffmpeg_location
-        logger.debug(f"Using ffmpeg from: {ffmpeg_location}")
-
-    # Check for cookie file to bypass bot detection
-    # Look in common locations for cookies.txt (Netscape format)
-    cookie_locations = [
-        Path.cwd() / "cookies.txt",
-        project_root / "cookies.txt",
-        Path.home() / ".yt-dlp" / "cookies.txt",
-    ]
-    for cookie_file in cookie_locations:
-        if cookie_file.exists():
-            ydl_opts["cookiefile"] = str(cookie_file)
-            logger.debug(f"Using cookie file: {cookie_file}")
-            break
+    # Download using GUI automation
+    logger.info(f"Downloading from YouTube using GUI automation: {url}")
 
     try:
-        logger.info(f"Downloading from YouTube: {url}")
+        # Use GUI automation to download
+        gui_result = download_with_gui(
+            url=url,
+            output_dir=output_dir,
+            exe_path=gui_exe_path,
+            timeout=600  # 10 minutes
+        )
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract info and download
-            info = ydl.extract_info(url, download=True)
-
-            if info is None:
-                raise YouTubeDownloadError(
-                    "Failed to extract video information",
-                    "The video may be unavailable or restricted.",
-                )
-
-            video_id = info.get("id", "unknown")
-            video_title = info.get("title", "Unknown")
-            video_description = info.get("description", "")
-            channel = info.get("channel", info.get("uploader", "Unknown"))
-            tags = info.get("tags", []) or []
-            duration = info.get("duration", 0) or 0
-            view_count = info.get("view_count", 0) or 0
-
-            logger.debug(f"Video title: {video_title}")
-            logger.debug(f"Video ID: {video_id}")
-            logger.debug(f"Channel: {channel}")
-            logger.debug(f"Tags: {tags[:5]}...")  # Log first 5 tags
-
-            # Find the downloaded file
-            # yt-dlp may merge streams, so the extension might change
-            downloaded_file = output_dir / f"{video_id}.mp4"
-
-            if not downloaded_file.exists():
-                # Try other common extensions
-                for ext in ["mkv", "webm", "mp4"]:
-                    alt_file = output_dir / f"{video_id}.{ext}"
-                    if alt_file.exists():
-                        downloaded_file = alt_file
-                        break
-
-            if not downloaded_file.exists():
-                raise YouTubeDownloadError(
-                    "Download completed but output file not found",
-                    f"Expected file at: {downloaded_file}",
-                )
-
-            logger.info(f"Downloaded: {downloaded_file.name} ({video_title})")
-
+        # Try to get metadata from Invidious for better info
+        metadata = get_video_metadata_invidious(url)
+        if metadata:
+            video_id = metadata.get("video_id", extract_video_id(url))
             return VideoMetadata(
                 video_id=video_id,
-                title=video_title,
-                description=video_description,
-                channel=channel,
-                tags=tags,
-                duration=duration,
-                view_count=view_count,
-                file_path=downloaded_file,
-            )
-
-    except yt_dlp.utils.DownloadError as e:
-        error_msg = str(e)
-        # Check if this is bot detection - if so, try Cobalt fallback
-        if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
-            logger.warning("Bot detection triggered, trying Cobalt fallback...")
-            return _download_with_cobalt_fallback(url, output_dir, progress_callback)
-
-        # Provide friendlier error messages for common issues
-        if "Private video" in error_msg:
-            raise YouTubeDownloadError("Cannot download private video", error_msg)
-        elif "Video unavailable" in error_msg:
-            raise YouTubeDownloadError("Video is unavailable", error_msg)
-        elif "age" in error_msg.lower():
-            raise YouTubeDownloadError(
-                "Video is age-restricted",
-                "Age-restricted videos require authentication.",
+                title=metadata.get("title", gui_result.title),
+                description=metadata.get("description", ""),
+                channel=metadata.get("channel", "Unknown"),
+                tags=metadata.get("tags", []),
+                duration=metadata.get("duration", 0),
+                view_count=metadata.get("view_count", 0),
+                file_path=gui_result.video_path,
             )
         else:
-            raise YouTubeDownloadError("YouTube download failed", error_msg)
-
+            # Use GUI result title and extract video ID from URL
+            video_id = extract_video_id(url)
+            return VideoMetadata(
+                video_id=video_id,
+                title=gui_result.title,
+                description="",
+                channel="Unknown",
+                tags=[],
+                duration=0,
+                view_count=0,
+                file_path=gui_result.video_path,
+            )
     except Exception as e:
-        if isinstance(e, (YouTubeDownloadError, PrerequisiteError, ValidationError)):
+        if isinstance(e, YouTubeDownloadError):
             raise
-        raise YouTubeDownloadError(f"Unexpected download error: {e}")
+        raise YouTubeDownloadError(f"GUI download failed: {e}")
 
 
-def _download_with_cobalt_fallback(
-    url: str,
-    output_dir: Path,
-    progress_callback: Optional[Callable[[dict], None]] = None,
-) -> VideoMetadata:
-    """
-    Fallback download using Cobalt API when yt-dlp fails due to bot detection.
-    """
-    from .cobalt_downloader import download_with_cobalt, get_video_metadata_yt_dlp
-
-    # Try to get metadata first (usually works even when download is blocked)
-    metadata = get_video_metadata_yt_dlp(url)
-
-    if progress_callback:
-        progress_callback({"status": "downloading", "percent": 10, "speed": None, "eta": None})
-
-    # Download via Cobalt
-    cobalt_result = download_with_cobalt(url, output_dir)
-
-    if progress_callback:
-        progress_callback({"status": "finished", "percent": 100, "speed": None, "eta": None})
-
-    # Merge metadata
-    return VideoMetadata(
-        video_id=cobalt_result.video_id,
-        title=metadata.get("title", cobalt_result.title),
-        description=metadata.get("description", ""),
-        channel=metadata.get("channel", "Unknown"),
-        tags=metadata.get("tags", []),
-        duration=metadata.get("duration", 0),
-        view_count=metadata.get("view_count", 0),
-        file_path=cobalt_result.file_path,
-    )

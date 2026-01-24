@@ -183,6 +183,40 @@ Notes:
              "Requires sufficient VRAM (each chunk uses ~3-4GB). Recommended: 2 for 8GB+ GPUs."
     )
 
+    parser.add_argument(
+        "--cookies-from-browser",
+        type=str,
+        default=None,
+        help="Extract cookies from browser to bypass YouTube bot detection. "
+             "Options: chrome, firefox, edge, brave, opera, safari. "
+             "Example: --cookies-from-browser chrome"
+    )
+
+    parser.add_argument(
+        "--proxy",
+        type=str,
+        default=None,
+        help="Use proxy for YouTube downloads to bypass bot detection. "
+             "Format: [protocol://]host:port (e.g., socks5://127.0.0.1:1080, http://proxy.com:8080). "
+             "Supports http, https, socks4, socks5 protocols."
+    )
+
+    parser.add_argument(
+        "--gui-downloader-path",
+        type=str,
+        default=None,
+        help="Path to YoutubeDownloader.exe (GitHub: Tyrrrz/YoutubeDownloader) for GUI automation fallback. "
+             "If not provided, will auto-detect in common locations. "
+             "Used as final fallback when all other download methods fail."
+    )
+
+    parser.add_argument(
+        "--skip-download-fallbacks",
+        action="store_true",
+        help="Skip yt-dlp and API download methods (Invidious, Piped, Cobalt) and go straight to GUI automation. "
+             "Use this when you know those methods will fail due to bot detection."
+    )
+
     return parser
 
 
@@ -278,7 +312,15 @@ def main(args=None) -> int:
             cache_dir.mkdir(parents=True, exist_ok=True)
 
             # Download the video and get metadata (uses cache if available)
-            video_metadata = download_youtube_video(parsed.input, cache_dir, use_cache=True)
+            gui_exe_path = Path(parsed.gui_downloader_path) if parsed.gui_downloader_path else None
+            video_metadata = download_youtube_video(
+                parsed.input,
+                cache_dir,
+                use_cache=True,
+                cookies_from_browser=parsed.cookies_from_browser,
+                proxy=parsed.proxy,
+                gui_exe_path=gui_exe_path
+            )
             downloaded_path = video_metadata.file_path
             logger.debug(f"Using video file: {downloaded_path}")
 

@@ -14,6 +14,10 @@ yt-dlp>=2024.12.0
 # google-api-python-client>=2.100.0
 # google-auth-oauthlib>=1.0.0
 
+# GUI automation support (optional, Windows only)
+# Uncomment to enable YoutubeDownloader.exe automation as final fallback:
+# pywinauto>=0.6.8
+
 # Note: FFmpeg is auto-detected from bundled location or system PATH
 # To install FFmpeg manually:
 # - Windows: Download from https://ffmpeg.org/download.html

@@ -30,6 +30,8 @@ def check_ffmpeg_available() -> bool:
             ["ffmpeg", "-version"],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=10
         )
         return result.returncode == 0
@@ -79,6 +81,8 @@ def get_audio_info(file_path: Path) -> dict:
             cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=60
         )
 
@@ -145,6 +149,8 @@ def extract_audio(
             cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',  # Replace invalid characters instead of crashing
             timeout=3600  # 1 hour timeout
         )
 
@@ -171,6 +177,8 @@ def check_nvenc_available() -> bool:
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=10
         )
         return "h264_nvenc" in result.stdout
@@ -285,6 +293,8 @@ def remux_video(
             cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',  # Replace invalid characters instead of crashing
             timeout=3600  # 1 hour timeout
         )
 

@@ -377,6 +377,8 @@ def upload_with_youtubeuploader(
             cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=1800,  # 30 min timeout for large videos
         )
 
@@ -456,6 +458,7 @@ def authenticate_youtube():
     SCOPES = [
         "https://www.googleapis.com/auth/youtube.upload",
         "https://www.googleapis.com/auth/youtube.readonly",
+        "https://www.googleapis.com/auth/youtube.force-ssl",  # Allows editing video metadata
     ]
 
     credentials = None
