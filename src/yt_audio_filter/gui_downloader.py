@@ -356,62 +356,10 @@ def download_with_gui(
         start_time = time.time()
         new_file = None
         source_dir = None
+        download_start_time = start_time  # Track when download started for file time comparison
 
         while time.time() - start_time < timeout:
-            # Check UI for "Done" status first (much faster than filesystem polling)
-            ui_done = False
-            try:
-                for window in app.windows():
-                    for ctrl in window.descendants():
-                        try:
-                            ctrl_text = ctrl.window_text()
-                            ctrl_type = ctrl.element_info.control_type
-                            # Look for "Done" status indicator
-                            if ctrl_text and ctrl_text.strip().upper() == "DONE":
-                                logger.info("UI shows download status: Done")
-                                ui_done = True
-                                break
-                        except:
-                            continue
-                    if ui_done:
-                        break
-            except:
-                pass
-
-            # If UI shows done, immediately check for the file
-            if ui_done:
-                time.sleep(1)  # Brief wait for file to be fully written
-                for download_dir in possible_download_dirs:
-                    if not download_dir.exists():
-                        continue
-
-                    # First try to find new files
-                    current_files = set(download_dir.glob("*.mp4"))
-                    new_files = current_files - existing_files[download_dir]
-
-                    if new_files:
-                        new_file = list(new_files)[0]
-                        source_dir = download_dir
-                        logger.info(f"Found completed download: {new_file.name}")
-                        break
-
-                    # If no new files, look for most recently modified .mp4
-                    # This handles the case where we replaced an existing file
-                    all_mp4s = list(download_dir.glob("*.mp4"))
-                    if all_mp4s:
-                        # Get the most recently modified file
-                        most_recent = max(all_mp4s, key=lambda p: p.stat().st_mtime)
-                        # Check if it was modified within the last 30 seconds
-                        if time.time() - most_recent.stat().st_mtime < 30:
-                            new_file = most_recent
-                            source_dir = download_dir
-                            logger.info(f"Found recently updated file: {new_file.name}")
-                            break
-
-                if new_file:
-                    break
-
-            # Also check filesystem for new files (backup method)
+            # Check filesystem for new or updated files
             for download_dir in possible_download_dirs:
                 if not download_dir.exists():
                     continue
@@ -434,6 +382,31 @@ def download_with_gui(
                         break
                     else:
                         logger.debug(f"Download in progress: {potential_file.name} ({size2 / 1024 / 1024:.1f} MB)")
+                else:
+                    # No new files - check if existing file was updated (replacement case)
+                    for mp4_file in download_dir.glob("*.mp4"):
+                        try:
+                            mtime = mp4_file.stat().st_mtime
+                            # Check if file was modified AFTER download started
+                            if mtime > download_start_time:
+                                # Check if file is still being written
+                                size1 = mp4_file.stat().st_size
+                                time.sleep(1)
+                                size2 = mp4_file.stat().st_size
+
+                                if size1 == size2 and size1 > 0:
+                                    # File size stable, download complete
+                                    new_file = mp4_file
+                                    source_dir = download_dir
+                                    logger.info(f"Found completed download (replacement): {new_file.name}")
+                                    break
+                                else:
+                                    logger.debug(f"Download in progress (replacement): {mp4_file.name} ({size2 / 1024 / 1024:.1f} MB)")
+                        except:
+                            continue
+
+                    if new_file:
+                        break
 
             # If file found, exit the waiting loop
             if new_file:
