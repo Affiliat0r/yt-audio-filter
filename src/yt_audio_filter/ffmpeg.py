@@ -262,13 +262,12 @@ def remux_video(
             "-y",  # Overwrite output
             "-i", str(video_path),   # Input 0: original video
             "-i", str(audio_path),   # Input 1: new audio
-            "-filter_complex", f"[0:v]{video_filter}[v];[1:a]{audio_filter}[a]",
+            "-filter_complex", f"[0:v:0]{video_filter}[v];[1:a]{audio_filter}[a]",
             "-map", "[v]",           # Map filtered video
             "-map", "[a]",           # Map filtered audio
             *video_codec_args,       # Video encoding options
             "-c:a", "aac",           # Encode audio as AAC
             "-b:a", audio_bitrate,   # Audio bitrate
-            "-shortest",             # Match shortest stream duration
             str(output_path)
         ]
     else:
@@ -279,12 +278,11 @@ def remux_video(
             "-y",  # Overwrite output
             "-i", str(video_path),   # Input 0: original video
             "-i", str(audio_path),   # Input 1: new audio
-            "-map", "0:v",           # Map video from input 0
+            "-map", "0:v:0",         # Map FIRST video stream only (avoid thumbnail/cover art)
             "-map", "1:a",           # Map audio from input 1
             "-c:v", "copy",          # Copy video losslessly
             "-c:a", "aac",           # Encode audio as AAC
             "-b:a", audio_bitrate,   # Audio bitrate
-            "-shortest",             # Match shortest stream duration
             str(output_path)
         ]
 
