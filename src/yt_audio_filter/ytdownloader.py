@@ -79,18 +79,36 @@ def download_with_ytdownloader(
             f"Expected at: {exe_path}"
         )
 
-    logger.info(f"Starting YTDownloader from: {exe_path}")
     logger.info(f"Downloading: {url}")
 
-    # Get existing mp4 files before download
+    # YTDownloader saves to Downloads folder
+    downloads_dir = Path.home() / "Downloads"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # YTDownloader saves to user's Videos folder by default, check there too
-    videos_dir = Path.home() / "Videos"
-    downloads_dir = Path.home() / "Downloads"
+    # Check if video was already downloaded by checking YTDownloader history
+    history_file = Path.home() / "AppData" / "Roaming" / "ytdownloader" / "download_history.json"
+    if history_file.exists():
+        try:
+            import json
+            with open(history_file, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+            for entry in history:
+                if entry.get('url') == url:
+                    file_path = Path(entry.get('filePath', ''))
+                    if file_path.exists() and file_path.stat().st_size > 1000000:
+                        logger.info(f"Video already downloaded: {file_path.name}")
+                        return YTDownloadResult(
+                            video_path=file_path,
+                            title=file_path.stem
+                        )
+        except Exception as e:
+            logger.debug(f"Could not check download history: {e}")
 
-    possible_dirs = [output_dir, videos_dir, downloads_dir]
+    logger.info(f"Starting YTDownloader from: {exe_path}")
+
+    # Get existing mp4 files before download
+    possible_dirs = [output_dir, downloads_dir]
     existing_files = {}
     for d in possible_dirs:
         if d.exists():
