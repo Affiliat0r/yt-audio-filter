@@ -27,6 +27,13 @@ try:
 except ImportError:
     PSUTIL_AVAILABLE = False
 
+# Check for pyautogui (needed for clicking in Electron apps)
+try:
+    import pyautogui
+    PYAUTOGUI_AVAILABLE = True
+except ImportError:
+    PYAUTOGUI_AVAILABLE = False
+
 
 @dataclass
 class YTDownloadResult:
@@ -137,11 +144,10 @@ def download_with_ytdownloader(
             time.sleep(0.5)
 
     if not main_window:
-        # Launch YTDownloader
+        # Launch YTDownloader using explorer.exe (simulates double-click, works for Electron apps)
         logger.info("Launching YTDownloader.exe...")
-        import os
-        os.startfile(str(exe_path))
-        time.sleep(5)  # Wait for Electron app to start
+        subprocess.Popen(['explorer.exe', str(exe_path)])
+        time.sleep(8)  # Wait for Electron app to start
 
         # Try to connect
         app, main_window = try_connect()
@@ -154,8 +160,7 @@ def download_with_ytdownloader(
         if not main_window:
             raise YouTubeDownloadError(
                 "Could not connect to YTDownloader",
-                "Please start YTDownloader manually and try again. "
-                "The app should be visible on your desktop."
+                "YTDownloader failed to start. Please check if the app is installed correctly."
             )
 
     logger.info("Connected to YTDownloader GUI")
@@ -167,16 +172,33 @@ def download_with_ytdownloader(
 
         logger.info("Pasting URL with Ctrl+V...")
         send_keys('^v')  # Ctrl+V
-        time.sleep(3)  # Wait for video info to load
 
-        # Press Tab to navigate and Enter to download
-        # Or try clicking the Download button
+        # Wait for video info to load
         logger.info("Waiting for video info to load...")
-        time.sleep(5)  # Give time for the dialog to appear
+        time.sleep(8)  # Give time for the video info dialog to appear
 
-        # Press Enter to start download (Download button should be focused or we Tab to it)
-        logger.info("Starting download...")
-        send_keys('{TAB}{TAB}{TAB}{ENTER}')  # Navigate to Download button
+        # Click the Download button using pyautogui (Electron apps don't expose internal controls via UIA)
+        logger.info("Clicking Download button...")
+        if PYAUTOGUI_AVAILABLE:
+            rect = main_window.rectangle()
+            center_x = (rect.left + rect.right) // 2
+
+            # Grid search for Download button (green button left of center, near bottom)
+            # The button position varies slightly based on window size
+            x_offsets = [-150, -100, -50]  # Left of center
+            y_positions = [rect.bottom - 200, rect.bottom - 170, rect.bottom - 140]
+
+            for x_off in x_offsets:
+                for y_pos in y_positions:
+                    btn_x = center_x + x_off
+                    pyautogui.click(btn_x, y_pos)
+                    time.sleep(0.2)
+
+            logger.info("Clicked Download button area")
+        else:
+            # Fallback to keyboard navigation
+            send_keys('{TAB}{TAB}{ENTER}')
+
         time.sleep(2)
 
         # Wait for download to complete
