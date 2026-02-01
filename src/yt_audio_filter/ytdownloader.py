@@ -1,0 +1,263 @@
+"""YTDownloader GUI automation for downloading YouTube videos."""
+
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+from .exceptions import YouTubeDownloadError
+from .logger import get_logger
+
+logger = get_logger()
+
+# Check for pywinauto
+try:
+    from pywinauto import Application
+    from pywinauto.keyboard import send_keys
+    import pyperclip
+    PYWINAUTO_AVAILABLE = True
+except ImportError:
+    PYWINAUTO_AVAILABLE = False
+
+# Check for psutil
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
+
+@dataclass
+class YTDownloadResult:
+    """Result of a YTDownloader download."""
+    video_path: Path
+    title: str
+
+
+def download_with_ytdownloader(
+    url: str,
+    output_dir: Path,
+    exe_path: Optional[Path] = None,
+    timeout: int = 600,
+) -> YTDownloadResult:
+    """
+    Download a YouTube video using YTDownloader GUI automation.
+
+    Args:
+        url: YouTube video URL
+        output_dir: Directory to save the downloaded video
+        exe_path: Path to YTDownloader.exe (default: C:\\Program Files\\YTDownloader\\YTDownloader.exe)
+        timeout: Maximum time to wait for download in seconds
+
+    Returns:
+        YTDownloadResult with video path and title
+
+    Raises:
+        YouTubeDownloadError: If download fails
+    """
+    if not PYWINAUTO_AVAILABLE:
+        raise YouTubeDownloadError(
+            "pywinauto not installed",
+            "Install with: pip install pywinauto pyperclip"
+        )
+
+    # Default exe path
+    if exe_path is None:
+        exe_path = Path(r"C:\Program Files\YTDownloader\YTDownloader.exe")
+
+    if not exe_path.exists():
+        raise YouTubeDownloadError(
+            "YTDownloader not found",
+            f"Expected at: {exe_path}"
+        )
+
+    logger.info(f"Starting YTDownloader from: {exe_path}")
+    logger.info(f"Downloading: {url}")
+
+    # Get existing mp4 files before download
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # YTDownloader saves to user's Videos folder by default, check there too
+    videos_dir = Path.home() / "Videos"
+    downloads_dir = Path.home() / "Downloads"
+
+    possible_dirs = [output_dir, videos_dir, downloads_dir]
+    existing_files = {}
+    for d in possible_dirs:
+        if d.exists():
+            existing_files[d] = set(d.glob("*.mp4"))
+
+    # Copy URL to clipboard
+    pyperclip.copy(url)
+    logger.info("Copied URL to clipboard")
+
+    # Check if YTDownloader is already running
+    existing_process = None
+    if PSUTIL_AVAILABLE:
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                if proc.info['name'] and 'YTDownloader' in proc.info['name']:
+                    existing_process = proc.info['pid']
+                    logger.info(f"Found existing YTDownloader instance (PID: {existing_process})")
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+    # Possible window titles for YTDownloader (Electron app)
+    possible_titles = ['YtDownloader', 'ytDownloader', 'YTDownloader', 'yt Downloader']
+
+    def try_connect():
+        """Try to connect to an existing YTDownloader window."""
+        for title in possible_titles:
+            try:
+                app = Application(backend="uia").connect(title=title, timeout=3)
+                main_window = app.window(title=title)
+                return app, main_window
+            except Exception:
+                continue
+        # Also try title_re pattern for partial match
+        try:
+            app = Application(backend="uia").connect(title_re='.*[Yy]t.*[Dd]ownload.*', timeout=3)
+            windows = app.windows()
+            if windows:
+                return app, windows[0]
+        except Exception:
+            pass
+        return None, None
+
+    app, main_window = None, None
+
+    if existing_process:
+        # Try to connect to existing process
+        app, main_window = try_connect()
+        if main_window:
+            main_window.set_focus()
+            time.sleep(0.5)
+
+    if not main_window:
+        # Launch YTDownloader
+        logger.info("Launching YTDownloader.exe...")
+        import os
+        os.startfile(str(exe_path))
+        time.sleep(5)  # Wait for Electron app to start
+
+        # Try to connect
+        app, main_window = try_connect()
+
+        if not main_window:
+            # Wait a bit more and try again
+            time.sleep(5)
+            app, main_window = try_connect()
+
+        if not main_window:
+            raise YouTubeDownloadError(
+                "Could not connect to YTDownloader",
+                "Please start YTDownloader manually and try again. "
+                "The app should be visible on your desktop."
+            )
+
+    logger.info("Connected to YTDownloader GUI")
+
+    try:
+        # Focus the window and paste URL with Ctrl+V
+        main_window.set_focus()
+        time.sleep(0.5)
+
+        logger.info("Pasting URL with Ctrl+V...")
+        send_keys('^v')  # Ctrl+V
+        time.sleep(3)  # Wait for video info to load
+
+        # Press Tab to navigate and Enter to download
+        # Or try clicking the Download button
+        logger.info("Waiting for video info to load...")
+        time.sleep(5)  # Give time for the dialog to appear
+
+        # Press Enter to start download (Download button should be focused or we Tab to it)
+        logger.info("Starting download...")
+        send_keys('{TAB}{TAB}{TAB}{ENTER}')  # Navigate to Download button
+        time.sleep(2)
+
+        # Wait for download to complete
+        logger.info(f"Waiting for download to complete (timeout: {timeout}s)...")
+
+        download_start = time.time()
+        new_file = None
+
+        while time.time() - download_start < timeout:
+            # Check for new mp4 files
+            for d in possible_dirs:
+                if not d.exists():
+                    continue
+                current_files = set(d.glob("*.mp4"))
+                new_files = current_files - existing_files.get(d, set())
+
+                if new_files:
+                    # Check if file is still being written
+                    potential_file = list(new_files)[0]
+                    try:
+                        size1 = potential_file.stat().st_size
+                        time.sleep(2)
+                        size2 = potential_file.stat().st_size
+
+                        if size1 == size2 and size1 > 1000000:  # At least 1MB and stable
+                            new_file = potential_file
+                            logger.info(f"Download complete: {new_file.name}")
+                            break
+                        else:
+                            logger.debug(f"Download in progress: {potential_file.name} ({size2/1024/1024:.1f} MB)")
+                    except:
+                        pass
+
+                # Also check for recently modified files
+                for f in d.glob("*.mp4"):
+                    try:
+                        if time.time() - f.stat().st_mtime < 30:  # Modified in last 30 seconds
+                            size1 = f.stat().st_size
+                            time.sleep(2)
+                            size2 = f.stat().st_size
+                            if size1 == size2 and size1 > 1000000:
+                                new_file = f
+                                logger.info(f"Download complete: {new_file.name}")
+                                break
+                    except:
+                        pass
+
+                if new_file:
+                    break
+
+            if new_file:
+                break
+
+            time.sleep(3)
+
+        if new_file is None:
+            raise YouTubeDownloadError(
+                "Download timeout",
+                f"No new video file found within {timeout}s"
+            )
+
+        # Move file to output_dir if not already there
+        if new_file.parent != output_dir:
+            dest = output_dir / new_file.name
+            if not dest.exists():
+                import shutil
+                shutil.move(str(new_file), str(dest))
+                new_file = dest
+                logger.info(f"Moved to: {dest}")
+
+        logger.info(f"Downloaded: {new_file.name} ({new_file.stat().st_size/1024/1024:.1f} MB)")
+
+        return YTDownloadResult(
+            video_path=new_file,
+            title=new_file.stem
+        )
+
+    except Exception as e:
+        if isinstance(e, YouTubeDownloadError):
+            raise
+        raise YouTubeDownloadError(
+            "YTDownloader automation failed",
+            str(e)
+        )

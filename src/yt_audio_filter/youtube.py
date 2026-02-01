@@ -152,7 +152,7 @@ def download_youtube_video(
     gui_exe_path: Optional[Path] = None,
 ) -> VideoMetadata:
     """
-    Download a YouTube video using GUI automation (YoutubeDownloader.exe).
+    Download a YouTube video using YTDownloader GUI automation.
 
     If the video has already been downloaded to the cache directory, it will
     be reused instead of re-downloading.
@@ -165,7 +165,7 @@ def download_youtube_video(
         use_cache: If True, check cache and skip download if already exists (default: True)
         cookies_from_browser: Browser to extract cookies from (chrome, firefox, edge, etc.) [IGNORED]
         proxy: Proxy URL [IGNORED]
-        gui_exe_path: Path to YoutubeDownloader.exe for GUI automation
+        gui_exe_path: Path to YTDownloader.exe for GUI automation
 
     Returns:
         VideoMetadata containing file path and original video info
@@ -176,7 +176,7 @@ def download_youtube_video(
     """
     validate_youtube_url(url)
 
-    from .gui_downloader import download_with_gui
+    from .ytdownloader import download_with_ytdownloader
     from .invidious_downloader import get_video_metadata_invidious
 
     # Ensure output directory exists
@@ -222,12 +222,12 @@ def download_youtube_video(
         except Exception as e:
             logger.debug(f"Cache check failed, proceeding with download: {e}")
 
-    # Download using GUI automation
-    logger.info(f"Downloading from YouTube using GUI automation: {url}")
+    # Download using YTDownloader GUI automation
+    logger.info(f"Downloading from YouTube using YTDownloader: {url}")
 
     try:
-        # Use GUI automation to download
-        gui_result = download_with_gui(
+        # Use YTDownloader GUI automation to download
+        yt_result = download_with_ytdownloader(
             url=url,
             output_dir=output_dir,
             exe_path=gui_exe_path,
@@ -240,30 +240,30 @@ def download_youtube_video(
             video_id = metadata.get("video_id", extract_video_id(url))
             return VideoMetadata(
                 video_id=video_id,
-                title=metadata.get("title", gui_result.title),
+                title=metadata.get("title", yt_result.title),
                 description=metadata.get("description", ""),
                 channel=metadata.get("channel", "Unknown"),
                 tags=metadata.get("tags", []),
                 duration=metadata.get("duration", 0),
                 view_count=metadata.get("view_count", 0),
-                file_path=gui_result.video_path,
+                file_path=yt_result.video_path,
             )
         else:
-            # Use GUI result title and extract video ID from URL
+            # Use YTDownloader result title and extract video ID from URL
             video_id = extract_video_id(url)
             return VideoMetadata(
                 video_id=video_id,
-                title=gui_result.title,
+                title=yt_result.title,
                 description="",
                 channel="Unknown",
                 tags=[],
                 duration=0,
                 view_count=0,
-                file_path=gui_result.video_path,
+                file_path=yt_result.video_path,
             )
     except Exception as e:
         if isinstance(e, YouTubeDownloadError):
             raise
-        raise YouTubeDownloadError(f"GUI download failed: {e}")
+        raise YouTubeDownloadError(f"YTDownloader download failed: {e}")
 
 
