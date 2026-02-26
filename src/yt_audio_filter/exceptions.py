@@ -46,3 +46,21 @@ class YouTubeDownloadError(YTAudioFilterError):
     """YouTube download failures."""
 
     pass
+
+
+class DiscoveryError(YTAudioFilterError):
+    """Video discovery failures."""
+
+    pass
+
+
+class QuotaExceededError(YTAudioFilterError):
+    """YouTube API quota exceeded."""
+
+    pass
+
+
+class ConfigError(YTAudioFilterError):
+    """Configuration loading/validation errors."""
+
+    pass

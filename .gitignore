@@ -86,6 +86,10 @@ Thumbs.db
 client_secrets.json
 request.token
 *.token
+*.pickle
+cookies.txt
+processed_videos.json
+quota_usage.json
 
 # Large binary files
 ffmpeg-*.tar.xz

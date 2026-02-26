@@ -32,6 +32,7 @@ dependencies = [
     "torchaudio>=2.0.0",
     "yt-dlp>=2025.05.22",  # Required for POT provider bot detection bypass
     "soundfile>=0.12.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,9 @@ upload = [
     "google-api-python-client>=2.100.0",
     "google-auth-oauthlib>=1.0.0",
 ]
+discovery = [
+    "google-api-python-client>=2.100.0",
+]
 app = [
     "streamlit>=1.28.0",
     "pillow>=10.0.0",
@@ -54,6 +58,7 @@ app = [
 yt-audio-filter = "yt_audio_filter.cli:main"
 yt-channel-scrape = "yt_audio_filter.scraper:main"
 yt-scheduler = "yt_audio_filter.scheduler:main"
+yt-discover = "yt_audio_filter.discovery:main"
 
 [project.urls]
 Homepage = "https://github.com/example/yt-audio-filter"

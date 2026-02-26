@@ -34,6 +34,7 @@ class VideoInfo:
     view_count: int
     upload_date: str  # YYYYMMDD format
     thumbnail_url: str  # YouTube thumbnail URL
+    channel_id: str = ""  # Channel ID for cross-referencing with discovery
 
 
 def get_channel_videos(

@@ -185,20 +185,8 @@ def download_youtube_video(
         # Reduce console noise (we use our own logging)
         "quiet": True,
         "no_warnings": True,
-        # Enable Node.js runtime for YouTube JS challenge solving
-        # Required for POT provider to work on GitHub Actions
-        # Note: bgutil-ytdlp-pot-provider v1.0.0+ uses new extractor args syntax
-        "extractor_args": {
-            # POT server URL for bot detection bypass (bgutil-ytdlp-pot-provider v1.0.0+ syntax)
-            # disable_innertube=1 restores legacy behavior and helps trigger POT usage
-            "youtubepot-bgutilhttp": {
-                "base_url": ["http://127.0.0.1:4416"],
-                "disable_innertube": ["1"],
-            }
-        },
-        # Explicitly use Node.js for JavaScript challenge solving (needed for POT provider)
-        # Format is dict of {runtime: config_dict}
-        "js_runtimes": {"node": {}},
+        # Let yt-dlp auto-detect the best JS runtime (Deno, Node, Bun, QuickJS)
+        # for solving YouTube's nsig challenge. Requires yt-dlp-ejs package installed.
     }
 
     # Add ffmpeg location if found

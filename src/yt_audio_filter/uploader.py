@@ -373,11 +373,40 @@ def authenticate_youtube():
         except Exception as e:
             logger.debug(f"Failed to load saved credentials: {e}")
 
-    # If no valid credentials, authenticate
+    # If credentials exist but expired, try refreshing (works headlessly)
+    if credentials and credentials.expired and credentials.refresh_token:
+        try:
+            from google.auth.transport.requests import Request
+
+            logger.info("Refreshing expired OAuth token...")
+            credentials.refresh(Request())
+
+            # Save refreshed credentials
+            CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
+            with open(OAUTH_TOKEN_FILE, "wb") as token:
+                pickle.dump(credentials, token)
+            logger.info("OAuth token refreshed successfully")
+        except Exception as e:
+            logger.warning(f"Token refresh failed: {e}")
+            credentials = None
+
+    # If still no valid credentials, authenticate via browser
     if not credentials or not credentials.valid:
         if not check_credentials_configured():
             raise YouTubeUploadError(
                 "YouTube API not configured", setup_credentials_guide()
+            )
+
+        # Check if we're in a headless environment
+        headless = not os.environ.get("DISPLAY") and sys.platform != "win32"
+        if headless and not os.environ.get("SSH_TTY"):
+            raise YouTubeUploadError(
+                "OAuth token expired on headless server",
+                "Cannot open browser for re-authentication.\n"
+                "Options:\n"
+                "  1. Run OAuth on local machine, copy ~/.yt-audio-filter/oauth_token.pickle to server\n"
+                "  2. Use SSH port forwarding: ssh -L 8080:localhost:8080 user@server\n"
+                "  3. Use youtubeuploader binary with request.token instead",
             )
 
         try:

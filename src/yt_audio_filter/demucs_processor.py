@@ -248,10 +248,16 @@ def isolate_vocals(
                 tqdm_module = demucs_apply.tqdm
                 with patch.object(tqdm_module, 'tqdm', ProgressCaptureTqdm):
                     with torch.no_grad():
-                        sources = apply_model(model, waveform, device=torch_device, progress=True)
+                        sources = apply_model(
+                            model, waveform, device=torch_device,
+                            progress=True, segment=5, shifts=0,
+                        )
             else:
                 with torch.no_grad():
-                    sources = apply_model(model, waveform, device=torch_device, progress=True)
+                    sources = apply_model(
+                        model, waveform, device=torch_device,
+                        progress=True, segment=5, shifts=0,
+                    )
         finally:
             _progress_callback = None
 
