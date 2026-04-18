@@ -3,10 +3,12 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Literal, Optional
 
 from .exceptions import YouTubeDownloadError, PrerequisiteError, ValidationError
 from .logger import get_logger
+
+StreamMode = Literal["video-only", "audio-only", "video+audio"]
 
 logger = get_logger()
 
@@ -267,3 +269,94 @@ def download_youtube_video(
         raise YouTubeDownloadError(f"YTDownloader download failed: {e}")
 
 
+_STREAM_FORMAT_MAP = {
+    "video-only": "bestvideo[ext=mp4]/bestvideo",
+    "audio-only": "bestaudio[ext=m4a]/bestaudio",
+    "video+audio": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+}
+_STREAM_PREFIX = {
+    "video-only": "video",
+    "audio-only": "audio",
+    "video+audio": "full",
+}
+
+
+def download_stream(
+    url: str,
+    output_dir: Path,
+    mode: StreamMode,
+    cookies_from_browser: Optional[str] = None,
+    proxy: Optional[str] = None,
+    use_cache: bool = True,
+) -> Path:
+    """Download a specific stream (video-only/audio-only/video+audio) from a YouTube URL.
+
+    Uses yt-dlp directly with format selection — no GUI automation. Bandwidth
+    savings are significant when only one stream is needed.
+
+    Cache naming: `<prefix>_<video_id>.<ext>` so video-only and audio-only
+    downloads of the same URL don't clash.
+    """
+    ensure_ytdlp_available()
+    validate_youtube_url(url)
+
+    import yt_dlp
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    video_id = extract_video_id(url)
+    prefix = _STREAM_PREFIX[mode]
+
+    if use_cache:
+        for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
+            candidate = output_dir / f"{prefix}_{video_id}.{ext}"
+            if candidate.exists() and candidate.stat().st_size > 0:
+                logger.info(f"Using cached {mode} download: {candidate.name}")
+                return candidate
+
+    output_template = str(output_dir / f"{prefix}_%(id)s.%(ext)s")
+    ydl_opts: dict = {
+        "format": _STREAM_FORMAT_MAP[mode],
+        "outtmpl": output_template,
+        "quiet": False,
+        "no_warnings": False,
+        "noprogress": False,
+        "merge_output_format": "mp4" if mode == "video+audio" else None,
+    }
+    if cookies_from_browser:
+        ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
+    if proxy:
+        ydl_opts["proxy"] = proxy
+    ydl_opts = {k: v for k, v in ydl_opts.items() if v is not None}
+
+    logger.info(f"Downloading {mode} stream from YouTube: {url}")
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info is None:
+                raise YouTubeDownloadError(f"yt-dlp returned no info for {url}")
+            downloaded = ydl.prepare_filename(info)
+    except yt_dlp.utils.DownloadError as e:
+        raise YouTubeDownloadError(f"yt-dlp download failed for {url}: {e}")
+    except Exception as e:
+        if isinstance(e, YouTubeDownloadError):
+            raise
+        raise YouTubeDownloadError(f"Unexpected download failure for {url}: {e}")
+
+    result_path = Path(downloaded)
+    if not result_path.exists():
+        # yt-dlp may rename the extension after merge; find the actual file.
+        for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
+            fallback = output_dir / f"{prefix}_{video_id}.{ext}"
+            if fallback.exists():
+                result_path = fallback
+                break
+        else:
+            raise YouTubeDownloadError(
+                f"yt-dlp reported success but no file at expected path: {downloaded}"
+            )
+
+    logger.info(f"Downloaded {mode}: {result_path.name}")
+    return result_path
