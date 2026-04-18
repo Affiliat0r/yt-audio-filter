@@ -80,6 +80,15 @@ def run_overlay(
         if not metadata.logo_path.exists():
             raise OverlayError(f"Logo file not found: {metadata.logo_path}")
         logo_arg = (metadata.logo_path, metadata.logo_position)
+    elif upload:
+        raise OverlayError(
+            "Upload requested but no logo configured",
+            "Every uploaded video must carry the channel logo. Set `logo_path` in "
+            "the metadata JSON or pass --logo on the CLI. To render without a logo "
+            "for testing, drop the --upload flag.",
+        )
+    else:
+        logger.warning("No logo configured; rendering without channel branding")
 
     render_overlay(
         video_path=video_path,
