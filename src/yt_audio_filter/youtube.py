@@ -270,15 +270,52 @@ def download_youtube_video(
 
 
 _STREAM_FORMAT_MAP = {
-    "video-only": "bestvideo[ext=mp4]/bestvideo",
-    "audio-only": "bestaudio[ext=m4a]/bestaudio",
-    "video+audio": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    # Final `/18` or `/b` fallbacks are combined formats that YouTube still
+    # serves without PO Tokens — we'll post-extract the wanted stream.
+    "video-only": "bestvideo[ext=mp4]/bestvideo/18/b",
+    "audio-only": "bestaudio[ext=m4a]/bestaudio/18/b",
+    "video+audio": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best/18",
 }
 _STREAM_PREFIX = {
     "video-only": "video",
     "audio-only": "audio",
     "video+audio": "full",
 }
+
+
+def _extract_stream_with_ffmpeg(source: Path, dest: Path, mode: StreamMode) -> Path:
+    """Extract video-only or audio-only stream from a full media file via FFmpeg copy."""
+    import subprocess
+    from .ffmpeg import ensure_ffmpeg_available
+    from .exceptions import FFmpegError
+
+    ensure_ffmpeg_available()
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "video-only":
+        map_args = ["-map", "0:v:0", "-an"]
+    elif mode == "audio-only":
+        map_args = ["-map", "0:a:0", "-vn"]
+    else:
+        raise YouTubeDownloadError(f"Unsupported extraction mode: {mode}")
+
+    cmd = [
+        "ffmpeg", "-hide_banner", "-y",
+        "-i", str(source),
+        *map_args,
+        "-c", "copy",
+        str(dest),
+    ]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600
+    )
+    if result.returncode != 0:
+        raise FFmpegError(
+            f"Stream extraction ({mode}) failed",
+            returncode=result.returncode,
+            stderr=result.stderr,
+        )
+    return dest
 
 
 def download_stream(
@@ -323,6 +360,13 @@ def download_stream(
         "no_warnings": False,
         "noprogress": False,
         "merge_output_format": "mp4" if mode == "video+audio" else None,
+        # Client cascade: yt-dlp tries in order, picks the first that yields
+        # usable formats. `ios`/`tv_embedded`/`web_embedded` avoid the
+        # n-challenge JS deobfuscation that fails without Deno/Node.
+        # Shorts often need a non-iOS client because iOS requires PO tokens.
+        "extractor_args": {
+            "youtube": {"player_client": ["tv_embedded", "ios", "web_embedded", "android"]}
+        },
     }
     if cookies_from_browser:
         ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
@@ -332,31 +376,119 @@ def download_stream(
 
     logger.info(f"Downloading {mode} stream from YouTube: {url}")
 
+    ytdlp_error: Optional[Exception] = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if info is None:
                 raise YouTubeDownloadError(f"yt-dlp returned no info for {url}")
             downloaded = ydl.prepare_filename(info)
-    except yt_dlp.utils.DownloadError as e:
-        raise YouTubeDownloadError(f"yt-dlp download failed for {url}: {e}")
-    except Exception as e:
-        if isinstance(e, YouTubeDownloadError):
-            raise
-        raise YouTubeDownloadError(f"Unexpected download failure for {url}: {e}")
 
-    result_path = Path(downloaded)
-    if not result_path.exists():
-        # yt-dlp may rename the extension after merge; find the actual file.
-        for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
-            fallback = output_dir / f"{prefix}_{video_id}.{ext}"
-            if fallback.exists():
-                result_path = fallback
-                break
-        else:
-            raise YouTubeDownloadError(
-                f"yt-dlp reported success but no file at expected path: {downloaded}"
+        result_path = Path(downloaded)
+        if not result_path.exists():
+            for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
+                fallback = output_dir / f"{prefix}_{video_id}.{ext}"
+                if fallback.exists():
+                    result_path = fallback
+                    break
+            else:
+                raise YouTubeDownloadError(
+                    f"yt-dlp reported success but no file at expected path: {downloaded}"
+                )
+
+        # If yt-dlp fell back to a combined format (e.g. 18) for a stream-only
+        # request, strip the unneeded stream so downstream stages see a clean
+        # video-only or audio-only file.
+        if mode in ("video-only", "audio-only"):
+            from .ffmpeg import get_audio_info
+            import subprocess as _sp
+
+            probe = _sp.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "stream=codec_type",
+                    "-of", "default=nw=1",
+                    str(result_path),
+                ],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
             )
+            stream_types = {line.split("=", 1)[-1].strip() for line in probe.stdout.splitlines()}
+            wanted_only = "video" if mode == "video-only" else "audio"
+            needs_strip = (
+                ("video" in stream_types and "audio" in stream_types)
+                or wanted_only not in stream_types
+            )
+            if needs_strip and wanted_only in stream_types:
+                desired_ext = "mp4" if mode == "video-only" else "m4a"
+                # Temp file keeps the real extension so ffmpeg can infer format;
+                # dot-prefix marks it as in-flight.
+                stripped = output_dir / f".strip_{prefix}_{video_id}.{desired_ext}"
+                try:
+                    _extract_stream_with_ffmpeg(result_path, stripped, mode)
+                except Exception as strip_err:
+                    logger.warning(f"Post-download stream strip failed: {strip_err}")
+                else:
+                    final = output_dir / f"{prefix}_{video_id}.{desired_ext}"
+                    if final.exists() and final != result_path:
+                        final.unlink()
+                    stripped.replace(final)
+                    if result_path != final and result_path.exists():
+                        try:
+                            result_path.unlink()
+                        except OSError:
+                            pass
+                    result_path = final
+                    logger.info(f"Extracted {mode} from combined download -> {final.name}")
 
-    logger.info(f"Downloaded {mode}: {result_path.name}")
-    return result_path
+        logger.info(f"Downloaded {mode}: {result_path.name}")
+        return result_path
+
+    except Exception as e:
+        ytdlp_error = e
+        logger.warning(f"yt-dlp stream-selective download failed: {e}")
+        # Clean up any partial file so the fallback doesn't see stale state
+        for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
+            partial = output_dir / f"{prefix}_{video_id}.{ext}.part"
+            if partial.exists():
+                try:
+                    partial.unlink()
+                except OSError:
+                    pass
+            stale = output_dir / f"{prefix}_{video_id}.{ext}"
+            if stale.exists() and stale.stat().st_size == 0:
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+
+    # Fallback: use the existing robust download chain (GUI automation etc.),
+    # then extract the requested stream with FFmpeg -c copy.
+    if mode == "video+audio":
+        logger.info("Falling back to full-video download chain for video+audio request")
+        full_meta = download_youtube_video(
+            url=url,
+            output_dir=output_dir,
+            cookies_from_browser=cookies_from_browser,
+            proxy=proxy,
+        )
+        return full_meta.file_path
+
+    logger.info(f"Falling back: full download via existing chain, then extract {mode}")
+    full_output_dir = output_dir / "_full"
+    full_meta = download_youtube_video(
+        url=url,
+        output_dir=full_output_dir,
+        cookies_from_browser=cookies_from_browser,
+        proxy=proxy,
+    )
+    dest_ext = "mp4" if mode == "video-only" else "m4a"
+    dest = output_dir / f"{prefix}_{video_id}.{dest_ext}"
+    try:
+        _extract_stream_with_ffmpeg(full_meta.file_path, dest, mode)
+    except Exception as extract_err:
+        raise YouTubeDownloadError(
+            f"Both yt-dlp and fallback extraction failed for {url}",
+            f"yt-dlp: {ytdlp_error}\nextract: {extract_err}",
+        )
+    logger.info(f"Extracted {mode} stream to {dest.name}")
+    return dest
