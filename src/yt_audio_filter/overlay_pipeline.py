@@ -5,12 +5,15 @@ Four stages: download video-only, download audio-only, render, optional upload.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
+from .channel_discovery import fetch_candidates
 from .exceptions import OverlayError
 from .ffmpeg_overlay import render_overlay
 from .logger import get_logger
 from .metadata import OverlayMetadata
+from .pair_selector import PairChoice, select_pairs
+from .pair_state import DEFAULT_STATE_PATH, load_state, save_state
 from .surah_detector import ReciterMatch, SurahMatch, detect_reciter, detect_surah
 from .youtube import download_stream, extract_video_id
 from .yt_metadata import YouTubeMetadata, fetch_yt_metadata
@@ -22,6 +25,8 @@ logger = get_logger()
 class OverlayResult:
     output_path: Path
     uploaded_video_id: Optional[str] = None
+    audio_url: Optional[str] = None
+    video_url: Optional[str] = None
 
 
 def _output_filename(audio_url: str, video_url: str) -> str:
@@ -173,4 +178,85 @@ def run_overlay(
     else:
         logger.info("[4/4] Upload skipped (no --upload flag)")
 
-    return OverlayResult(output_path=output_path, uploaded_video_id=uploaded_id)
+    return OverlayResult(
+        output_path=output_path,
+        uploaded_video_id=uploaded_id,
+        audio_url=audio_url,
+        video_url=video_url,
+    )
+
+
+def run_overlay_batch(
+    audio_channel: str,
+    video_channel: str,
+    metadata: OverlayMetadata,
+    cache_dir: Path,
+    output_dir: Path,
+    count: int = 1,
+    resolution: Tuple[int, int] = (1920, 1080),
+    max_duration: Optional[float] = 7200.0,
+    force: bool = False,
+    upload: bool = False,
+    cookies_from_browser: Optional[str] = None,
+    proxy: Optional[str] = None,
+    state_path: Path = DEFAULT_STATE_PATH,
+    max_candidates_per_channel: int = 200,
+) -> List[OverlayResult]:
+    """Discover candidates, pair by duration, render N videos in sequence.
+
+    After each successful render (and optional upload), the pair is appended to
+    the state file so later runs skip it. A render failure is logged and the
+    batch continues with the next pair.
+    """
+    logger.info(f"Starting batch run ({count} video(s))")
+    audio_cands = fetch_candidates(audio_channel, max_videos=max_candidates_per_channel)
+    visual_cands = fetch_candidates(video_channel, max_videos=max_candidates_per_channel)
+
+    state = load_state(state_path)
+    processed = {(p.audio_id, p.video_id) for p in state.pairs}
+    logger.info(f"Loaded {len(processed)} previously-processed pair(s) from state")
+
+    picks: List[PairChoice] = select_pairs(
+        audio_candidates=audio_cands,
+        video_candidates=visual_cands,
+        count=count,
+        processed_pair_set=processed,
+    )
+
+    results: List[OverlayResult] = []
+    for i, pick in enumerate(picks, start=1):
+        logger.info(
+            f"=== Pair {i}/{len(picks)}: audio={pick.audio.video_id} "
+            f"visual={pick.visual.video_id} slack={pick.duration_slack:+d}s ==="
+        )
+        try:
+            result = run_overlay(
+                video_url=pick.visual.url,
+                audio_url=pick.audio.url,
+                metadata=metadata,
+                cache_dir=cache_dir,
+                output_dir=output_dir,
+                resolution=resolution,
+                max_duration=max_duration,
+                force=force,
+                upload=upload,
+                cookies_from_browser=cookies_from_browser,
+                proxy=proxy,
+            )
+        except Exception as e:
+            logger.error(f"Pair {i} failed: {e}. Continuing with next pair.")
+            continue
+
+        state.add(
+            audio_id=pick.audio.video_id,
+            video_id=pick.visual.video_id,
+            uploaded_video_id=result.uploaded_video_id,
+            output_path=str(result.output_path),
+        )
+        save_state(state, state_path)
+        results.append(result)
+
+    if not results:
+        raise OverlayError("Batch produced no videos; every pair failed or was skipped")
+    logger.info(f"Batch complete: {len(results)}/{count} video(s) produced")
+    return results

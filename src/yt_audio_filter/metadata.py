@@ -16,7 +16,7 @@ from .exceptions import OverlayError
 
 VALID_PRIVACY = {"public", "unlisted", "private"}
 VALID_LOGO_POSITIONS = {"top-left", "top-right", "bottom-left", "bottom-right"}
-DEFAULT_PRIVACY = "private"
+DEFAULT_PRIVACY = "public"
 DEFAULT_LOGO_POSITION = "top-left"
 
 

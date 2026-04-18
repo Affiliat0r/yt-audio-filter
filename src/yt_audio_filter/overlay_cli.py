@@ -12,7 +12,8 @@ from .metadata import (
     apply_cli_overrides,
     load_metadata,
 )
-from .overlay_pipeline import run_overlay
+from .overlay_pipeline import run_overlay, run_overlay_batch
+from .pair_state import DEFAULT_STATE_PATH
 
 
 def _parse_resolution(value: str) -> tuple[int, int]:
@@ -36,13 +37,39 @@ def build_parser() -> argparse.ArgumentParser:
             "Combine a YouTube visual video with a separate YouTube Quran "
             "recitation. Mutes the original audio, loops the video to match "
             "the recitation length, normalizes loudness, overlays a logo, "
-            "and optionally uploads the result with metadata from a JSON file."
+            "and optionally uploads the result with metadata from a JSON file. "
+            "Two modes: manual (--video-url + --audio-url) or discovery "
+            "(--video-channel + --audio-channel)."
         ),
     )
-    parser.add_argument("--video-url", required=True, help="YouTube URL for visual video")
+
+    # Source selection: either manual URLs OR channel discovery.
+    parser.add_argument("--video-url", help="YouTube URL for visual video (manual mode)")
+    parser.add_argument("--audio-url", help="YouTube URL for Quran recitation (manual mode)")
     parser.add_argument(
-        "--audio-url", required=True, help="YouTube URL for Quran recitation audio"
+        "--video-channel",
+        help="YouTube channel URL or @handle to draw visual videos from (discovery mode)",
     )
+    parser.add_argument(
+        "--audio-channel",
+        help="YouTube channel URL or @handle to draw Quran audio from (discovery mode)",
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        help="Number of videos to produce in discovery mode (default: 1)",
+    )
+    parser.add_argument(
+        "--state-file",
+        type=Path,
+        default=DEFAULT_STATE_PATH,
+        help=(
+            "JSON file tracking already-processed pairs (discovery mode; "
+            f"default: {DEFAULT_STATE_PATH})"
+        ),
+    )
+
     parser.add_argument(
         "--metadata",
         required=True,
@@ -100,9 +127,34 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _validate_source_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
+    """Return 'manual' or 'discovery' based on which args are set; error otherwise."""
+    manual = bool(args.video_url and args.audio_url)
+    discovery = bool(args.video_channel and args.audio_channel)
+
+    if manual and discovery:
+        parser.error(
+            "Use either manual URLs (--video-url + --audio-url) OR discovery "
+            "(--video-channel + --audio-channel), not both."
+        )
+    if not manual and not discovery:
+        parser.error(
+            "Must supply either --video-url + --audio-url (manual mode) or "
+            "--video-channel + --audio-channel (discovery mode)."
+        )
+    if manual and (args.video_url is None or args.audio_url is None):
+        parser.error("Manual mode requires BOTH --video-url AND --audio-url")
+    if discovery and (args.video_channel is None or args.audio_channel is None):
+        parser.error("Discovery mode requires BOTH --video-channel AND --audio-channel")
+    if manual and args.count != 1:
+        parser.error("--count > 1 only applies in discovery mode")
+    return "manual" if manual else "discovery"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    mode = _validate_source_args(args, parser)
 
     logger = setup_logger(verbose=args.verbose, quiet=args.quiet)
 
@@ -112,23 +164,49 @@ def main(argv: list[str] | None = None) -> int:
             metadata, logo=args.logo, logo_position=args.logo_position
         )
 
-        result = run_overlay(
-            video_url=args.video_url,
-            audio_url=args.audio_url,
-            metadata=metadata,
-            cache_dir=args.cache_dir,
-            output_dir=args.output_dir,
-            resolution=args.resolution,
-            max_duration=args.max_duration,
-            force=args.force,
-            upload=args.upload,
-            cookies_from_browser=args.cookies_from_browser,
-            proxy=args.proxy,
-        )
-
-        logger.info(f"Done. Output: {result.output_path}")
-        if result.uploaded_video_id:
-            logger.info(f"Uploaded video: https://youtube.com/watch?v={result.uploaded_video_id}")
+        if mode == "manual":
+            result = run_overlay(
+                video_url=args.video_url,
+                audio_url=args.audio_url,
+                metadata=metadata,
+                cache_dir=args.cache_dir,
+                output_dir=args.output_dir,
+                resolution=args.resolution,
+                max_duration=args.max_duration,
+                force=args.force,
+                upload=args.upload,
+                cookies_from_browser=args.cookies_from_browser,
+                proxy=args.proxy,
+            )
+            logger.info(f"Done. Output: {result.output_path}")
+            if result.uploaded_video_id:
+                logger.info(
+                    f"Uploaded video: https://youtube.com/watch?v={result.uploaded_video_id}"
+                )
+        else:
+            results = run_overlay_batch(
+                audio_channel=args.audio_channel,
+                video_channel=args.video_channel,
+                metadata=metadata,
+                cache_dir=args.cache_dir,
+                output_dir=args.output_dir,
+                count=args.count,
+                resolution=args.resolution,
+                max_duration=args.max_duration,
+                force=args.force,
+                upload=args.upload,
+                cookies_from_browser=args.cookies_from_browser,
+                proxy=args.proxy,
+                state_path=args.state_file,
+            )
+            logger.info(f"Batch done: {len(results)} video(s) produced")
+            for i, r in enumerate(results, start=1):
+                extra = (
+                    f" -> https://youtube.com/watch?v={r.uploaded_video_id}"
+                    if r.uploaded_video_id
+                    else ""
+                )
+                logger.info(f"  [{i}] {r.output_path.name}{extra}")
         return 0
 
     except YTAudioFilterError as e:

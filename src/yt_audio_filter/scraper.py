@@ -13,10 +13,13 @@ from .logger import get_logger, setup_logger
 
 logger = get_logger()
 
-# Fix Windows console encoding for Unicode
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+def _fix_windows_console_encoding() -> None:
+    """Rebind stdio to UTF-8 on Windows. Kept out of module scope because it
+    interferes with pytest's capture; call from entry points only."""
+    if sys.platform == "win32":
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 
 class ScraperError(YTAudioFilterError):
@@ -290,6 +293,7 @@ Output Formats:
 
 def main(args=None) -> int:
     """Main entry point for scraper CLI."""
+    _fix_windows_console_encoding()
     try:
         parser = create_parser()
         parsed = parser.parse_args(args)
