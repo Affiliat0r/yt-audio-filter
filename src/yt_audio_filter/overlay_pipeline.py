@@ -145,6 +145,23 @@ def run_overlay(
         audio_meta = fetch_yt_metadata(audio_url)
         surah = detect_surah(audio_meta.title) or detect_surah(audio_meta.description)
         reciter = detect_reciter(audio_meta.title) or detect_reciter(audio_meta.description)
+
+        # Guard: if the template depends on $detected_surah but we couldn't
+        # match one, abort the upload rather than publishing a broken title
+        # like " — Reciter | Channel". Caller (batch mode) should catch this
+        # and try the next pair.
+        template_uses_surah = "$detected_surah" in (metadata.description_template or "") or \
+                              "$detected_surah" in (metadata.title or "") or \
+                              "$surah_tag" in (metadata.description_template or "") or \
+                              "$surah_tag" in (metadata.title or "")
+        if surah is None and template_uses_surah:
+            raise OverlayError(
+                f"Could not detect a surah from the audio URL's metadata",
+                f"Audio title: {audio_meta.title!r}. The description/title "
+                f"template references $detected_surah / $surah_tag, so uploading "
+                f"would produce a broken title. Skipping this pair.",
+            )
+
         if surah:
             logger.info(f"Detected surah: {surah.name} (#{surah.number or '-'})")
         else:

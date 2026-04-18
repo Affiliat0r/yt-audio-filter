@@ -94,3 +94,24 @@ def test_detect_reciter_no_match() -> None:
 
 def test_detect_reciter_empty() -> None:
     assert detect_reciter("") is None
+
+
+def test_detect_qaf_with_underscore_boundary() -> None:
+    # Underscore is a word char, so \b was skipping "Qaf__" previously.
+    m = detect_surah("Surah Al Qaf__Salim Bahanan | (1080P_HD)")
+    assert m is not None
+    assert m.name == "Qaf"
+    assert m.number == 50
+
+
+def test_short_name_does_not_match_inside_longer_word() -> None:
+    # "Sad" should not match "Saddam" or "sadness"
+    assert detect_surah("Saddam Hussein") is None
+    assert detect_surah("sadness") is None
+    # "Qaf" should not match "Qafi"
+    assert detect_surah("Qafi") is None
+
+
+def test_detect_sad_with_various_spellings() -> None:
+    assert detect_surah("Surah Sad").name == "Sad"
+    assert detect_surah("Saad recitation").name == "Sad"
