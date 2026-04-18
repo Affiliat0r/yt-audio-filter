@@ -61,7 +61,7 @@ def test_filter_graph_with_logo_includes_overlay(tmp_path: Path) -> None:
         logo=(logo_path, "top-left"),
     )
     assert "scale=1280:720" in graph
-    assert "[2:v]scale=w=iw*0.15:h=-1[logo]" in graph
+    assert "[2:v]scale=w=iw*0.3:h=-1[logo]" in graph
     assert "[vscaled][logo]overlay=x=20:y=20" in graph
 
 

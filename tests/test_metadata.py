@@ -24,7 +24,7 @@ def test_load_minimal_metadata(tmp_path: Path) -> None:
     meta_path = _write_json(tmp_path, {"title": "Hello"})
     meta = load_metadata(meta_path)
     assert meta.title == "Hello"
-    assert meta.description == ""
+    assert meta.render_description() == ""
     assert meta.tags == []
     assert meta.category_id == "22"
     assert meta.privacy_status == DEFAULT_PRIVACY
@@ -32,7 +32,7 @@ def test_load_minimal_metadata(tmp_path: Path) -> None:
     assert meta.logo_position == DEFAULT_LOGO_POSITION
 
 
-def test_load_renders_description_template(tmp_path: Path) -> None:
+def test_render_description_template(tmp_path: Path) -> None:
     meta_path = _write_json(
         tmp_path,
         {
@@ -42,10 +42,10 @@ def test_load_renders_description_template(tmp_path: Path) -> None:
         },
     )
     meta = load_metadata(meta_path)
-    assert meta.description == "Hi World, from Earth!"
+    assert meta.render_description() == "Hi World, from Earth!"
 
 
-def test_load_template_missing_var_raises(tmp_path: Path) -> None:
+def test_render_description_missing_var_raises(tmp_path: Path) -> None:
     meta_path = _write_json(
         tmp_path,
         {
@@ -54,8 +54,44 @@ def test_load_template_missing_var_raises(tmp_path: Path) -> None:
             "description_vars": {},
         },
     )
+    meta = load_metadata(meta_path)
     with pytest.raises(OverlayError, match="who"):
-        load_metadata(meta_path)
+        meta.render_description()
+
+
+def test_render_description_uses_extra_vars(tmp_path: Path) -> None:
+    meta_path = _write_json(
+        tmp_path,
+        {
+            "title": "T",
+            "description_template": "Hi $name from $place",
+            "description_vars": {"place": "UserWins"},
+        },
+    )
+    meta = load_metadata(meta_path)
+    # name comes from extra_vars, place from user (user wins on conflict)
+    rendered = meta.render_description(
+        extra_vars={"name": "Auto", "place": "AutoLoses"}
+    )
+    assert rendered == "Hi Auto from UserWins"
+
+
+def test_render_title_with_extra_vars(tmp_path: Path) -> None:
+    meta_path = _write_json(
+        tmp_path,
+        {"title": "$detected_surah — $reciter", "description_vars": {}},
+    )
+    meta = load_metadata(meta_path)
+    rendered = meta.render_title(
+        extra_vars={"detected_surah": "At-Tin", "reciter": "Salim Bahanan"}
+    )
+    assert rendered == "At-Tin — Salim Bahanan"
+
+
+def test_render_title_no_placeholders(tmp_path: Path) -> None:
+    meta_path = _write_json(tmp_path, {"title": "Static Title"})
+    meta = load_metadata(meta_path)
+    assert meta.render_title() == "Static Title"
 
 
 def test_load_literal_braces_allowed_in_template(tmp_path: Path) -> None:
@@ -68,7 +104,7 @@ def test_load_literal_braces_allowed_in_template(tmp_path: Path) -> None:
         },
     )
     meta = load_metadata(meta_path)
-    assert meta.description == 'JSON example: {"key": "value"}'
+    assert meta.render_description() == 'JSON example: {"key": "value"}'
 
 
 def test_load_rejects_invalid_privacy(tmp_path: Path) -> None:
@@ -143,3 +179,11 @@ def test_cli_no_overrides_preserves_loaded(tmp_path: Path) -> None:
     meta2 = apply_cli_overrides(meta, logo=None, logo_position=None)
     assert meta2.logo_position == "top-right"
     assert meta2.logo_path is None
+
+
+def test_literal_description_returned_as_is(tmp_path: Path) -> None:
+    meta_path = _write_json(
+        tmp_path, {"title": "T", "description": "plain string"}
+    )
+    meta = load_metadata(meta_path)
+    assert meta.render_description() == "plain string"

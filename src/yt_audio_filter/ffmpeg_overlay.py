@@ -19,7 +19,7 @@ logger = get_logger()
 
 
 LOUDNORM_TARGETS = {"I": -16.0, "TP": -1.5, "LRA": 11.0}
-LOGO_WIDTH_FRACTION = 0.15
+LOGO_WIDTH_FRACTION = 0.30
 LOGO_PADDING_PX = 20
 
 

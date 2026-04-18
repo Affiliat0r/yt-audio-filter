@@ -1,8 +1,8 @@
 """Metadata template loader for the Quran-overlay workflow.
 
-Loads a JSON metadata file describing a publish-ready Quran recitation video:
-title, description (rendered from a Template with $var placeholders), tags,
-category_id, privacy_status, and optional logo path/position.
+Loads a JSON metadata file describing a publish-ready Quran recitation video.
+The description template is stored verbatim and rendered later in the pipeline,
+so auto-extracted vars (surah name, reciter from YouTube) can be merged in.
 """
 
 import json
@@ -22,27 +22,48 @@ DEFAULT_LOGO_POSITION = "top-left"
 
 @dataclass
 class OverlayMetadata:
-    """Validated, fully-rendered metadata for an overlay video upload."""
+    """Validated metadata for an overlay video upload.
+
+    The description is stored as a template + user-provided vars; call
+    `render_description(extra_vars)` to produce the final string. User vars
+    override extra vars on key conflict, so auto-extracted values are only
+    used when the user didn't pin them manually.
+    """
 
     title: str
-    description: str
     tags: List[str] = field(default_factory=list)
     category_id: str = "22"
     privacy_status: str = DEFAULT_PRIVACY
     logo_path: Optional[Path] = None
     logo_position: str = DEFAULT_LOGO_POSITION
+    description_template: Optional[str] = None
+    description_vars: dict = field(default_factory=dict)
+    description_literal: Optional[str] = None
 
+    def render_description(self, extra_vars: Optional[dict] = None) -> str:
+        if self.description_template:
+            return self._substitute(
+                self.description_template, extra_vars, field="description"
+            )
+        return self.description_literal or ""
 
-def _render_description(template_str: str, variables: dict) -> str:
-    try:
-        return Template(template_str).substitute(variables)
-    except KeyError as e:
-        raise OverlayError(
-            f"Missing description_vars entry for placeholder ${e.args[0]}",
-            f"Template references ${e.args[0]} but description_vars has no such key.",
-        )
-    except ValueError as e:
-        raise OverlayError("Malformed description_template", str(e))
+    def render_title(self, extra_vars: Optional[dict] = None) -> str:
+        """Render the title as a Template, so `$detected_surah` etc. work here too."""
+        return self._substitute(self.title, extra_vars, field="title")
+
+    def _substitute(self, template: str, extra_vars: Optional[dict], field: str) -> str:
+        merged = {**(extra_vars or {}), **self.description_vars}
+        try:
+            return Template(template).substitute(merged)
+        except KeyError as e:
+            raise OverlayError(
+                f"Missing variable for {field} placeholder ${e.args[0]}",
+                "Either add it to description_vars in the metadata JSON, or "
+                "ensure auto-extraction supplies it (e.g. $detected_surah "
+                "requires a recognizable surah name in the audio URL's title).",
+            )
+        except ValueError as e:
+            raise OverlayError(f"Malformed {field} template", str(e))
 
 
 def load_metadata(path: Path) -> OverlayMetadata:
@@ -69,15 +90,15 @@ def load_metadata(path: Path) -> OverlayMetadata:
 
     template_str = raw.get("description_template")
     variables = raw.get("description_vars", {})
+    literal_desc: Optional[str] = None
     if template_str is not None:
         if not isinstance(template_str, str):
             raise OverlayError("'description_template' must be a string")
         if not isinstance(variables, dict):
             raise OverlayError("'description_vars' must be a JSON object")
-        description = _render_description(template_str, variables)
     else:
-        description = raw.get("description", "")
-        if not isinstance(description, str):
+        literal_desc = raw.get("description", "")
+        if not isinstance(literal_desc, str):
             raise OverlayError("'description' must be a string")
 
     tags = raw.get("tags", [])
@@ -112,12 +133,14 @@ def load_metadata(path: Path) -> OverlayMetadata:
 
     return OverlayMetadata(
         title=title,
-        description=description,
         tags=tags,
         category_id=category_id,
         privacy_status=privacy_status,
         logo_path=logo_path,
         logo_position=logo_position,
+        description_template=template_str,
+        description_vars=variables if template_str else {},
+        description_literal=literal_desc,
     )
 
 
