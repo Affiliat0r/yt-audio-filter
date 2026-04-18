@@ -2,7 +2,7 @@
   "title": "Surah Ar-Rahman - Salim Bahanan | Calming Quran Recitation with Toy Factory Animation",
   "description_template": "Welcome to $channel_name!\n\nIn today's video, we bring you a heart-soothing recitation of $surah_name by $reciter. To make this experience engaging for children and families, we have paired the beautiful verses with colorful 3D animations from the $visual_source world.\n\nThis video is perfect for:\n- Background listening during playtime or rest.\n- Helping children familiarize themselves with the sound of the Quran.\n\nReciter: $reciter\nSurah: $surah_name\nVisuals: $visual_source\n\n#Quran #$surah_tag #$reciter_tag #$visuals_tag #MurottalKids #IslamicEducation",
   "description_vars": {
-    "channel_name": "Uma Nahfa",
+    "channel_name": "Muziksiz Cizgi Filimler",
     "surah_name": "Ar-Rahman",
     "reciter": "Salim Bahanan",
     "visual_source": "Toy Factory",
@@ -25,6 +25,6 @@
   ],
   "category_id": "27",
   "privacy_status": "private",
-  "logo_path": "../assets/uma_nahfa_logo.png",
+  "logo_path": "../assets/muziksiz_logo.png",
   "logo_position": "top-left"
 }
