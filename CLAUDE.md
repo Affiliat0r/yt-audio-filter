@@ -58,11 +58,36 @@ The new `yt-quran-overlay` tool uses an application-less chain in
 1. **pytubefix client cascade** (ANDROID_VR → IOS → ANDROID → MWEB → TV → WEB) — pure Python, no external runtimes
 2. **yt-dlp** with `tv_embedded`/`ios`/`web_embedded`/`android` client cascade and a `bestvideo / bestaudio / 18 / b` format fallback. Combined formats are post-stripped with FFmpeg `-c copy` to yield a clean stream-only file.
 
-For heavily PO-Token-protected content, install the optional
-[bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) plugin to unlock high-quality iOS/Android formats.
-
 The legacy `yt-audio-filter` tool still uses `download_youtube_video()` which
 keeps the old Invidious/Piped/Cobalt/YTDownloader.exe fallback chain.
+
+### Optional: bgutil PO Token provider (advanced)
+
+The [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) plugin exposes more
+yt-dlp formats by supplying gvs PO Tokens. The plugin is wired in via
+`download_stream()`'s extractor args (`youtubepot-bgutilscript: script_path:
+__disabled__` skips the slow Deno cold-start; the HTTP plugin auto-uses a
+server on `127.0.0.1:4416` if running).
+
+**Setup (one-time):**
+```bash
+pip install bgutil-ytdlp-pot-provider           # the plugin (auto-loaded by yt-dlp)
+git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git ~/bgutil-ytdlp-pot-provider
+cd ~/bgutil-ytdlp-pot-provider/server
+npm install && npx tsc                           # build TypeScript → build/main.js
+```
+
+**Run server (foreground or via your service manager of choice):**
+```bash
+node ~/bgutil-ytdlp-pot-provider/server/build/main.js
+```
+
+**Current limitation (April 2026):** PO Tokens unlock the *format list* (1080p
+appears) but the unlocked formats are SABR-streamed by YouTube (yt-dlp
+issue [#12482](https://github.com/yt-dlp/yt-dlp/issues/12482)) — actual
+downloads return `403 Forbidden` or empty fragments. So the server
+currently provides no real benefit for our content mix; keep it stopped
+until yt-dlp ships SABR support. Documented for forward compatibility.
 
 CLI arguments for bot detection bypass:
 - `--cookies-from-browser firefox` - Extract authentication cookies from Firefox

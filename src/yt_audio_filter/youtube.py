@@ -385,11 +385,22 @@ def download_stream(
         "noprogress": False,
         "merge_output_format": "mp4" if mode == "video+audio" else None,
         # Client cascade: yt-dlp tries in order, picks the first that yields
-        # usable formats. `ios`/`tv_embedded`/`web_embedded` avoid the
-        # n-challenge JS deobfuscation that fails without Deno/Node.
-        # Shorts often need a non-iOS client because iOS requires PO tokens.
+        # usable formats. tv_embedded/ios/web_embedded avoid n-challenge JS
+        # deobfuscation; the format string also accepts `18` (360p combined)
+        # as a final fallback for videos where higher-quality formats are
+        # PO-Token-locked under YouTube's SABR streaming.
+        # NB: an optional bgutil PO Token provider plugin can be running on
+        # :4416, but as of yt-dlp issue #12482 (April 2026), the high-quality
+        # web/ios/android formats it unlocks are SABR-protected and yield
+        # 403/empty downloads. Pointing script mode at a nonexistent path
+        # neutralizes its slow Deno cold-start. The HTTP plugin auto-uses
+        # the server when present; if it makes things worse for a class of
+        # video, stop the server.
         "extractor_args": {
-            "youtube": {"player_client": ["tv_embedded", "ios", "web_embedded", "android"]}
+            "youtube": {
+                "player_client": ["tv_embedded", "ios", "web_embedded", "android"]
+            },
+            "youtubepot-bgutilscript": {"script_path": ["__disabled__"]},
         },
     }
     if cookies_from_browser:
