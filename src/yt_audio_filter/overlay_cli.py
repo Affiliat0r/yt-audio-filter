@@ -12,7 +12,7 @@ from .metadata import (
     apply_cli_overrides,
     load_metadata,
 )
-from .overlay_pipeline import run_overlay, run_overlay_batch
+from .overlay_pipeline import run_overlay, run_overlay_batch, run_overlay_surahs
 from .pair_state import DEFAULT_STATE_PATH
 
 
@@ -67,6 +67,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "JSON file tracking already-processed pairs (discovery mode; "
             f"default: {DEFAULT_STATE_PATH})"
+        ),
+    )
+    parser.add_argument(
+        "--surah",
+        action="append",
+        default=None,
+        help=(
+            "Canonical surah name to include (surah mode; repeatable). "
+            "Example: --surah At-Tin --surah Al-Fatiha. Requires "
+            "--audio-channel + --video-channel."
         ),
     )
 
@@ -128,27 +138,37 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_source_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
-    """Return 'manual' or 'discovery' based on which args are set; error otherwise."""
+    """Return 'manual', 'discovery', or 'surah' based on which args are set."""
     manual = bool(args.video_url and args.audio_url)
-    discovery = bool(args.video_channel and args.audio_channel)
+    surah = bool(args.surah)
+    channels = bool(args.video_channel and args.audio_channel)
+    discovery = channels and not surah
 
-    if manual and discovery:
+    active = [m for m in (manual, discovery, surah) if m]
+    if len(active) > 1:
         parser.error(
-            "Use either manual URLs (--video-url + --audio-url) OR discovery "
-            "(--video-channel + --audio-channel), not both."
+            "Pick exactly one mode: manual (--video-url + --audio-url), "
+            "discovery (--video-channel + --audio-channel), or "
+            "surah (--surah ... + --video-channel + --audio-channel)."
         )
-    if not manual and not discovery:
+    if len(active) == 0:
         parser.error(
-            "Must supply either --video-url + --audio-url (manual mode) or "
-            "--video-channel + --audio-channel (discovery mode)."
+            "Must supply one of: --video-url + --audio-url (manual), "
+            "--video-channel + --audio-channel (discovery), or "
+            "--surah ... + --video-channel + --audio-channel (surah)."
         )
-    if manual and (args.video_url is None or args.audio_url is None):
-        parser.error("Manual mode requires BOTH --video-url AND --audio-url")
-    if discovery and (args.video_channel is None or args.audio_channel is None):
-        parser.error("Discovery mode requires BOTH --video-channel AND --audio-channel")
-    if manual and args.count != 1:
+    if surah and not channels:
+        parser.error(
+            "Surah mode requires both --video-channel AND --audio-channel "
+            "(the channels to resolve surahs and source visuals from)."
+        )
+    if (manual or surah) and args.count != 1:
         parser.error("--count > 1 only applies in discovery mode")
-    return "manual" if manual else "discovery"
+    if manual:
+        return "manual"
+    if surah:
+        return "surah"
+    return "discovery"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -168,6 +188,26 @@ def main(argv: list[str] | None = None) -> int:
             result = run_overlay(
                 video_url=args.video_url,
                 audio_url=args.audio_url,
+                metadata=metadata,
+                cache_dir=args.cache_dir,
+                output_dir=args.output_dir,
+                resolution=args.resolution,
+                max_duration=args.max_duration,
+                force=args.force,
+                upload=args.upload,
+                cookies_from_browser=args.cookies_from_browser,
+                proxy=args.proxy,
+            )
+            logger.info(f"Done. Output: {result.output_path}")
+            if result.uploaded_video_id:
+                logger.info(
+                    f"Uploaded video: https://youtube.com/watch?v={result.uploaded_video_id}"
+                )
+        elif mode == "surah":
+            result = run_overlay_surahs(
+                surah_names=args.surah,
+                audio_channel=args.audio_channel,
+                video_channel=args.video_channel,
                 metadata=metadata,
                 cache_dir=args.cache_dir,
                 output_dir=args.output_dir,
