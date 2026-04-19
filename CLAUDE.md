@@ -296,6 +296,89 @@ Otherwise: libx264 `medium/crf=18`. Same detection is reused in
 - **Surah detector short-name boundaries.** Short surah names (Qaf, Sad, Hud, Yunus, Saba, Fatir, Nuh, Abasa) use `(?<![a-z])X(?![a-z])` instead of `\b` because `_` (underscore) is a word character in regex — titles like `"Surah Al Qaf__Salim Bahanan"` broke `\b` boundaries.
 - **bgutil script-mode cold start.** The `bgutil-ytdlp-pot-provider` plugin, if installed, auto-runs a Deno script per PO-token request. First invocation downloads npm deps and times out at 15 s. `download_stream()` and `yt_metadata.fetch_yt_metadata()` neutralize this by passing `youtubepot-bgutilscript: script_path: __disabled__` in `extractor_args`.
 
+## Streamlit UI
+
+Local single-page web app around `yt-quran-overlay`'s surah-numbers mode.
+Lets you pick surahs, reciter (with an inline audio sample), and a
+cartoon visual from a thumbnail grid, then render / preview / upload
+without touching a shell.
+
+### Invocation
+
+```bash
+pip install -e ".[app]"
+streamlit run src/yt_audio_filter/streamlit_app.py
+```
+
+Opens on `http://localhost:8501`. Single-session, no auth — assumes it's
+behind the OS.
+
+### UI surface
+
+- **Surah picker** — multiselect over all 114 surahs. Selection order is
+  preserved and drives concat order.
+- **Reciter picker** — selectbox over the ~20 reciters in
+  `src/yt_audio_filter/data/reciters.json`; an inline `st.audio` widget
+  plays the Al-Fatiha sample before you commit.
+- **Thumbnail gallery** — grouped by channel from
+  `config/channels.json` (5 seeded: Toy Factory, Tidi Kids, KidsTV123,
+  Little Baby Bum, Billion Surprise Toys). Single-select via per-tile
+  checkbox. "Refresh catalog" toggle invalidates the on-disk
+  `cache/cartoon_catalog.json` + the `st.cache_data` layer.
+
+### Data sources
+
+- **`quran_audio_source.py`** — resolves `(surah_number, reciter)` →
+  MP3 URL via `data/reciters.json` (20 verified reciters on
+  quranicaudio.com: Mishary, Sudais, Maher, Shuraim, Al-Juhani,
+  Ath-Thubaity, etc.). Caches to `cache/audio_surah_<num>_<slug>.mp3`.
+- **`cartoon_catalog.py`** — reads `config/channels.json`, scrapes each
+  via the existing pytubefix channel path, caches the merged list at
+  `cache/cartoon_catalog.json` (24 h TTL). `ensure_thumbnail()` pulls
+  `i.ytimg.com/vi/<id>/hqdefault.jpg` to `cache/thumbs/`.
+
+### Audio source caveat — Salim Bahanan
+
+Salim Bahanan is NOT on quranicaudio.com. The Streamlit picker only
+offers reciters that ARE there; the reciters JSON notes this and
+substitutes Abdullah Awad al-Juhani in the Bahanan slot. For Salim
+Bahanan specifically, stay on the CLI and use surah-name mode with
+direct `--surah https://...` URL overrides (see the
+`yt-quran-overlay` section above).
+
+### Backend entrypoints
+
+- `overlay_pipeline.run_overlay_from_surah_numbers(surah_numbers,
+  reciter_slug, visual_video_id, metadata, *, output_path=None,
+  cache_dir=Path("cache"), resolution=None, upscale=False,
+  cookies_from_browser=None, proxy=None, upload=False) -> OverlayResult`
+  — downloads each surah audio, concats, downloads + optionally upscales
+  the visual, renders via `ffmpeg_overlay.render_overlay`.
+  `output_path=None` → `tempfile.gettempdir()` MP4, so the UI doesn't
+  pollute `output/`.
+- `overlay_pipeline.upload_rendered(rendered_path, metadata, *,
+  surah_numbers, reciter_slug, visual_title=None) -> str` — uploads an
+  already-rendered file; rebuilds the same `$detected_surah / $surah_tag
+  / $reciter` auto-vars so title/description match what a `upload=True`
+  render would have produced. Drives the separate "Upload to YouTube"
+  button — render first, preview, then publish.
+
+### CLI equivalent
+
+Same backend is reachable without the UI via
+`yt-quran-overlay --surah-number 1 --surah-number 112 --reciter alafasy
+--video-id <yt_id> --metadata meta.json [--upload] [--upscale]`. Useful
+for scripted / cron jobs where the UI isn't wanted.
+
+### Output + upload flow (UI path)
+
+- Output: `tempfile.NamedTemporaryFile`-style temp MP4 (persists until
+  the Streamlit process exits). UI shows it via `st.video` and serves
+  the bytes via `st.download_button`. No `output/` directory is touched.
+- Upload: separate button, render-first / upload-later. Uses the same
+  `metadata.json` template; title / description render from auto-vars
+  at upload time, not render time.
+
 ## Code Style
 
 - Python 3.10+ with type hints
