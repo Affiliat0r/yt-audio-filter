@@ -46,3 +46,9 @@ class YouTubeDownloadError(YTAudioFilterError):
     """YouTube download failures."""
 
     pass
+
+
+class OverlayError(YTAudioFilterError):
+    """Quran-overlay workflow errors (metadata, render, orchestration)."""
+
+    pass

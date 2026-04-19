@@ -52,13 +52,63 @@ The CLI ([cli.py](src/yt_audio_filter/cli.py)) detects whether input is a YouTub
 
 ### YouTube Download Fallback Chain
 
-When YouTube bot detection blocks downloads, the tool automatically tries multiple methods in sequence:
+The new `yt-quran-overlay` tool uses an application-less chain in
+`youtube.download_stream()`:
 
-1. **yt-dlp with Android client** - Uses Android player client API + browser cookies (Firefox/Chrome) + proxy support
-2. **Invidious API** - Free YouTube frontend API (GitHub: iv-org/invidious)
-3. **Piped API** - Privacy-focused YouTube frontend (GitHub: TeamPiped/Piped)
-4. **Cobalt API** - Media downloader service (GitHub: imputnet/cobalt)
-5. **GUI Automation** - Automates YoutubeDownloader.exe using pywinauto (Windows only)
+1. **pytubefix client cascade** (ANDROID_VR → IOS → ANDROID → MWEB → TV → WEB) — pure Python, no external runtimes
+2. **yt-dlp** with `tv_embedded`/`ios`/`web_embedded`/`android` client cascade and a `bestvideo / bestaudio / 18 / b` format fallback. Combined formats are post-stripped with FFmpeg `-c copy` to yield a clean stream-only file.
+
+The legacy `yt-audio-filter` tool still uses `download_youtube_video()` which
+keeps the old Invidious/Piped/Cobalt/YTDownloader.exe fallback chain.
+
+### Optional: bgutil PO Token provider (advanced)
+
+The [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) plugin exposes more
+yt-dlp formats by supplying gvs PO Tokens. The plugin is wired in via
+`download_stream()`'s extractor args (`youtubepot-bgutilscript: script_path:
+__disabled__` skips the slow Deno cold-start; the HTTP plugin auto-uses a
+server on `127.0.0.1:4416` if running).
+
+**Setup (one-time):**
+```bash
+pip install bgutil-ytdlp-pot-provider           # the plugin (auto-loaded by yt-dlp)
+git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git ~/bgutil-ytdlp-pot-provider
+cd ~/bgutil-ytdlp-pot-provider/server
+npm install && npx tsc                           # build TypeScript → build/main.js
+```
+
+**Run server (foreground or via your service manager of choice):**
+```bash
+node ~/bgutil-ytdlp-pot-provider/server/build/main.js
+```
+
+**Current limitation (April 2026):** PO Tokens unlock the *format list* (1080p
+appears) but the unlocked formats are SABR-streamed by YouTube (yt-dlp
+issue [#12482](https://github.com/yt-dlp/yt-dlp/issues/12482)) — actual
+downloads return `403 Forbidden` or empty fragments. So the server
+currently provides no real benefit for our content mix; keep it stopped
+until yt-dlp ships SABR support. Documented for forward compatibility.
+
+### SABR investigation summary (April 2026)
+
+For heavily-protected content (e.g. Toy Factory cartoons), here is the
+empirically-tested state of available downloaders. None bypass SABR:
+
+| Approach | Result |
+|----------|--------|
+| `yt-dlp` default | Format 18 (360p) only; 1080p formats exist but download returns 403 |
+| `yt-dlp + bgutil PO Token (HTTP server)` | Same as above; tokens unlock *listing*, not download |
+| `pytubefix` (ANDROID_VR / IOS / WEB / TV / MWEB cascade) | Bot-detected on every client for protected videos |
+| `Invidious` public instances | Ecosystem effectively dead; only 1 instance with API and it returns 403 |
+| `Cobalt v11` self-hosted (Docker), no cookies | Extracts metadata but tunnel returns 0-byte content silently |
+| `Cobalt v11` self-hosted with Firefox cookies | `error.api.youtube.api_error` on every URL — Google rejects cookies from container IP |
+| `Cobalt v11` + `YOUTUBE_SESSION_SERVER` (bgutil) | Format extraction succeeds (1080p h264 filename), tunnel still returns 0 bytes — SABR blocks the actual stream even with PO Tokens |
+
+The realistic path forward is to wait for yt-dlp's native SABR support
+(active development on [#12482](https://github.com/yt-dlp/yt-dlp/issues/12482))
+or accept format 18 (360p combined) for the heavily-protected subset of
+videos. The discovery pipeline gracefully skips pairs that fail and
+moves on, so the channel never blocks on a single bad pair.
 
 CLI arguments for bot detection bypass:
 - `--cookies-from-browser firefox` - Extract authentication cookies from Firefox

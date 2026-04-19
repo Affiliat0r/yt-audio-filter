@@ -647,6 +647,110 @@ This video has been processed to remove background music while preserving speech
         raise YouTubeUploadError(f"Upload failed: {e}")
 
 
+def upload_with_explicit_metadata(
+    video_path: Path,
+    title: str,
+    description: str,
+    tags: List[str],
+    category_id: str = "22",
+    privacy: str = "private",
+    playlist_id: Optional[str] = None,
+) -> str:
+    """Upload a video to YouTube using caller-supplied metadata.
+
+    Unlike `upload_to_youtube`, this does not auto-generate SEO metadata — the
+    caller provides exactly what will be sent. Prefers the `youtubeuploader`
+    binary if available (handles some network conditions better), then falls
+    back to the Python API.
+    """
+    if not video_path.exists():
+        raise YouTubeUploadError(f"Video file not found: {video_path}")
+
+    binary = find_youtubeuploader_binary()
+    if binary and YOUTUBEUPLOADER_TOKEN_FILE.exists():
+        logger.info("Using youtubeuploader binary for upload")
+        try:
+            return upload_with_youtubeuploader(
+                video_path=video_path,
+                title=title,
+                description=description,
+                tags=tags,
+                privacy=privacy,
+            )
+        except Exception as e:
+            logger.warning(f"youtubeuploader failed: {e}, trying Python API")
+
+    if not check_upload_dependencies():
+        if binary:
+            raise YouTubeUploadError(
+                "Upload failed with youtubeuploader binary",
+                "Check network connection or re-authenticate",
+            )
+        raise PrerequisiteError(
+            "YouTube upload dependencies not installed",
+            "Install with: pip install google-api-python-client google-auth-oauthlib",
+        )
+
+    from googleapiclient.http import MediaFileUpload
+
+    logger.info(f"Uploading to YouTube: {title}")
+
+    try:
+        youtube = authenticate_youtube()
+
+        body = {
+            "snippet": {
+                "title": title,
+                "description": description,
+                "tags": tags,
+                "categoryId": category_id,
+            },
+            "status": {
+                "privacyStatus": privacy,
+                "selfDeclaredMadeForKids": False,
+            },
+        }
+
+        media = MediaFileUpload(
+            str(video_path),
+            mimetype="video/mp4",
+            resumable=True,
+            chunksize=1024 * 1024,
+        )
+
+        request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                progress = int(status.progress() * 100)
+                logger.info(f"Upload progress: {progress}%")
+
+        video_id = response["id"]
+        logger.info(f"Upload complete! Video ID: {video_id}")
+        logger.info(f"Video URL: https://youtube.com/watch?v={video_id}")
+
+        if playlist_id:
+            add_to_playlist(youtube, video_id, playlist_id)
+
+        return video_id
+
+    except Exception as e:
+        if isinstance(e, YouTubeUploadError):
+            raise
+        if binary:
+            logger.warning(f"Python API failed: {e}, trying youtubeuploader binary")
+            return upload_with_youtubeuploader(
+                video_path=video_path,
+                title=title,
+                description=description,
+                tags=tags,
+                privacy=privacy,
+            )
+        raise YouTubeUploadError(f"Upload failed: {e}")
+
+
 def add_to_playlist(youtube, video_id: str, playlist_id: str) -> None:
     """
     Add a video to a YouTube playlist.

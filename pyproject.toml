@@ -31,6 +31,7 @@ dependencies = [
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
     "yt-dlp>=2025.05.22",  # Required for POT provider bot detection bypass
+    "pytubefix>=10.0.0",   # Application-less primary downloader (no Deno/Node needed)
     "soundfile>=0.12.0",
 ]
 
@@ -54,6 +55,7 @@ app = [
 yt-audio-filter = "yt_audio_filter.cli:main"
 yt-channel-scrape = "yt_audio_filter.scraper:main"
 yt-scheduler = "yt_audio_filter.scheduler:main"
+yt-quran-overlay = "yt_audio_filter.overlay_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/example/yt-audio-filter"
@@ -72,3 +74,7 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

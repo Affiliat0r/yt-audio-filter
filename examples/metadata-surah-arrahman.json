@@ -1,0 +1,18 @@
+{
+  "title": "$detected_surah — $reciter | Muziksiz Cizgi Filimler",
+  "description_template": "$detected_surah recitation by $reciter.\n\n#Quran #$surah_tag #$reciter_tag #MuziksizCizgiFilimler",
+  "description_vars": {},
+  "tags": [
+    "Quran",
+    "Quran recitation",
+    "Murottal",
+    "Islamic",
+    "Muziksiz Cizgi Filimler",
+    "Cartoon",
+    "Kids"
+  ],
+  "category_id": "27",
+  "privacy_status": "public",
+  "logo_path": "../assets/muziksiz_logo.png",
+  "logo_position": "top-left"
+}
