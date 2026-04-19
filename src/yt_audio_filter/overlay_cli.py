@@ -12,7 +12,12 @@ from .metadata import (
     apply_cli_overrides,
     load_metadata,
 )
-from .overlay_pipeline import run_overlay, run_overlay_batch, run_overlay_surahs
+from .overlay_pipeline import (
+    run_overlay,
+    run_overlay_batch,
+    run_overlay_from_surah_numbers,
+    run_overlay_surahs,
+)
 from .pair_state import DEFAULT_STATE_PATH
 
 
@@ -81,6 +86,32 @@ def build_parser() -> argparse.ArgumentParser:
             "Order is preserved in the concatenated audio. Requires "
             "--audio-channel + --video-channel."
         ),
+    )
+    parser.add_argument(
+        "--surah-number",
+        dest="surah_numbers",
+        action="append",
+        type=int,
+        default=None,
+        help=(
+            "Surah number 1..114 (numbers mode; repeatable). Audio is "
+            "downloaded from the quran_audio_source manifest for the "
+            "reciter specified by --reciter, and the visual is taken from "
+            "the cartoon catalog entry whose video id matches --video-id. "
+            "Mutually exclusive with manual/discovery/surah modes."
+        ),
+    )
+    parser.add_argument(
+        "--reciter",
+        dest="reciter",
+        default=None,
+        help="Reciter slug from quran_audio_source.list_reciters (numbers mode).",
+    )
+    parser.add_argument(
+        "--video-id",
+        dest="video_id",
+        default=None,
+        help="YouTube video id from the cartoon catalog (numbers mode).",
     )
 
     parser.add_argument(
@@ -155,34 +186,55 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_source_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
-    """Return 'manual', 'discovery', or 'surah' based on which args are set."""
+    """Return 'manual', 'discovery', 'surah', or 'numbers' based on which args are set."""
     manual = bool(args.video_url and args.audio_url)
     surah = bool(args.surah)
     channels = bool(args.video_channel and args.audio_channel)
-    discovery = channels and not surah
+    numbers = bool(getattr(args, "surah_numbers", None))
+    discovery = channels and not surah and not numbers
 
-    active = [m for m in (manual, discovery, surah) if m]
+    active = [m for m in (manual, discovery, surah, numbers) if m]
     if len(active) > 1:
         parser.error(
             "Pick exactly one mode: manual (--video-url + --audio-url), "
-            "discovery (--video-channel + --audio-channel), or "
-            "surah (--surah ... + --video-channel + --audio-channel)."
+            "discovery (--video-channel + --audio-channel), "
+            "surah (--surah ... + --video-channel + --audio-channel), or "
+            "numbers (--surah-number ... + --reciter + --video-id)."
         )
     if len(active) == 0:
         parser.error(
             "Must supply one of: --video-url + --audio-url (manual), "
-            "--video-channel + --audio-channel (discovery), or "
-            "--surah ... + --video-channel + --audio-channel (surah)."
+            "--video-channel + --audio-channel (discovery), "
+            "--surah ... + --video-channel + --audio-channel (surah), or "
+            "--surah-number ... + --reciter + --video-id (numbers)."
         )
     if surah and not channels:
         parser.error(
             "Surah mode requires both --video-channel AND --audio-channel "
             "(the channels to resolve surahs and source visuals from)."
         )
-    if (manual or surah) and args.count != 1:
+    if numbers:
+        if not getattr(args, "reciter", None):
+            parser.error("Numbers mode requires --reciter (a reciter slug).")
+        if not getattr(args, "video_id", None):
+            parser.error("Numbers mode requires --video-id (YouTube id from the catalog).")
+        for n in args.surah_numbers:
+            if n < 1 or n > 114:
+                parser.error(f"--surah-number must be in 1..114, got {n}")
+        # Validate the reciter early so users get a clear error at parse time.
+        from .quran_audio_source import get_reciter
+        from .exceptions import OverlayError as _OverlayError
+
+        try:
+            get_reciter(args.reciter)
+        except _OverlayError as exc:
+            parser.error(str(exc))
+    if (manual or surah or numbers) and args.count != 1:
         parser.error("--count > 1 only applies in discovery mode")
     if manual:
         return "manual"
+    if numbers:
+        return "numbers"
     if surah:
         return "surah"
     return "discovery"
@@ -221,6 +273,25 @@ def main(argv: list[str] | None = None) -> int:
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
                 upscale=args.upscale,
+            )
+            logger.info(f"Done. Output: {result.output_path}")
+            if result.uploaded_video_id:
+                logger.info(
+                    f"Uploaded video: https://youtube.com/watch?v={result.uploaded_video_id}"
+                )
+        elif mode == "numbers":
+            result = run_overlay_from_surah_numbers(
+                surah_numbers=args.surah_numbers,
+                reciter_slug=args.reciter,
+                visual_video_id=args.video_id,
+                metadata=metadata,
+                output_path=None,
+                cache_dir=args.cache_dir,
+                resolution=args.resolution,
+                upscale=args.upscale,
+                cookies_from_browser=args.cookies_from_browser,
+                proxy=args.proxy,
+                upload=args.upload,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:

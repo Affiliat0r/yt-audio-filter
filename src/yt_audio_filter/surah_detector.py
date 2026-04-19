@@ -16,6 +16,15 @@ class SurahMatch:
     number: Optional[int]  # 1-114 for surahs; None for named passages (Ayatul Kursi)
 
 
+@dataclass(frozen=True)
+class SurahInfo:
+    """Canonical data for a numbered surah (1..114)."""
+
+    name: str   # Canonical English transliteration, e.g. "Al-Fatiha"
+    tag: str    # PascalCase hashtag-safe form, e.g. "AlFatiha"
+    number: int  # 1..114
+
+
 # (canonical_name, surah_number_or_None, alias_patterns_without_anchors)
 # Patterns use \s*-?\s* between "Al"/"Ar"/"An"/"At" prefixes and the name stem.
 _SURAHS: List[Tuple[str, Optional[int], List[str]]] = [
@@ -228,4 +237,23 @@ def detect_reciter(text: str) -> Optional[ReciterMatch]:
         for p in patterns:
             if p.search(text):
                 return ReciterMatch(name=name, tag=_slug_tag(name))
+    return None
+
+
+def get_surah_info(number: int) -> SurahInfo:
+    """Look up canonical surah name + tag by number (1..114).
+
+    Raises ``ValueError`` if the number is outside 1..114 or doesn't match a
+    numbered surah entry (named passages like Ayatul Kursi have number=None
+    and are therefore unreachable through this helper — use ``detect_surah``
+    for free-form text instead).
+    """
+    if not isinstance(number, int) or isinstance(number, bool):
+        raise ValueError(f"surah number must be an int, got {type(number).__name__}")
+    if number < 1 or number > 114:
+        raise ValueError(f"surah number {number} is out of range; must be 1..114")
+    for name, num, _patterns in _SURAHS:
+        if num == number:
+            return SurahInfo(name=name, tag=_slug_tag(name), number=number)
+    raise ValueError(f"No canonical entry for surah number {number}")
     return None

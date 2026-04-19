@@ -47,7 +47,7 @@ upload = [
     "google-auth-oauthlib>=1.0.0",
 ]
 app = [
-    "streamlit>=1.28.0",
+    "streamlit>=1.30",
     "pillow>=10.0.0",
 ]
 

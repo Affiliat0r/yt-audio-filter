@@ -1,0 +1,642 @@
+"""Streamlit UI for yt-quran-overlay.
+
+Single-page local app that wires together:
+
+* ``quran_audio_source`` for the reciter list + sample previews
+* ``cartoon_catalog`` for the cartoon thumbnail gallery
+* ``overlay_pipeline.run_overlay_from_surah_numbers`` for rendering
+  (Agent C; imported lazily at render time so the app still boots if the
+  contract function hasn't landed yet)
+* ``metadata.load_metadata`` for the publish metadata template
+* ``surah_detector._SURAHS`` as the canonical source for the 114 surah
+  numbers + canonical English names
+
+The module is designed to be executed via ``streamlit run``, but
+``main()`` is importable so a smoke test can verify the module loads.
+Top-level code runs on every Streamlit rerun; keep it cheap and
+idempotent.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import tempfile
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple
+
+# Streamlit imports are kept at module level so ``streamlit run`` picks
+# them up on rerun. The smoke test tolerates an ImportError because the
+# `[app]` extra is optional; see tests/test_streamlit_app_importable.py.
+try:  # pragma: no cover - exercised by the smoke test
+    import streamlit as st
+except ImportError:  # pragma: no cover
+    st = None  # type: ignore[assignment]
+
+from .cartoon_catalog import (
+    CatalogVideo,
+    DEFAULT_CACHE_DIR,
+    DEFAULT_CHANNELS_PATH,
+    CATALOG_CACHE_FILENAME,
+    CartoonChannel,
+    ensure_thumbnail,
+    list_videos,
+    load_channels,
+)
+from .metadata import OverlayMetadata, load_metadata
+from .quran_audio_source import Reciter, list_reciters
+from .surah_detector import _SURAHS
+
+
+# ---------------------------------------------------------------------------
+# Constants & small data holders
+# ---------------------------------------------------------------------------
+
+DEFAULT_METADATA_PATH = "examples/metadata-surah-arrahman.json"
+LOG_BUFFER_MAX_LINES = 40
+DEFAULT_OUTPUT_DIR = Path("output")
+
+
+@dataclass(frozen=True)
+class SurahEntry:
+    """``(number, display_name)`` pair for the surah multiselect."""
+
+    number: int
+    name: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.number}. {self.name}"
+
+
+def _surah_entries() -> List[SurahEntry]:
+    """Build the 114-entry surah list from ``surah_detector._SURAHS``.
+
+    We drop the named-passage rows (``number is None``) and sort by the
+    canonical surah number.
+    """
+    out: List[SurahEntry] = []
+    for name, number, _patterns in _SURAHS:
+        if number is None:
+            continue
+        out.append(SurahEntry(number=number, name=name))
+    out.sort(key=lambda e: e.number)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Logging capture for the st.status block
+# ---------------------------------------------------------------------------
+
+
+class _StreamlitLogBuffer(logging.Handler):
+    """Logging handler that keeps the last N formatted records in memory.
+
+    Streamlit doesn't capture Python's ``logging`` by default. We attach
+    this handler to the project logger for the duration of a render, then
+    drain ``lines`` into an ``st.code`` block between records.
+    """
+
+    def __init__(self, max_lines: int = LOG_BUFFER_MAX_LINES) -> None:
+        super().__init__()
+        self.max_lines = max_lines
+        self.lines: List[str] = []
+        self.setFormatter(logging.Formatter("%(levelname)s | %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+        except Exception:  # pragma: no cover - formatter failure is benign
+            msg = record.getMessage()
+        self.lines.append(msg)
+        if len(self.lines) > self.max_lines:
+            # Keep the tail; bound memory.
+            self.lines[:] = self.lines[-self.max_lines :]
+
+    def snapshot(self) -> str:
+        return "\n".join(self.lines)
+
+
+# ---------------------------------------------------------------------------
+# Cached helpers — keep rerun cost low
+# ---------------------------------------------------------------------------
+
+
+def _cache_data(func: Callable):
+    """Decorator that calls ``st.cache_data`` when Streamlit is importable.
+
+    Falls back to the raw function outside of ``streamlit run`` so the
+    smoke test can import the module without a Streamlit runtime.
+    """
+    if st is None:  # pragma: no cover
+        return func
+    return st.cache_data(show_spinner=False)(func)
+
+
+@_cache_data
+def _load_channels_cached(path_str: str) -> List[CartoonChannel]:
+    return load_channels(Path(path_str))
+
+
+@_cache_data
+def _list_videos_cached(
+    channels_path_str: str,
+    cache_dir_str: str,
+    cache_bust: int,
+) -> List[CatalogVideo]:
+    """List cartoon videos, keyed by (channels_path, cache_dir, cache_bust).
+
+    ``cache_bust`` is driven by a session-state counter so the "Refresh
+    catalog" toggle can invalidate the Streamlit cache without touching
+    the on-disk JSON cache (which has its own 24 h TTL).
+    """
+    channels = _load_channels_cached(channels_path_str)
+    return list_videos(channels=channels, cache_dir=Path(cache_dir_str))
+
+
+@_cache_data
+def _ensure_thumbnail_cached(
+    video_id: str, thumbnail_url: str, cache_dir_str: str
+) -> Optional[str]:
+    """Return the local thumbnail path as a string, or ``None`` on failure.
+
+    Takes ``thumbnail_url`` explicitly so we don't have to round-trip
+    through ``list_videos`` (which would tie the cache key to the
+    catalog cache-bust counter). A ``CatalogVideo`` is reconstructed
+    with only the fields ``ensure_thumbnail`` reads.
+    """
+    stub = CatalogVideo(
+        video_id=video_id,
+        url="",
+        title="",
+        duration=0,
+        view_count=0,
+        upload_date="",
+        thumbnail_url=thumbnail_url,
+        channel_slug="",
+    )
+    try:
+        return str(ensure_thumbnail(stub, cache_dir=Path(cache_dir_str)))
+    except Exception:
+        # Don't take the whole page down for one broken thumbnail.
+        return None
+
+
+@_cache_data
+def _load_reciters_cached() -> List[Reciter]:
+    return list_reciters()
+
+
+@_cache_data
+def _load_metadata_cached(path_str: str) -> Tuple[bool, str, Optional[OverlayMetadata]]:
+    """Return ``(ok, message, metadata_or_none)`` for the sidebar badge."""
+    try:
+        meta = load_metadata(Path(path_str))
+    except Exception as exc:  # noqa: BLE001 - surface any validation error
+        return False, str(exc), None
+    return True, f"Loaded: {meta.title}", meta
+
+
+# ---------------------------------------------------------------------------
+# Small UI helpers
+# ---------------------------------------------------------------------------
+
+
+def _format_duration(seconds: int) -> str:
+    seconds = int(seconds or 0)
+    if seconds <= 0:
+        return "?"
+    minutes, sec = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{sec:02d}"
+    return f"{minutes}:{sec:02d}"
+
+
+def _channel_display_name(channels: List[CartoonChannel], slug: str) -> str:
+    for c in channels:
+        if c.slug == slug:
+            return c.display_name
+    return slug
+
+
+def _init_session_state() -> None:
+    """Create our session-state keys once per session."""
+    assert st is not None
+    ss = st.session_state
+    ss.setdefault("rendered_path", None)
+    ss.setdefault("rendered_title_vars", {})
+    ss.setdefault("selected_visual_id", None)
+    ss.setdefault("catalog_cache_bust", 0)
+
+
+def _sidebar(surahs: List[SurahEntry]) -> Tuple[Optional[OverlayMetadata], str, bool]:
+    """Render the sidebar. Returns (metadata_or_none, metadata_path, upscale)."""
+    assert st is not None
+    st.sidebar.title("yt-quran-overlay")
+
+    metadata_path = st.sidebar.text_input(
+        "Metadata JSON path",
+        value=DEFAULT_METADATA_PATH,
+        help="Path to the publish-metadata JSON. Used for the upload title/description template.",
+    )
+    ok, msg, meta = _load_metadata_cached(metadata_path)
+    if ok:
+        st.sidebar.success(f"Metadata OK: {msg}")
+    else:
+        st.sidebar.error(f"Metadata error: {msg}")
+
+    upscale = st.sidebar.toggle(
+        "Upscale visual (Real-ESRGAN)",
+        value=False,
+        help="First run downloads the Real-ESRGAN model weights (~65 MB) and is slow.",
+    )
+    st.sidebar.caption(
+        "First run of upscale downloads Real-ESRGAN weights (~65 MB)."
+    )
+
+    with st.sidebar.expander("About"):
+        try:
+            channels = _load_channels_cached(str(DEFAULT_CHANNELS_PATH))
+        except Exception as e:
+            channels = []
+            st.warning(f"channels.json error: {e}")
+        try:
+            reciters = _load_reciters_cached()
+        except Exception as e:
+            reciters = []
+            st.warning(f"reciters.json error: {e}")
+        try:
+            videos = _list_videos_cached(
+                str(DEFAULT_CHANNELS_PATH),
+                str(DEFAULT_CACHE_DIR),
+                st.session_state.get("catalog_cache_bust", 0),
+            )
+        except Exception:
+            videos = []
+        st.write(f"Surahs available: **{len(surahs)}**")
+        st.write(f"Reciters available: **{len(reciters)}**")
+        st.write(f"Cartoon channels: **{len(channels)}**")
+        st.write(f"Cached visuals: **{len(videos)}**")
+
+    return meta, metadata_path, upscale
+
+
+def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
+    """Return the selected surah numbers in user-provided order."""
+    assert st is not None
+    st.subheader("Surahs")
+    by_label = {e.label: e.number for e in surahs}
+    selected_labels = st.multiselect(
+        "Surahs",
+        options=list(by_label.keys()),
+        default=[],
+        key="surahs_multiselect",
+        label_visibility="collapsed",
+    )
+    st.caption(
+        "Use the arrow keys after typing to filter. Order matters — audios "
+        "are concatenated in the order you pick."
+    )
+    return [by_label[label] for label in selected_labels]
+
+
+def _reciter_picker() -> Optional[Reciter]:
+    """Reciter selectbox + sample-audio preview."""
+    assert st is not None
+    st.subheader("Reciter")
+    try:
+        reciters = _load_reciters_cached()
+    except Exception as e:
+        st.error(f"Failed to load reciters: {e}")
+        return None
+
+    if not reciters:
+        st.error("No reciters configured.")
+        return None
+
+    names = [r.display_name for r in reciters]
+    chosen_name = st.selectbox("Reciter", options=names, index=0, key="reciter_select")
+    chosen = next((r for r in reciters if r.display_name == chosen_name), None)
+    if chosen is None:
+        return None
+
+    # Sample preview. We hand the remote URL directly to st.audio; it does
+    # its own HTTP range requests, so we don't burn bandwidth pre-fetching.
+    st.audio(chosen.sample_url)
+    st.caption(f"Slug: `{chosen.slug}`  —  sample: Al-Fatiha")
+    return chosen
+
+
+def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
+    """Thumbnail grid grouped by channel. Returns the single selected video."""
+    assert st is not None
+    st.subheader("Cartoon video")
+
+    refresh = st.toggle(
+        "Refresh catalog (rescrape channels)",
+        value=False,
+        help="Deletes cache/cartoon_catalog.json before listing. Slower.",
+    )
+    if refresh:
+        catalog_cache = DEFAULT_CACHE_DIR / CATALOG_CACHE_FILENAME
+        if catalog_cache.exists():
+            try:
+                catalog_cache.unlink()
+                st.info(f"Removed {catalog_cache}")
+            except OSError as e:
+                st.warning(f"Could not remove {catalog_cache}: {e}")
+        # Bump the cache-bust counter so st.cache_data re-scrapes.
+        st.session_state["catalog_cache_bust"] = (
+            st.session_state.get("catalog_cache_bust", 0) + 1
+        )
+
+    try:
+        videos = _list_videos_cached(
+            str(DEFAULT_CHANNELS_PATH),
+            str(DEFAULT_CACHE_DIR),
+            st.session_state.get("catalog_cache_bust", 0),
+        )
+    except Exception as e:
+        st.error(f"Catalog load failed: {e}")
+        return None
+
+    if not videos:
+        st.warning(
+            "No cartoon videos cached. Run a scrape first "
+            "(e.g. toggle 'Refresh catalog') or check config/channels.json."
+        )
+        return None
+
+    # Group by channel slug, preserving the channel order from channels.json.
+    groups: dict = defaultdict(list)
+    for v in videos:
+        groups[v.channel_slug].append(v)
+
+    selected_id = st.session_state.get("selected_visual_id")
+    selected_video: Optional[CatalogVideo] = None
+
+    channel_order = [c.slug for c in channels]
+    # Channels found in the catalog but missing from the config go last.
+    for slug in list(groups.keys()):
+        if slug not in channel_order:
+            channel_order.append(slug)
+
+    for slug in channel_order:
+        channel_videos = groups.get(slug, [])
+        if not channel_videos:
+            continue
+        st.subheader(_channel_display_name(channels, slug))
+        cols = st.columns(4)
+        for i, v in enumerate(channel_videos):
+            with cols[i % 4]:
+                thumb_path = _ensure_thumbnail_cached(
+                    v.video_id, v.thumbnail_url, str(DEFAULT_CACHE_DIR)
+                )
+                if thumb_path:
+                    st.image(thumb_path, use_container_width=True)
+                else:
+                    st.caption("(thumbnail unavailable)")
+                st.caption(f"**{v.title}**  \n{_format_duration(v.duration)}")
+                # Using the video_id as the checkbox key keeps state stable
+                # across reruns even if the catalog order shifts.
+                is_selected = st.checkbox(
+                    "Select",
+                    key=f"sel_{v.video_id}",
+                    value=(selected_id == v.video_id),
+                )
+                if is_selected:
+                    if selected_video is None:
+                        selected_video = v
+                    # If the user clicked a different tile, update state so
+                    # the previous box visually clears on rerun.
+                    if selected_id != v.video_id:
+                        st.session_state["selected_visual_id"] = v.video_id
+
+    if selected_video is None:
+        st.session_state["selected_visual_id"] = None
+
+    return selected_video
+
+
+def _render_and_display(
+    surah_numbers: List[int],
+    reciter: Reciter,
+    visual: CatalogVideo,
+    metadata: OverlayMetadata,
+    upscale: bool,
+) -> None:
+    """Invoke Agent C's backend, stream logs, store the result in session."""
+    assert st is not None
+    # Import here so that a missing contract function only breaks at render
+    # time, not at module import (lets the smoke test pass regardless).
+    try:
+        from .overlay_pipeline import run_overlay_from_surah_numbers
+    except ImportError as exc:
+        st.error(
+            "Backend function `run_overlay_from_surah_numbers` is not "
+            "available yet. Agent C's pipeline extension hasn't landed.\n\n"
+            f"ImportError: {exc}"
+        )
+        return
+
+    project_logger = logging.getLogger("yt_audio_filter")
+    buf = _StreamlitLogBuffer()
+    previous_level = project_logger.level
+    project_logger.setLevel(logging.INFO)
+    project_logger.addHandler(buf)
+
+    status = st.status("Rendering...", expanded=True)
+    log_placeholder = status.empty()
+
+    # A class so we can periodically flush the buffer to the UI from the
+    # logging handler. We override emit() to update Streamlit too.
+    class _FlushingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            log_placeholder.code(buf.snapshot() or "(waiting for logs)")
+
+    flusher = _FlushingHandler()
+    project_logger.addHandler(flusher)
+
+    result = None
+    try:
+        # Agent C's signature takes an optional output_path; we let them
+        # default to a NamedTemporaryFile internally per the design doc.
+        # We still pass ``output_path=None`` explicitly so the call is
+        # robust against a missing default.
+        result = run_overlay_from_surah_numbers(
+            surah_numbers=surah_numbers,
+            reciter_slug=reciter.slug,
+            visual_video_id=visual.video_id,
+            metadata=metadata,
+            output_path=None,
+            cache_dir=DEFAULT_CACHE_DIR,
+            upscale=upscale,
+            upload=False,
+        )
+        status.update(label="Render complete", state="complete")
+    except Exception as exc:  # noqa: BLE001 - surfacing to the UI
+        status.update(label=f"Render failed: {exc}", state="error")
+        st.exception(exc)
+    finally:
+        project_logger.removeHandler(buf)
+        project_logger.removeHandler(flusher)
+        project_logger.setLevel(previous_level)
+
+    if result is None:
+        return
+
+    output_path = Path(getattr(result, "output_path", ""))
+    if not output_path or not output_path.exists():
+        st.error(f"Render returned but output file is missing: {output_path!r}")
+        return
+
+    st.session_state["rendered_path"] = output_path
+    # Stash identifying info so the later Upload button can call
+    # upload_rendered() without the user reselecting.
+    st.session_state["rendered_title_vars"] = {
+        "surah_numbers": list(surah_numbers),
+        "reciter_slug": reciter.slug,
+        "visual_video_id": visual.video_id,
+        "visual_title": visual.title,
+    }
+
+
+def _preview_and_download(metadata: OverlayMetadata) -> None:
+    """Show the rendered video inline plus a download + upload button."""
+    assert st is not None
+    path: Optional[Path] = st.session_state.get("rendered_path")
+    if path is None:
+        return
+    st.success(f"Rendered: {path}")
+    try:
+        st.video(str(path))
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"Inline preview failed ({exc}); use the download button.")
+
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        st.error(f"Cannot read rendered file: {exc}")
+        return
+    st.download_button(
+        label="Download MP4",
+        data=data,
+        file_name=path.name,
+        mime="video/mp4",
+    )
+
+    if st.button("Upload to YouTube", type="secondary"):
+        _upload_and_show(metadata)
+
+
+def _upload_and_show(metadata: OverlayMetadata) -> None:
+    """Call Agent C's upload_rendered and display the resulting URL."""
+    assert st is not None
+    try:
+        from .overlay_pipeline import upload_rendered
+    except ImportError as exc:
+        st.error(
+            "Backend function `upload_rendered` is not available yet.\n\n"
+            f"ImportError: {exc}"
+        )
+        return
+
+    path: Optional[Path] = st.session_state.get("rendered_path")
+    vars_ = st.session_state.get("rendered_title_vars", {})
+    if path is None or not vars_:
+        st.error("No rendered video in session; render first.")
+        return
+
+    with st.spinner("Uploading to YouTube..."):
+        try:
+            url = upload_rendered(
+                rendered_path=path,
+                metadata=metadata,
+                surah_numbers=vars_["surah_numbers"],
+                reciter_slug=vars_["reciter_slug"],
+                visual_title=vars_.get("visual_title"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.exception(exc)
+            return
+
+    st.success("Uploaded.")
+    st.markdown(f"[Open on YouTube]({url})")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    """Streamlit ``main()``. Safe to import; renders when Streamlit is live."""
+    if st is None:
+        raise RuntimeError(
+            "streamlit is not installed. Install with: pip install -e '.[app]'"
+        )
+
+    st.set_page_config(page_title="yt-quran-overlay", layout="wide")
+    _init_session_state()
+
+    surahs = _surah_entries()
+    metadata, _metadata_path, upscale = _sidebar(surahs)
+
+    try:
+        channels = _load_channels_cached(str(DEFAULT_CHANNELS_PATH))
+    except Exception as e:
+        st.error(f"Cannot load channels: {e}")
+        channels = []
+
+    surah_numbers = _surah_picker(surahs)
+    reciter = _reciter_picker()
+    visual = _cartoon_gallery(channels)
+
+    ready = (
+        metadata is not None
+        and bool(surah_numbers)
+        and reciter is not None
+        and visual is not None
+    )
+
+    # Validation feedback for the Render button.
+    missing: List[str] = []
+    if metadata is None:
+        missing.append("valid metadata JSON")
+    if not surah_numbers:
+        missing.append("at least one surah")
+    if reciter is None:
+        missing.append("a reciter")
+    if visual is None:
+        missing.append("exactly one cartoon video")
+    if missing:
+        st.info("Select: " + ", ".join(missing))
+
+    render_clicked = st.button(
+        "Render",
+        type="primary",
+        disabled=not ready,
+        key="render_button",
+    )
+
+    if render_clicked and ready:
+        assert metadata is not None and reciter is not None and visual is not None
+        _render_and_display(
+            surah_numbers=surah_numbers,
+            reciter=reciter,
+            visual=visual,
+            metadata=metadata,
+            upscale=upscale,
+        )
+
+    # Keep the preview + upload section below so it stays visible after
+    # the render even though the button click triggered a rerun.
+    if metadata is not None:
+        _preview_and_download(metadata)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
