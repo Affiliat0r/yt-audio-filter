@@ -33,7 +33,10 @@ def fetch_yt_metadata(url: str) -> YouTubeMetadata:
         "no_warnings": True,
         "skip_download": True,
         "extractor_args": {
-            "youtube": {"player_client": ["tv_embedded", "ios", "web_embedded", "android"]}
+            "youtube": {"player_client": ["tv_embedded", "ios", "web_embedded", "android"]},
+            # Neutralize bgutil script mode's slow Deno cold-start (see
+            # youtube.download_stream for the same guard).
+            "youtubepot-bgutilscript": {"script_path": ["__disabled__"]},
         },
     }
 

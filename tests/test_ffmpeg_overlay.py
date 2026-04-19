@@ -165,8 +165,35 @@ def test_render_command_contains_encoding_defaults(tmp_path: Path) -> None:
         logo=None,
     )
     joined = " ".join(cmd)
-    assert "-c:v libx264" in joined
-    assert "-crf 18" in joined
+    # Either NVENC (GPU) or libx264 (CPU) — both are valid depending on env.
+    assert ("-c:v h264_nvenc" in joined) or ("-c:v libx264" in joined)
+    if "h264_nvenc" in joined:
+        assert "-cq 19" in joined
+    else:
+        assert "-crf 18" in joined
     assert "-c:a aac" in joined
     assert "-b:a 192k" in joined
     assert "-movflags +faststart" in joined
+
+
+def test_video_encoder_args_uses_nvenc_when_available(monkeypatch) -> None:
+    from yt_audio_filter import ffmpeg_overlay
+
+    monkeypatch.setattr(ffmpeg_overlay, "check_nvenc_available", lambda: True, raising=False)
+    # Patch the lazy import target too.
+    import yt_audio_filter.ffmpeg as ffmpeg_module
+    monkeypatch.setattr(ffmpeg_module, "check_nvenc_available", lambda: True)
+
+    args = ffmpeg_overlay._video_encoder_args()
+    assert args[:2] == ["-c:v", "h264_nvenc"]
+    assert "-cq" in args
+
+
+def test_video_encoder_args_falls_back_to_libx264(monkeypatch) -> None:
+    from yt_audio_filter import ffmpeg_overlay
+    import yt_audio_filter.ffmpeg as ffmpeg_module
+    monkeypatch.setattr(ffmpeg_module, "check_nvenc_available", lambda: False)
+
+    args = ffmpeg_overlay._video_encoder_args()
+    assert args[:2] == ["-c:v", "libx264"]
+    assert "-crf" in args

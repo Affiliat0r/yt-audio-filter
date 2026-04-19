@@ -164,6 +164,49 @@ def test_available_sample_capped_at_ten() -> None:
     assert "more" in details
 
 
+def test_prefers_single_surah_over_compilation() -> None:
+    # Compilation appears FIRST (newer) in channel order, standalone second.
+    # New scoring must still pick the standalone for An-Nas because it has
+    # only one detected surah and is shorter.
+    channel = [
+        _cand("comp", "Juz 30 - Surah Adh Dhuha - Surah An Naas", duration=1291),
+        _cand("standalone", "Surah An Naas - Salim Bahanan", duration=66),
+    ]
+    with patch(
+        "yt_audio_filter.surah_resolver.fetch_candidates",
+        return_value=channel,
+    ):
+        result = resolve_surahs(["An-Nas"], "@fake")
+    assert result[0].video_id == "standalone"
+
+
+def test_falls_back_to_compilation_when_no_standalone_exists() -> None:
+    # Only a compilation mentions Al-Fil → the compilation IS the best we can do.
+    channel = [
+        _cand("comp", "Surah Al Fatiha & Surah Al Fil - Salim Bahanan", duration=180),
+    ]
+    with patch(
+        "yt_audio_filter.surah_resolver.fetch_candidates",
+        return_value=channel,
+    ):
+        result = resolve_surahs(["Al-Fil"], "@fake")
+    assert result[0].video_id == "comp"
+
+
+def test_shorter_wins_among_single_surah_candidates() -> None:
+    # Two clean single-surah titles; shorter one wins.
+    channel = [
+        _cand("long", "Surah Al-Fatiha - 10 minute edition", duration=600),
+        _cand("short", "Surah Al-Fatiha", duration=90),
+    ]
+    with patch(
+        "yt_audio_filter.surah_resolver.fetch_candidates",
+        return_value=channel,
+    ):
+        result = resolve_surahs(["Al-Fatiha"], "@fake")
+    assert result[0].video_id == "short"
+
+
 def test_duplicate_requested_names_both_resolve_to_same_candidate() -> None:
     # If the user asks for the same surah twice, we return the same
     # Candidate twice (let the caller decide what that means).

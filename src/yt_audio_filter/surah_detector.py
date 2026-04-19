@@ -163,6 +163,27 @@ def detect_surah(text: str) -> Optional[SurahMatch]:
     return None
 
 
+def detect_all_surahs(text: str) -> List[SurahMatch]:
+    """Return all surah / named-passage matches in `text`, deduplicated by canonical name.
+
+    Used to score the "cleanliness" of a candidate title: a compilation titled
+    "Surah X - Surah Y" returns two matches; a clean single-surah title returns one.
+    """
+    if not text:
+        return []
+    seen: set = set()
+    results: List[SurahMatch] = []
+    for name, number, patterns in _COMPILED:
+        if name in seen:
+            continue
+        for p in patterns:
+            if p.search(text):
+                seen.add(name)
+                results.append(SurahMatch(name=name, tag=_slug_tag(name), number=number))
+                break
+    return results
+
+
 # Well-known Quran reciters. Patterns are case-insensitive substring matches.
 # Canonical names use the most widely recognized English transliteration.
 _RECITERS: List[Tuple[str, List[str]]] = [
