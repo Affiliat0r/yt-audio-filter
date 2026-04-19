@@ -102,6 +102,7 @@ empirically-tested state of available downloaders. None bypass SABR:
 | `Invidious` public instances | Ecosystem effectively dead; only 1 instance with API and it returns 403 |
 | `Cobalt v11` self-hosted (Docker), no cookies | Extracts metadata but tunnel returns 0-byte content silently |
 | `Cobalt v11` self-hosted with Firefox cookies | `error.api.youtube.api_error` on every URL — Google rejects cookies from container IP |
+| `Cobalt v11` + `YOUTUBE_SESSION_SERVER` (bgutil) | Format extraction succeeds (1080p h264 filename), tunnel still returns 0 bytes — SABR blocks the actual stream even with PO Tokens |
 
 The realistic path forward is to wait for yt-dlp's native SABR support
 (active development on [#12482](https://github.com/yt-dlp/yt-dlp/issues/12482))
