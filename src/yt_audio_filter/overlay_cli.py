@@ -12,7 +12,7 @@ from .metadata import (
     apply_cli_overrides,
     load_metadata,
 )
-from .overlay_pipeline import run_overlay, run_overlay_batch
+from .overlay_pipeline import run_overlay, run_overlay_batch, run_overlay_surahs
 from .pair_state import DEFAULT_STATE_PATH
 
 
@@ -69,6 +69,19 @@ def build_parser() -> argparse.ArgumentParser:
             f"default: {DEFAULT_STATE_PATH})"
         ),
     )
+    parser.add_argument(
+        "--surah",
+        action="append",
+        default=None,
+        help=(
+            "Surah to include (surah mode; repeatable). Each value is "
+            "either a canonical name (e.g. 'Al-Fatiha') resolved against "
+            "the audio channel, OR a direct YouTube URL used as-is — "
+            "useful when the channel doesn't carry a particular surah. "
+            "Order is preserved in the concatenated audio. Requires "
+            "--audio-channel + --video-channel."
+        ),
+    )
 
     parser.add_argument(
         "--metadata",
@@ -103,8 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--resolution",
         type=_parse_resolution,
-        default=(1920, 1080),
-        help="Output resolution WIDTHxHEIGHT (default: 1920x1080)",
+        default=None,
+        help=(
+            "Output resolution WIDTHxHEIGHT. Default: 1920x1080 (or 1280x720 "
+            "when --upscale is set, so the render matches the upscale target "
+            "and doesn't throw away detail with a second upscale)."
+        ),
     )
     parser.add_argument(
         "--max-duration",
@@ -117,6 +134,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--upload", action="store_true", help="Upload to YouTube after render")
     parser.add_argument(
+        "--upscale",
+        action="store_true",
+        help=(
+            "Real-ESRGAN upscale the visual to 1080p before rendering. "
+            "Cached per video_id under cache/upscaled_<id>.mp4; first call "
+            "for a given visual is slow (~14 fps GPU), subsequent calls "
+            "reuse the cache and cost nothing."
+        ),
+    )
+    parser.add_argument(
         "--cookies-from-browser",
         default=None,
         help="Extract cookies from browser (firefox, chrome, edge, ...)",
@@ -128,33 +155,49 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_source_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
-    """Return 'manual' or 'discovery' based on which args are set; error otherwise."""
+    """Return 'manual', 'discovery', or 'surah' based on which args are set."""
     manual = bool(args.video_url and args.audio_url)
-    discovery = bool(args.video_channel and args.audio_channel)
+    surah = bool(args.surah)
+    channels = bool(args.video_channel and args.audio_channel)
+    discovery = channels and not surah
 
-    if manual and discovery:
+    active = [m for m in (manual, discovery, surah) if m]
+    if len(active) > 1:
         parser.error(
-            "Use either manual URLs (--video-url + --audio-url) OR discovery "
-            "(--video-channel + --audio-channel), not both."
+            "Pick exactly one mode: manual (--video-url + --audio-url), "
+            "discovery (--video-channel + --audio-channel), or "
+            "surah (--surah ... + --video-channel + --audio-channel)."
         )
-    if not manual and not discovery:
+    if len(active) == 0:
         parser.error(
-            "Must supply either --video-url + --audio-url (manual mode) or "
-            "--video-channel + --audio-channel (discovery mode)."
+            "Must supply one of: --video-url + --audio-url (manual), "
+            "--video-channel + --audio-channel (discovery), or "
+            "--surah ... + --video-channel + --audio-channel (surah)."
         )
-    if manual and (args.video_url is None or args.audio_url is None):
-        parser.error("Manual mode requires BOTH --video-url AND --audio-url")
-    if discovery and (args.video_channel is None or args.audio_channel is None):
-        parser.error("Discovery mode requires BOTH --video-channel AND --audio-channel")
-    if manual and args.count != 1:
+    if surah and not channels:
+        parser.error(
+            "Surah mode requires both --video-channel AND --audio-channel "
+            "(the channels to resolve surahs and source visuals from)."
+        )
+    if (manual or surah) and args.count != 1:
         parser.error("--count > 1 only applies in discovery mode")
-    return "manual" if manual else "discovery"
+    if manual:
+        return "manual"
+    if surah:
+        return "surah"
+    return "discovery"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     mode = _validate_source_args(args, parser)
+
+    # Resolve default render resolution. When --upscale is set without an
+    # explicit --resolution, use 720p so the render matches the x2 upscale
+    # target and we don't discard detail by scaling back up to 1080p.
+    if args.resolution is None:
+        args.resolution = (1280, 720) if args.upscale else (1920, 1080)
 
     logger = setup_logger(verbose=args.verbose, quiet=args.quiet)
 
@@ -177,6 +220,28 @@ def main(argv: list[str] | None = None) -> int:
                 upload=args.upload,
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
+                upscale=args.upscale,
+            )
+            logger.info(f"Done. Output: {result.output_path}")
+            if result.uploaded_video_id:
+                logger.info(
+                    f"Uploaded video: https://youtube.com/watch?v={result.uploaded_video_id}"
+                )
+        elif mode == "surah":
+            result = run_overlay_surahs(
+                surah_names=args.surah,
+                audio_channel=args.audio_channel,
+                video_channel=args.video_channel,
+                metadata=metadata,
+                cache_dir=args.cache_dir,
+                output_dir=args.output_dir,
+                resolution=args.resolution,
+                max_duration=args.max_duration,
+                force=args.force,
+                upload=args.upload,
+                cookies_from_browser=args.cookies_from_browser,
+                proxy=args.proxy,
+                upscale=args.upscale,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:
@@ -198,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
                 state_path=args.state_file,
+                upscale=args.upscale,
             )
             logger.info(f"Batch done: {len(results)} video(s) produced")
             for i, r in enumerate(results, start=1):

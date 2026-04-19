@@ -176,9 +176,9 @@ def build_render_command(
         "-filter_complex", build_filter_graph(resolution, measurements, logo),
         "-map", "[vout]",
         "-map", "[aout]",
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
+    ])
+    cmd.extend(_video_encoder_args())
+    cmd.extend([
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "192k",
@@ -187,6 +187,30 @@ def build_render_command(
         str(output_path),
     ])
     return cmd
+
+
+def _video_encoder_args() -> List[str]:
+    """Return the encoder argv for video. NVENC if available, else libx264.
+
+    NVENC: `-c:v h264_nvenc -preset p5 -tune hq -rc vbr -cq 19 -b:v 0`
+      - preset p5 = balanced quality/speed (p1=fastest .. p7=slowest)
+      - tune hq + rc vbr + cq 19 + b:v 0 = constant-quality VBR, ≈ libx264 crf 18-19
+    libx264 fallback: `-c:v libx264 -preset medium -crf 18`
+    """
+    from .ffmpeg import check_nvenc_available
+
+    if check_nvenc_available():
+        logger.info("Using NVENC (NVIDIA GPU) for video encoding")
+        return [
+            "-c:v", "h264_nvenc",
+            "-preset", "p5",
+            "-tune", "hq",
+            "-rc", "vbr",
+            "-cq", "19",
+            "-b:v", "0",
+        ]
+    logger.debug("NVENC not available; falling back to libx264 (CPU)")
+    return ["-c:v", "libx264", "-preset", "medium", "-crf", "18"]
 
 
 def get_audio_duration(audio_path: Path) -> float:
