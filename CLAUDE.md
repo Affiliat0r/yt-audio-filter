@@ -89,6 +89,26 @@ downloads return `403 Forbidden` or empty fragments. So the server
 currently provides no real benefit for our content mix; keep it stopped
 until yt-dlp ships SABR support. Documented for forward compatibility.
 
+### SABR investigation summary (April 2026)
+
+For heavily-protected content (e.g. Toy Factory cartoons), here is the
+empirically-tested state of available downloaders. None bypass SABR:
+
+| Approach | Result |
+|----------|--------|
+| `yt-dlp` default | Format 18 (360p) only; 1080p formats exist but download returns 403 |
+| `yt-dlp + bgutil PO Token (HTTP server)` | Same as above; tokens unlock *listing*, not download |
+| `pytubefix` (ANDROID_VR / IOS / WEB / TV / MWEB cascade) | Bot-detected on every client for protected videos |
+| `Invidious` public instances | Ecosystem effectively dead; only 1 instance with API and it returns 403 |
+| `Cobalt v11` self-hosted (Docker), no cookies | Extracts metadata but tunnel returns 0-byte content silently |
+| `Cobalt v11` self-hosted with Firefox cookies | `error.api.youtube.api_error` on every URL — Google rejects cookies from container IP |
+
+The realistic path forward is to wait for yt-dlp's native SABR support
+(active development on [#12482](https://github.com/yt-dlp/yt-dlp/issues/12482))
+or accept format 18 (360p combined) for the heavily-protected subset of
+videos. The discovery pipeline gracefully skips pairs that fail and
+moves on, so the channel never blocks on a single bad pair.
+
 CLI arguments for bot detection bypass:
 - `--cookies-from-browser firefox` - Extract authentication cookies from Firefox
 - `--proxy socks5://127.0.0.1:1080` - Route downloads through SOCKS5/HTTP proxy
