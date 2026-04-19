@@ -35,7 +35,12 @@ try:  # pragma: no cover - exercised by the smoke test
 except ImportError:  # pragma: no cover
     st = None  # type: ignore[assignment]
 
-from .cartoon_catalog import (
+# Absolute imports: `streamlit run streamlit_app.py` executes this file as a
+# script, not as part of the yt_audio_filter package, so relative imports
+# (from .foo import bar) fail with "no known parent package". The same
+# imports under absolute form work in both run-as-script and
+# import-as-module contexts.
+from yt_audio_filter.cartoon_catalog import (
     CatalogVideo,
     DEFAULT_CACHE_DIR,
     DEFAULT_CHANNELS_PATH,
@@ -45,9 +50,9 @@ from .cartoon_catalog import (
     list_videos,
     load_channels,
 )
-from .metadata import OverlayMetadata, load_metadata
-from .quran_audio_source import Reciter, list_reciters
-from .surah_detector import _SURAHS
+from yt_audio_filter.metadata import OverlayMetadata, load_metadata
+from yt_audio_filter.quran_audio_source import Reciter, list_reciters
+from yt_audio_filter.surah_detector import _SURAHS
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +438,7 @@ def _render_and_display(
     # Import here so that a missing contract function only breaks at render
     # time, not at module import (lets the smoke test pass regardless).
     try:
-        from .overlay_pipeline import run_overlay_from_surah_numbers
+        from yt_audio_filter.overlay_pipeline import run_overlay_from_surah_numbers
     except ImportError as exc:
         st.error(
             "Backend function `run_overlay_from_surah_numbers` is not "
@@ -536,7 +541,7 @@ def _upload_and_show(metadata: OverlayMetadata) -> None:
     """Call Agent C's upload_rendered and display the resulting URL."""
     assert st is not None
     try:
-        from .overlay_pipeline import upload_rendered
+        from yt_audio_filter.overlay_pipeline import upload_rendered
     except ImportError as exc:
         st.error(
             "Backend function `upload_rendered` is not available yet.\n\n"
