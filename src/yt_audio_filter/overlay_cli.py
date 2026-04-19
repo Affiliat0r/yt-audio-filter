@@ -116,8 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--resolution",
         type=_parse_resolution,
-        default=(1920, 1080),
-        help="Output resolution WIDTHxHEIGHT (default: 1920x1080)",
+        default=None,
+        help=(
+            "Output resolution WIDTHxHEIGHT. Default: 1920x1080 (or 1280x720 "
+            "when --upscale is set, so the render matches the upscale target "
+            "and doesn't throw away detail with a second upscale)."
+        ),
     )
     parser.add_argument(
         "--max-duration",
@@ -188,6 +192,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     mode = _validate_source_args(args, parser)
+
+    # Resolve default render resolution. When --upscale is set without an
+    # explicit --resolution, use 720p so the render matches the x2 upscale
+    # target and we don't discard detail by scaling back up to 1080p.
+    if args.resolution is None:
+        args.resolution = (1280, 720) if args.upscale else (1920, 1080)
 
     logger = setup_logger(verbose=args.verbose, quiet=args.quiet)
 

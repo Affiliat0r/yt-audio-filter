@@ -32,8 +32,8 @@ logger = get_logger()
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REALESRGAN_DIR = REPO_ROOT / "tools" / "realesrgan"
 REALESRGAN_BIN = REALESRGAN_DIR / "realesrgan-ncnn-vulkan.exe"
-DEFAULT_MODEL = "realesr-animevideov3-x3"
-DEFAULT_SCALE = 3
+DEFAULT_MODEL = "realesr-animevideov3-x2"
+DEFAULT_SCALE = 2
 
 
 def check_realesrgan_available() -> bool:

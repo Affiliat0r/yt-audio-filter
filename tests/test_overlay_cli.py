@@ -58,7 +58,9 @@ def test_parser_defaults() -> None:
     )
     assert str(args.cache_dir) == "cache"
     assert str(args.output_dir) == "output"
-    assert args.resolution == (1920, 1080)
+    # Resolution default is resolved in main() based on --upscale; parser
+    # itself leaves it None so main can distinguish "not set" from "set".
+    assert args.resolution is None
     assert args.max_duration == 7200.0
     assert args.force is False
     assert args.upload is False
