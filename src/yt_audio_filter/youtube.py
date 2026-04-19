@@ -328,16 +328,16 @@ def download_stream(
 ) -> Path:
     """Download a specific stream (video-only/audio-only/video+audio) from a YouTube URL.
 
-    Uses yt-dlp directly with format selection — no GUI automation. Bandwidth
-    savings are significant when only one stream is needed.
+    Tries pytubefix first (no external runtimes needed), then yt-dlp as
+    fallback. The YTDownloader.exe GUI fallback was removed — this path is
+    now fully application-less. Heavily bot-protected videos that fail in
+    BOTH backends will raise; in batch/discovery mode the caller skips the
+    pair and tries the next.
 
     Cache naming: `<prefix>_<video_id>.<ext>` so video-only and audio-only
     downloads of the same URL don't clash.
     """
-    ensure_ytdlp_available()
     validate_youtube_url(url)
-
-    import yt_dlp
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -351,6 +351,30 @@ def download_stream(
             if candidate.exists() and candidate.stat().st_size > 0:
                 logger.info(f"Using cached {mode} download: {candidate.name}")
                 return candidate
+
+    # Stage 1: pytubefix client cascade (primary — no external runtime needed)
+    if mode in ("video-only", "audio-only"):
+        from .pytube_downloader import download_with_pytubefix, check_pytubefix_available
+
+        if check_pytubefix_available():
+            try:
+                result = download_with_pytubefix(
+                    url=url,
+                    output_dir=output_dir,
+                    mode=mode,
+                    filename_prefix=prefix,
+                    video_id=video_id,
+                )
+                logger.info(f"pytubefix delivered {mode}: {result.name}")
+                return result
+            except YouTubeDownloadError as e:
+                logger.warning(f"pytubefix failed, falling back to yt-dlp: {e.message}")
+        else:
+            logger.debug("pytubefix not installed, skipping to yt-dlp")
+
+    # Stage 2: yt-dlp with client + format cascade
+    ensure_ytdlp_available()
+    import yt_dlp
 
     output_template = str(output_dir / f"{prefix}_%(id)s.%(ext)s")
     ydl_opts: dict = {
@@ -446,7 +470,7 @@ def download_stream(
     except Exception as e:
         ytdlp_error = e
         logger.warning(f"yt-dlp stream-selective download failed: {e}")
-        # Clean up any partial file so the fallback doesn't see stale state
+        # Clean up any partial file so a future retry doesn't see stale state
         for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
             partial = output_dir / f"{prefix}_{video_id}.{ext}.part"
             if partial.exists():
@@ -461,34 +485,13 @@ def download_stream(
                 except OSError:
                     pass
 
-    # Fallback: use the existing robust download chain (GUI automation etc.),
-    # then extract the requested stream with FFmpeg -c copy.
-    if mode == "video+audio":
-        logger.info("Falling back to full-video download chain for video+audio request")
-        full_meta = download_youtube_video(
-            url=url,
-            output_dir=output_dir,
-            cookies_from_browser=cookies_from_browser,
-            proxy=proxy,
-        )
-        return full_meta.file_path
-
-    logger.info(f"Falling back: full download via existing chain, then extract {mode}")
-    full_output_dir = output_dir / "_full"
-    full_meta = download_youtube_video(
-        url=url,
-        output_dir=full_output_dir,
-        cookies_from_browser=cookies_from_browser,
-        proxy=proxy,
+    # No further fallback. The YTDownloader.exe GUI path was removed because
+    # the user wants application-less downloads. For videos that resist both
+    # pytubefix and yt-dlp, the optional bgutil-ytdlp-pot-provider plugin can
+    # be installed to unlock PO-Token-protected formats — see project README.
+    raise YouTubeDownloadError(
+        f"All application-less download backends failed for {url}",
+        f"yt-dlp error: {ytdlp_error}\n"
+        f"Tip: install pytubefix (`pip install pytubefix`) or the PO-Token "
+        f"provider plugin to widen client coverage.",
     )
-    dest_ext = "mp4" if mode == "video-only" else "m4a"
-    dest = output_dir / f"{prefix}_{video_id}.{dest_ext}"
-    try:
-        _extract_stream_with_ffmpeg(full_meta.file_path, dest, mode)
-    except Exception as extract_err:
-        raise YouTubeDownloadError(
-            f"Both yt-dlp and fallback extraction failed for {url}",
-            f"yt-dlp: {ytdlp_error}\nextract: {extract_err}",
-        )
-    logger.info(f"Extracted {mode} stream to {dest.name}")
-    return dest

@@ -52,13 +52,17 @@ The CLI ([cli.py](src/yt_audio_filter/cli.py)) detects whether input is a YouTub
 
 ### YouTube Download Fallback Chain
 
-When YouTube bot detection blocks downloads, the tool automatically tries multiple methods in sequence:
+The new `yt-quran-overlay` tool uses an application-less chain in
+`youtube.download_stream()`:
 
-1. **yt-dlp with Android client** - Uses Android player client API + browser cookies (Firefox/Chrome) + proxy support
-2. **Invidious API** - Free YouTube frontend API (GitHub: iv-org/invidious)
-3. **Piped API** - Privacy-focused YouTube frontend (GitHub: TeamPiped/Piped)
-4. **Cobalt API** - Media downloader service (GitHub: imputnet/cobalt)
-5. **GUI Automation** - Automates YoutubeDownloader.exe using pywinauto (Windows only)
+1. **pytubefix client cascade** (ANDROID_VR → IOS → ANDROID → MWEB → TV → WEB) — pure Python, no external runtimes
+2. **yt-dlp** with `tv_embedded`/`ios`/`web_embedded`/`android` client cascade and a `bestvideo / bestaudio / 18 / b` format fallback. Combined formats are post-stripped with FFmpeg `-c copy` to yield a clean stream-only file.
+
+For heavily PO-Token-protected content, install the optional
+[bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) plugin to unlock high-quality iOS/Android formats.
+
+The legacy `yt-audio-filter` tool still uses `download_youtube_video()` which
+keeps the old Invidious/Piped/Cobalt/YTDownloader.exe fallback chain.
 
 CLI arguments for bot detection bypass:
 - `--cookies-from-browser firefox` - Extract authentication cookies from Firefox
