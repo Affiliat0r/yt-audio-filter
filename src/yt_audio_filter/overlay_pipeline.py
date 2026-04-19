@@ -17,6 +17,7 @@ from .pair_selector import PairChoice, select_pairs
 from .pair_state import DEFAULT_STATE_PATH, load_state, save_state
 from .surah_detector import ReciterMatch, SurahMatch, detect_reciter, detect_surah
 from .surah_resolver import resolve_surahs
+from .upscale import get_or_create_upscaled
 from .youtube import download_stream, extract_video_id
 from .yt_metadata import YouTubeMetadata, fetch_yt_metadata
 
@@ -81,6 +82,7 @@ def run_overlay(
     upload: bool = False,
     cookies_from_browser: Optional[str] = None,
     proxy: Optional[str] = None,
+    upscale: bool = False,
 ) -> OverlayResult:
     """Run the 4-stage overlay pipeline."""
     cache_dir = Path(cache_dir)
@@ -114,6 +116,11 @@ def run_overlay(
         cookies_from_browser=cookies_from_browser,
         proxy=proxy,
     )
+
+    if upscale:
+        logger.info("[2.5/4] Upscaling visual via Real-ESRGAN (cached)...")
+        visual_video_id = extract_video_id(video_url)
+        video_path = get_or_create_upscaled(video_path, visual_video_id, cache_dir)
 
     logger.info("[3/4] Rendering overlay (two-pass loudnorm + loop + mux)...")
     logo_arg: Optional[Tuple[Path, str]] = None
@@ -220,6 +227,7 @@ def run_overlay_batch(
     proxy: Optional[str] = None,
     state_path: Path = DEFAULT_STATE_PATH,
     max_candidates_per_channel: int = 200,
+    upscale: bool = False,
 ) -> List[OverlayResult]:
     """Discover candidates, pair by duration, render N videos in sequence.
 
@@ -261,6 +269,7 @@ def run_overlay_batch(
                 upload=upload,
                 cookies_from_browser=cookies_from_browser,
                 proxy=proxy,
+                upscale=upscale,
             )
         except Exception as e:
             logger.error(f"Pair {i} failed: {e}. Continuing with next pair.")
@@ -350,6 +359,7 @@ def run_overlay_surahs(
     cookies_from_browser: Optional[str] = None,
     proxy: Optional[str] = None,
     max_candidates_per_channel: int = 200,
+    upscale: bool = False,
 ) -> OverlayResult:
     """Resolve surah names → audio URLs, concat audios, render against the longest visual.
 
@@ -421,6 +431,9 @@ def run_overlay_surahs(
         cookies_from_browser=cookies_from_browser,
         proxy=proxy,
     )
+    if upscale:
+        logger.info("Upscaling visual via Real-ESRGAN (cached)...")
+        visual_path = get_or_create_upscaled(visual_path, visual.video_id, cache_dir)
 
     output_name = _surah_output_filename(resolved, visual.video_id)
     output_path = output_dir / output_name

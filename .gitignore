@@ -99,3 +99,6 @@ data/
 output/
 input/
 pot-provider/
+
+# External binary tool, downloaded via docs/plans/...-design.md setup steps
+tools/realesrgan/

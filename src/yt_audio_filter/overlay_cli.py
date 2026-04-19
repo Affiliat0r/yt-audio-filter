@@ -74,8 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         help=(
-            "Canonical surah name to include (surah mode; repeatable). "
-            "Example: --surah At-Tin --surah Al-Fatiha. Requires "
+            "Surah to include (surah mode; repeatable). Each value is "
+            "either a canonical name (e.g. 'Al-Fatiha') resolved against "
+            "the audio channel, OR a direct YouTube URL used as-is — "
+            "useful when the channel doesn't carry a particular surah. "
+            "Order is preserved in the concatenated audio. Requires "
             "--audio-channel + --video-channel."
         ),
     )
@@ -126,6 +129,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Overwrite existing output file"
     )
     parser.add_argument("--upload", action="store_true", help="Upload to YouTube after render")
+    parser.add_argument(
+        "--upscale",
+        action="store_true",
+        help=(
+            "Real-ESRGAN upscale the visual to 1080p before rendering. "
+            "Cached per video_id under cache/upscaled_<id>.mp4; first call "
+            "for a given visual is slow (~14 fps GPU), subsequent calls "
+            "reuse the cache and cost nothing."
+        ),
+    )
     parser.add_argument(
         "--cookies-from-browser",
         default=None,
@@ -197,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
                 upload=args.upload,
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
+                upscale=args.upscale,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:
@@ -217,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
                 upload=args.upload,
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
+                upscale=args.upscale,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:
@@ -238,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
                 state_path=args.state_file,
+                upscale=args.upscale,
             )
             logger.info(f"Batch done: {len(results)} video(s) produced")
             for i, r in enumerate(results, start=1):
