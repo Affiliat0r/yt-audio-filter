@@ -335,16 +335,40 @@ def _reciter_picker() -> Optional[Reciter]:
     return chosen
 
 
+def _visual_download_state(video_id: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> str:
+    """Return one of: 'upscaled', 'downloaded', 'new' for the given video_id."""
+    if (cache_dir / f"upscaled_{video_id}.mp4").exists():
+        return "upscaled"
+    for ext in ("mp4", "m4a", "webm", "mkv"):
+        if (cache_dir / f"video_{video_id}.{ext}").exists():
+            return "downloaded"
+    return "new"
+
+
+_STATE_BADGE = {
+    "upscaled": "🔵 Upscaled (ready, no download needed)",
+    "downloaded": "🟢 Downloaded (ready)",
+    "new": "⚪ Not cached",
+}
+
+
 def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
-    """Thumbnail grid grouped by channel. Returns the single selected video."""
+    """Thumbnail grid with filters, badges, and cached-first ordering."""
     assert st is not None
     st.subheader("Cartoon video")
 
-    refresh = st.toggle(
-        "Refresh catalog (rescrape channels)",
-        value=False,
-        help="Deletes cache/cartoon_catalog.json before listing. Slower.",
-    )
+    col_refresh, col_search = st.columns([1, 3])
+    with col_refresh:
+        refresh = st.toggle(
+            "Refresh catalog",
+            value=False,
+            help="Rescrape channels, then relist.",
+        )
+    with col_search:
+        search = st.text_input(
+            "Filter by title", value="", placeholder="e.g. train, bus, dinosaur"
+        ).strip().lower()
+
     if refresh:
         catalog_cache = DEFAULT_CACHE_DIR / CATALOG_CACHE_FILENAME
         if catalog_cache.exists():
@@ -353,7 +377,6 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
                 st.info(f"Removed {catalog_cache}")
             except OSError as e:
                 st.warning(f"Could not remove {catalog_cache}: {e}")
-        # Bump the cache-bust counter so st.cache_data re-scrapes.
         st.session_state["catalog_cache_bust"] = (
             st.session_state.get("catalog_cache_bust", 0) + 1
         )
@@ -367,58 +390,121 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
     except Exception as e:
         st.error(f"Catalog load failed: {e}")
         return None
-
     if not videos:
         st.warning(
-            "No cartoon videos cached. Run a scrape first "
-            "(e.g. toggle 'Refresh catalog') or check config/channels.json."
+            "No cartoon videos cached. Toggle 'Refresh catalog' or check "
+            "config/channels.json."
         )
         return None
 
-    # Group by channel slug, preserving the channel order from channels.json.
-    groups: dict = defaultdict(list)
+    # Channel filter (defaults: all checked)
+    all_slugs = [c.slug for c in channels]
     for v in videos:
-        groups[v.channel_slug].append(v)
+        if v.channel_slug not in all_slugs:
+            all_slugs.append(v.channel_slug)
+    with st.expander(f"Filter by channel ({len(all_slugs)} total)", expanded=False):
+        active_slugs = set()
+        cols = st.columns(min(len(all_slugs), 5))
+        for i, slug in enumerate(all_slugs):
+            with cols[i % len(cols)]:
+                if st.checkbox(_channel_display_name(channels, slug),
+                               value=True, key=f"ch_{slug}"):
+                    active_slugs.add(slug)
+
+    sort_mode = st.selectbox(
+        "Sort",
+        options=("Downloaded first", "Longest first", "Shortest first",
+                 "Most viewed", "Newest", "Title A-Z"),
+        index=0,
+    )
+
+    # Apply filter + sort (keep original catalog order as tiebreaker).
+    states = {v.video_id: _visual_download_state(v.video_id) for v in videos}
+    filtered = [
+        v for v in videos
+        if v.channel_slug in active_slugs
+        and (not search or search in v.title.lower())
+    ]
+
+    rank_state = {"upscaled": 0, "downloaded": 1, "new": 2}
+    if sort_mode == "Downloaded first":
+        filtered.sort(key=lambda v: (rank_state[states[v.video_id]], -v.view_count))
+    elif sort_mode == "Longest first":
+        filtered.sort(key=lambda v: -v.duration)
+    elif sort_mode == "Shortest first":
+        filtered.sort(key=lambda v: v.duration)
+    elif sort_mode == "Most viewed":
+        filtered.sort(key=lambda v: -v.view_count)
+    elif sort_mode == "Newest":
+        filtered.sort(key=lambda v: v.upload_date or "", reverse=True)
+    elif sort_mode == "Title A-Z":
+        filtered.sort(key=lambda v: v.title.lower())
+
+    n_total = len(videos)
+    n_cached = sum(1 for v in videos if states[v.video_id] != "new")
+    st.caption(
+        f"Showing **{len(filtered)}** of **{n_total}** videos · "
+        f"{n_cached} already cached (🟢/🔵) · "
+        f"{n_total - n_cached} would download on render."
+    )
+
+    if not filtered:
+        st.warning("No videos match the current filter/search.")
+        return None
 
     selected_id = st.session_state.get("selected_visual_id")
     selected_video: Optional[CatalogVideo] = None
 
-    channel_order = [c.slug for c in channels]
-    # Channels found in the catalog but missing from the config go last.
-    for slug in list(groups.keys()):
-        if slug not in channel_order:
-            channel_order.append(slug)
+    # Pagination so 247 items don't all render at once.
+    PAGE_SIZE = 24
+    page_key = "gallery_page"
+    page = st.session_state.get(page_key, 0)
+    total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(page, total_pages - 1)
+    start = page * PAGE_SIZE
+    page_videos = filtered[start:start + PAGE_SIZE]
 
-    for slug in channel_order:
-        channel_videos = groups.get(slug, [])
-        if not channel_videos:
-            continue
-        st.subheader(_channel_display_name(channels, slug))
-        cols = st.columns(4)
-        for i, v in enumerate(channel_videos):
-            with cols[i % 4]:
-                thumb_path = _ensure_thumbnail_cached(
-                    v.video_id, v.thumbnail_url, str(DEFAULT_CACHE_DIR)
-                )
-                if thumb_path:
-                    st.image(thumb_path, use_container_width=True)
-                else:
-                    st.caption("(thumbnail unavailable)")
-                st.caption(f"**{v.title}**  \n{_format_duration(v.duration)}")
-                # Using the video_id as the checkbox key keeps state stable
-                # across reruns even if the catalog order shifts.
-                is_selected = st.checkbox(
-                    "Select",
-                    key=f"sel_{v.video_id}",
-                    value=(selected_id == v.video_id),
-                )
-                if is_selected:
-                    if selected_video is None:
-                        selected_video = v
-                    # If the user clicked a different tile, update state so
-                    # the previous box visually clears on rerun.
-                    if selected_id != v.video_id:
-                        st.session_state["selected_visual_id"] = v.video_id
+    cols = st.columns(4)
+    for i, v in enumerate(page_videos):
+        with cols[i % 4]:
+            thumb_path = _ensure_thumbnail_cached(
+                v.video_id, v.thumbnail_url, str(DEFAULT_CACHE_DIR)
+            )
+            if thumb_path:
+                st.image(thumb_path, use_container_width=True)
+            else:
+                st.caption("(thumbnail unavailable)")
+            state = states[v.video_id]
+            st.caption(
+                f"{_STATE_BADGE[state]}  \n"
+                f"**{v.title}**  \n"
+                f"{_format_duration(v.duration)} · "
+                f"{_channel_display_name(channels, v.channel_slug)}"
+            )
+            is_selected = st.checkbox(
+                "Select",
+                key=f"sel_{v.video_id}",
+                value=(selected_id == v.video_id),
+            )
+            if is_selected:
+                if selected_video is None:
+                    selected_video = v
+                if selected_id != v.video_id:
+                    st.session_state["selected_visual_id"] = v.video_id
+
+    # Pager
+    if total_pages > 1:
+        pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
+        with pcol1:
+            if st.button("◀ Previous", disabled=page == 0, key="gallery_prev"):
+                st.session_state[page_key] = max(0, page - 1)
+                st.rerun()
+        with pcol2:
+            st.caption(f"Page {page + 1} / {total_pages}")
+        with pcol3:
+            if st.button("Next ▶", disabled=page >= total_pages - 1, key="gallery_next"):
+                st.session_state[page_key] = min(total_pages - 1, page + 1)
+                st.rerun()
 
     if selected_video is None:
         st.session_state["selected_visual_id"] = None
