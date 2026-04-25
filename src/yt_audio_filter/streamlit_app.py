@@ -1,15 +1,20 @@
 """Streamlit UI for yt-quran-overlay.
 
-Single-page local app that wires together:
+Three-tab layout (Phase 2):
 
-* ``quran_audio_source`` for the reciter list + sample previews
-* ``cartoon_catalog`` for the cartoon thumbnail gallery
-* ``overlay_pipeline.run_overlay_from_surah_numbers`` for rendering
-  (Agent C; imported lazily at render time so the app still boots if the
-  contract function hasn't landed yet)
-* ``metadata.load_metadata`` for the publish metadata template
-* ``surah_detector._SURAHS`` as the canonical source for the 114 surah
-  numbers + canonical English names
+* **Surah render** — the original surah-multiselect + reciter +
+  thumbnail-gallery + Render flow. Unchanged behaviour, nested under a
+  tab.
+* **Ayah range (memorization)** — wishlist M2/M3: pick (surah, start..end,
+  repeats, gap_seconds) blocks and render via
+  ``overlay_pipeline.run_overlay_from_ayah_ranges``. Reciter list is
+  filtered to those with EveryAyah coverage.
+* **Weekly lesson plan** — wishlist C1: load a JSON lesson plan and run
+  every lesson back-to-back via ``lesson_planner.render_plan``.
+
+Sidebar (visible across all tabs): output preset, trilingual-subtitles
+toggle, optional YouTube playlist id, plus the existing metadata-path /
+upscale toggle.
 
 The module is designed to be executed via ``streamlit run``, but
 ``main()`` is importable so a smoke test can verify the module loads.
@@ -19,10 +24,7 @@ idempotent.
 
 from __future__ import annotations
 
-import json
 import logging
-import tempfile
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
@@ -40,6 +42,7 @@ except ImportError:  # pragma: no cover
 # (from .foo import bar) fail with "no known parent package". The same
 # imports under absolute form work in both run-as-script and
 # import-as-module contexts.
+from yt_audio_filter import ayah_data, render_presets
 from yt_audio_filter.cartoon_catalog import (
     CatalogVideo,
     DEFAULT_CACHE_DIR,
@@ -50,6 +53,7 @@ from yt_audio_filter.cartoon_catalog import (
     list_videos,
     load_channels,
 )
+from yt_audio_filter.exceptions import OverlayError
 from yt_audio_filter.metadata import OverlayMetadata, load_metadata
 from yt_audio_filter.quran_audio_source import Reciter, is_surah_cached, list_reciters
 from yt_audio_filter.surah_detector import _SURAHS
@@ -60,7 +64,9 @@ from yt_audio_filter.surah_detector import _SURAHS
 # ---------------------------------------------------------------------------
 
 DEFAULT_METADATA_PATH = "examples/metadata-surah-arrahman.json"
+DEFAULT_LESSON_PLAN_PATH = "examples/lesson-plan-week.json"
 LOG_BUFFER_MAX_LINES = 40
+PAGE_SIZE = 24
 DEFAULT_OUTPUT_DIR = Path("output")
 
 
@@ -124,6 +130,26 @@ class _StreamlitLogBuffer(logging.Handler):
         return "\n".join(self.lines)
 
 
+def _scrub_streamlit_handlers(project_logger: logging.Logger) -> None:
+    """Remove any leftover ``_StreamlitLogBuffer`` / ``_FlushingHandler`` handlers.
+
+    Streamlit reruns can leave handlers attached if a previous render
+    crashed mid-flight or the user navigated away — see review fix
+    "Logging-handler leak across reruns". We scrub by class name (not
+    ``isinstance``) so the inner ``_FlushingHandler`` defined inside
+    ``_render_and_display`` is recognised across reruns despite living
+    in different closures each time.
+    """
+    target_names = ("_StreamlitLogBuffer", "_FlushingHandler")
+    leftover = [
+        h
+        for h in list(project_logger.handlers)
+        if type(h).__name__ in target_names
+    ]
+    for h in leftover:
+        project_logger.removeHandler(h)
+
+
 # ---------------------------------------------------------------------------
 # Cached helpers — keep rerun cost low
 # ---------------------------------------------------------------------------
@@ -165,13 +191,7 @@ def _list_videos_cached(
 def _ensure_thumbnail_cached(
     video_id: str, thumbnail_url: str, cache_dir_str: str
 ) -> Optional[str]:
-    """Return the local thumbnail path as a string, or ``None`` on failure.
-
-    Takes ``thumbnail_url`` explicitly so we don't have to round-trip
-    through ``list_videos`` (which would tie the cache key to the
-    catalog cache-bust counter). A ``CatalogVideo`` is reconstructed
-    with only the fields ``ensure_thumbnail`` reads.
-    """
+    """Return the local thumbnail path as a string, or ``None`` on failure."""
     stub = CatalogVideo(
         video_id=video_id,
         url="",
@@ -198,12 +218,7 @@ def _load_reciters_cached() -> List[Reciter]:
 def _cached_surah_status(
     reciter_slug: str, cache_dir_str: str, cache_bust: int
 ) -> List[bool]:
-    """Return ``[is_cached_for_surah_1, ..., is_cached_for_surah_114]``.
-
-    Keyed on ``(reciter_slug, cache_dir, cache_bust)`` so the panel
-    doesn't re-stat 114 files on every Streamlit rerun. Cleared by
-    bumping ``st.session_state["audio_cache_bust"]``.
-    """
+    """Return ``[is_cached_for_surah_1, ..., is_cached_for_surah_114]``."""
     cache_dir = Path(cache_dir_str)
     return [is_surah_cached(n, reciter_slug, cache_dir) for n in range(1, 115)]
 
@@ -214,14 +229,20 @@ def _load_metadata_cached(
 ) -> Tuple[bool, str, Optional[OverlayMetadata]]:
     """Return ``(ok, message, metadata_or_none)`` for the sidebar badge.
 
-    ``mtime_ns`` is part of the cache key so edits to the JSON file
-    are picked up on the next rerun without a process restart.
+    On failure, ``message`` is rendered by ``_format_metadata_error`` so
+    ``OverlayError.details`` is surfaced separately from ``message`` —
+    plain ``repr(exc)`` for any unexpected exception type.
     """
     del mtime_ns  # only used for cache invalidation
     try:
         meta = load_metadata(Path(path_str))
-    except Exception as exc:  # noqa: BLE001 - surface any validation error
-        return False, str(exc), None
+    except OverlayError as exc:
+        msg = exc.message
+        if exc.details:
+            msg = f"{msg}\n\n{exc.details}"
+        return False, msg, None
+    except Exception as exc:  # noqa: BLE001 - surface anything else as repr
+        return False, repr(exc), None
     return True, f"Loaded: {meta.title}", meta
 
 
@@ -262,16 +283,93 @@ def _init_session_state() -> None:
     ss = st.session_state
     ss.setdefault("rendered_path", None)
     ss.setdefault("rendered_title_vars", {})
+    ss.setdefault("rendered_kind", None)  # "surah" | "ayah" | None
     ss.setdefault("selected_visual_id", None)
     ss.setdefault("catalog_cache_bust", 0)
     ss.setdefault("audio_cache_bust", 0)
+    ss.setdefault("ayah_ranges", [])  # List[dict]
+    ss.setdefault("lesson_plan_path", DEFAULT_LESSON_PLAN_PATH)
+    ss.setdefault("lesson_plan_validated", False)
+    ss.setdefault("lesson_plan_error", "")
+    ss.setdefault("lesson_results", [])  # List[Tuple[day, path]]
+    ss.setdefault("lesson_errors", [])  # List[Tuple[day, message]]
 
 
-def _sidebar(surahs: List[SurahEntry]) -> Tuple[Optional[OverlayMetadata], str, bool]:
-    """Render the sidebar. Returns (metadata_or_none, metadata_path, upscale)."""
+def _sidebar(
+    surahs: List[SurahEntry],
+) -> Tuple[Optional[OverlayMetadata], str, bool, str, bool, Optional[str]]:
+    """Render the sidebar.
+
+    Returns:
+        (metadata_or_none, metadata_path, upscale, preset_slug,
+        burn_subtitles, playlist_id_or_none).
+    """
     assert st is not None
     st.sidebar.title("yt-quran-overlay")
 
+    # ------------------------------------------------------------------
+    # New cross-tab controls (above the legacy metadata input).
+    # ------------------------------------------------------------------
+    presets = render_presets.list_presets()
+    preset_names = [p.display_name for p in presets]
+    # Sticky default that flips when the user toggles --upscale below.
+    # We stash the previously-chosen slug so picking explicitly survives.
+    prev_preset_slug = st.session_state.get("preset_slug")
+    if prev_preset_slug is None:
+        # First boot: pick a sensible default (we don't know upscale yet
+        # at this point in the render order — but the legacy code reads
+        # the toggle below, so we default conservatively to landscape).
+        default_slug = "youtube_landscape"
+    else:
+        default_slug = prev_preset_slug
+    default_idx = next(
+        (i for i, p in enumerate(presets) if p.slug == default_slug),
+        0,
+    )
+    chosen_preset_name = st.sidebar.selectbox(
+        "Output preset",
+        options=preset_names,
+        index=default_idx,
+        help=(
+            "Resolution + scale-mode for the rendered MP4. "
+            "Vertical = WhatsApp/status; square = Instagram feed."
+        ),
+        key="preset_select",
+    )
+    chosen_preset = next(
+        p for p in presets if p.display_name == chosen_preset_name
+    )
+    st.session_state["preset_slug"] = chosen_preset.slug
+
+    burn_subtitles = st.sidebar.toggle(
+        "Burn trilingual subtitles",
+        value=False,
+        help=(
+            "Hard-burn ASS subtitles into the output. "
+            "Used by the ayah-range tab."
+        ),
+        key="burn_subtitles_toggle",
+    )
+    st.sidebar.caption(
+        "Arabic + English; drop `data/translations/dutch.json` to enable a "
+        "third line."
+    )
+
+    playlist_id = st.sidebar.text_input(
+        "YouTube playlist id (optional)",
+        value=st.session_state.get("playlist_id_input", ""),
+        help=(
+            "When set, uploaded videos are appended to this playlist "
+            "(unlisted by default)."
+        ),
+        key="playlist_id_input",
+    ).strip()
+
+    st.sidebar.divider()
+
+    # ------------------------------------------------------------------
+    # Legacy controls (unchanged behaviour).
+    # ------------------------------------------------------------------
     metadata_path = st.sidebar.text_input(
         "Metadata JSON path",
         value=DEFAULT_METADATA_PATH,
@@ -293,6 +391,15 @@ def _sidebar(surahs: List[SurahEntry]) -> Tuple[Optional[OverlayMetadata], str, 
     st.sidebar.caption(
         "First run of upscale downloads Real-ESRGAN weights (~65 MB)."
     )
+
+    # If the user just flipped --upscale ON and is still on the default
+    # 1080p preset, hint at the 720p preset for upscale workflows. We
+    # don't auto-flip; sticky preference wins.
+    if upscale and chosen_preset.slug == "youtube_landscape":
+        st.sidebar.caption(
+            "Tip: pair --upscale with 'YouTube (720p landscape)' to upscale "
+            "*to* 720p (cheaper than upscaling to 1080p)."
+        )
 
     with st.sidebar.expander("About"):
         try:
@@ -318,17 +425,18 @@ def _sidebar(surahs: List[SurahEntry]) -> Tuple[Optional[OverlayMetadata], str, 
         st.write(f"Cartoon channels: **{len(channels)}**")
         st.write(f"Cached visuals: **{len(videos)}**")
 
-    return meta, metadata_path, upscale
+    return (
+        meta,
+        metadata_path,
+        upscale,
+        chosen_preset.slug,
+        burn_subtitles,
+        playlist_id or None,
+    )
 
 
 def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
-    """Return the selected surah numbers expanded by per-surah repeats.
-
-    Order is preserved from the multiselect. Each row gets a number_input
-    (1..99); an entry with repeat=N expands to N consecutive copies of
-    that surah number, so the downstream pipeline concatenates the same
-    audio file N times.
-    """
+    """Return the selected surah numbers expanded by per-surah repeats."""
     assert st is not None
     st.subheader("Surahs")
     by_label = {e.label: e.number for e in surahs}
@@ -349,9 +457,6 @@ def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
     if not selected_numbers:
         return []
 
-    # Per-surah repeat widget. Defaults to 1 so the existing single-pick
-    # flow is unchanged. Cap at 99; that's already a 50+ minute video for
-    # most surahs.
     st.caption("Audio plays in this order; the visual loops underneath.")
     expanded: List[int] = []
     for idx, number in enumerate(selected_numbers):
@@ -372,8 +477,18 @@ def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
     return expanded
 
 
-def _reciter_picker() -> Optional[Reciter]:
-    """Reciter selectbox + sample-audio preview."""
+def _reciter_picker(
+    *,
+    only_everyayah: bool = False,
+    key: str = "reciter_select",
+) -> Optional[Reciter]:
+    """Reciter selectbox + sample-audio preview.
+
+    When ``only_everyayah=True`` we filter out reciters that don't have an
+    EveryAyah folder (ayah-mode requires per-ayah MP3s). The filtered-out
+    set is documented inline so the user understands why their favorite
+    qari may be missing.
+    """
     assert st is not None
     st.subheader("Reciter")
     try:
@@ -386,36 +501,52 @@ def _reciter_picker() -> Optional[Reciter]:
         st.error("No reciters configured.")
         return None
 
+    if only_everyayah:
+        # Drop reciters listed in ``RECITERS_WITHOUT_EVERYAYAH`` and any
+        # quranicaudio slug that doesn't appear in the EveryAyah map.
+        valid_qa_slugs = {
+            entry["quranicaudio_slug"]
+            for entry in ayah_data.EVERYAYAH_RECITERS.values()
+        }
+        excluded = list(ayah_data.RECITERS_WITHOUT_EVERYAYAH)
+        filtered = [
+            r
+            for r in reciters
+            if r.slug in valid_qa_slugs and r.slug not in excluded
+        ]
+        if not filtered:
+            st.error("No EveryAyah-compatible reciters available.")
+            return None
+        st.caption(
+            "Some reciters from the surah-render tab are hidden here because "
+            "they have no per-ayah audio on EveryAyah.com (needed for "
+            f"ayah-level repetition): {', '.join(excluded)}."
+        )
+        reciters = filtered
+
     names = [r.display_name for r in reciters]
-    chosen_name = st.selectbox("Reciter", options=names, index=0, key="reciter_select")
+    chosen_name = st.selectbox("Reciter", options=names, index=0, key=key)
     chosen = next((r for r in reciters if r.display_name == chosen_name), None)
     if chosen is None:
         return None
 
-    # Sample preview. We hand the remote URL directly to st.audio; it does
-    # its own HTTP range requests, so we don't burn bandwidth pre-fetching.
+    # Sample preview. We hand the remote URL directly to st.audio.
     st.audio(chosen.sample_url)
     st.caption(f"Slug: `{chosen.slug}`  —  sample: Al-Fatiha")
 
-    _cached_audio_panel(chosen)
+    if not only_everyayah:
+        _cached_audio_panel(chosen)
     return chosen
 
 
 def _cached_audio_panel(reciter: Reciter) -> None:
-    """Collapsible panel showing which surahs are already cached on disk.
-
-    Mirrors the gallery's per-visual badge pattern but for the 114 surahs
-    of the currently-selected reciter. Informational only — selection
-    happens upstairs in the multiselect.
-    """
+    """Collapsible panel showing which surahs are already cached on disk."""
     assert st is not None
     cache_bust = st.session_state.get("audio_cache_bust", 0)
     statuses = _cached_surah_status(reciter.slug, str(DEFAULT_CACHE_DIR), cache_bust)
     cached_count = sum(1 for s in statuses if s)
 
-    expander_label = (
-        f"Cached audio for this reciter ({cached_count} / 114)"
-    )
+    expander_label = f"Cached audio for this reciter ({cached_count} / 114)"
     with st.expander(expander_label, expanded=False):
         st.caption(
             f"{cached_count} / 114 surahs cached for "
@@ -436,8 +567,6 @@ def _cached_audio_panel(reciter: Reciter) -> None:
             )
             st.rerun()
 
-        # Compact 4-column grid of "✅ 001. Al-Fatiha" / "·  002. Al-Baqarah".
-        # Avoids 114 separate widgets — just markdown lines.
         surahs = _surah_entries()
         cols = st.columns(4)
         for i, entry in enumerate(surahs):
@@ -450,12 +579,7 @@ def _cached_audio_panel(reciter: Reciter) -> None:
 
 @_cache_data
 def _visual_state_index(cache_dir_str: str, cache_bust: int) -> dict:
-    """Scan ``cache_dir`` once and return ``{video_id: state}``.
-
-    Caches one ``os.scandir`` pass instead of N×5 ``Path.exists`` calls
-    inside the gallery loop. Invalidated by bumping
-    ``st.session_state['visual_cache_bust']``.
-    """
+    """Scan ``cache_dir`` once and return ``{video_id: state}``."""
     import os
 
     cache_dir = Path(cache_dir_str)
@@ -481,11 +605,7 @@ def _visual_state_index(cache_dir_str: str, cache_bust: int) -> dict:
 def _visual_download_state(
     video_id: str, index: Optional[dict] = None
 ) -> str:
-    """Return ``'upscaled' | 'downloaded' | 'new'`` for ``video_id``.
-
-    Pass ``index`` from ``_visual_state_index`` to avoid re-stating; falls
-    back to the slow per-video path if no index is given (kept for tests).
-    """
+    """Return ``'upscaled' | 'downloaded' | 'new'`` for ``video_id``."""
     if index is not None:
         return index.get(video_id, "new")
     if (DEFAULT_CACHE_DIR / f"upscaled_{video_id}.mp4").exists():
@@ -504,12 +624,7 @@ _STATE_BADGE = {
 
 
 def _select_visual_callback(video_id: str) -> None:
-    """Click handler for the per-tile Select button. Mutual-exclusion.
-
-    Used as ``on_click`` so the click is processed BEFORE the next
-    rerun renders, ensuring exactly one ``selected_visual_id`` survives
-    even if the click happens to be on a tile not currently visible.
-    """
+    """Click handler for the per-tile Select button. Mutual-exclusion."""
     if st is None:  # pragma: no cover
         return
     if st.session_state.get("selected_visual_id") == video_id:
@@ -518,21 +633,34 @@ def _select_visual_callback(video_id: str) -> None:
         st.session_state["selected_visual_id"] = video_id
 
 
-def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
-    """Thumbnail grid with filters, badges, and cached-first ordering.
+def _prune_stale_channel_filters(channels: List[CartoonChannel]) -> None:
+    """Drop ``ch_<slug>`` keys for slugs that no longer exist in channels.json.
 
-    Selection is tracked solely via ``st.session_state['selected_visual_id']``
-    and a click-callback per tile; the gallery does NOT clear the id when
-    the selected tile is offscreen, so paginating or filtering preserves
-    the user's choice.
+    Review fix: "Channel filter checkbox cleanup". Without this, removing
+    a channel from the JSON leaves orphaned ``True`` checkboxes in
+    session_state forever.
     """
+    if st is None:  # pragma: no cover
+        return
+    valid_slugs = {c.slug for c in channels}
+    stale = [
+        k
+        for k in list(st.session_state.keys())
+        if isinstance(k, str)
+        and k.startswith("ch_")
+        and k[len("ch_") :] not in valid_slugs
+    ]
+    for k in stale:
+        del st.session_state[k]
+
+
+def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
+    """Thumbnail grid with filters, badges, and cached-first ordering."""
     assert st is not None
     st.subheader("Cartoon video")
 
     col_refresh, col_search = st.columns([1, 3])
     with col_refresh:
-        # One-shot button; the previous st.toggle was sticky and re-deleted
-        # the catalog cache on every rerun for as long as it was ON.
         if st.button("Refresh catalog", help="Rescrape channels, then relist."):
             catalog_cache = DEFAULT_CACHE_DIR / CATALOG_CACHE_FILENAME
             if catalog_cache.exists():
@@ -544,15 +672,19 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
             st.session_state["catalog_cache_bust"] = (
                 st.session_state.get("catalog_cache_bust", 0) + 1
             )
-            # Also nuke the on-disk visual-state index since cached files
-            # may have changed alongside the catalog.
             st.session_state["visual_cache_bust"] = (
                 st.session_state.get("visual_cache_bust", 0) + 1
             )
     with col_search:
-        search = st.text_input(
-            "Filter by title", value="", placeholder="e.g. train, bus, dinosaur"
-        ).strip().lower()
+        search = (
+            st.text_input(
+                "Filter by title",
+                value="",
+                placeholder="e.g. train, bus, dinosaur",
+            )
+            .strip()
+            .lower()
+        )
 
     try:
         videos = _list_videos_cached(
@@ -570,7 +702,27 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         )
         return None
 
-    # Channel filter (defaults: all checked)
+    # Review fix: stale ``selected_visual_id`` after a catalog refresh.
+    # If the persisted id isn't in the current catalog, clear it before
+    # the filter step so the gallery doesn't show a "Selected: ..."
+    # banner pointing at a video we can't find anymore.
+    persisted_id = st.session_state.get("selected_visual_id")
+    if persisted_id is not None and not any(
+        v.video_id == persisted_id for v in videos
+    ):
+        st.session_state["selected_visual_id"] = None
+        # Also drop any stale per-tile checkbox keys (housekeeping for
+        # the older checkbox flow; we use buttons now, but keep the
+        # cleanup so a downgrade of session state stays bounded).
+        for k in [
+            k
+            for k in list(st.session_state.keys())
+            if isinstance(k, str) and k.startswith("sel_")
+        ]:
+            video_id = k[len("sel_") :].split("_btn_")[-1]
+            if not any(v.video_id == video_id for v in videos):
+                del st.session_state[k]
+
     all_slugs = [c.slug for c in channels]
     for v in videos:
         if v.channel_slug not in all_slugs:
@@ -580,42 +732,49 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         cols = st.columns(min(len(all_slugs), 5))
         for i, slug in enumerate(all_slugs):
             with cols[i % len(cols)]:
-                if st.checkbox(_channel_display_name(channels, slug),
-                               value=True, key=f"ch_{slug}"):
+                if st.checkbox(
+                    _channel_display_name(channels, slug),
+                    value=True,
+                    key=f"ch_{slug}",
+                ):
                     active_slugs.add(slug)
 
     sort_mode = st.selectbox(
         "Sort",
-        options=("Downloaded first", "Longest first", "Shortest first",
-                 "Most viewed", "Newest", "Title A-Z"),
+        options=(
+            "Downloaded first",
+            "Longest first",
+            "Shortest first",
+            "Most viewed",
+            "Newest",
+            "Title A-Z",
+        ),
         index=0,
     )
 
-    # Reset pagination whenever the filter / sort / search changes so a
-    # user on page 5 doesn't end up looking at unrelated tiles after
-    # narrowing the result set.
     filter_signature = (search, sort_mode, frozenset(active_slugs))
     last_signature = st.session_state.get("gallery_filter_signature")
     if last_signature is not None and last_signature != filter_signature:
         st.session_state["gallery_page"] = 0
     st.session_state["gallery_filter_signature"] = filter_signature
 
-    # One stat-pass over the cache dir, memoized by st.cache_data — the
-    # previous per-video Path.exists ran ~5N stat calls per rerun.
     state_index = _visual_state_index(
         str(DEFAULT_CACHE_DIR),
         st.session_state.get("visual_cache_bust", 0),
     )
 
     filtered = [
-        v for v in videos
+        v
+        for v in videos
         if v.channel_slug in active_slugs
         and (not search or search in v.title.lower())
     ]
 
     rank_state = {"upscaled": 0, "downloaded": 1, "new": 2}
     if sort_mode == "Downloaded first":
-        filtered.sort(key=lambda v: (rank_state[state_index.get(v.video_id, "new")], -v.view_count))
+        filtered.sort(
+            key=lambda v: (rank_state[state_index.get(v.video_id, "new")], -v.view_count)
+        )
     elif sort_mode == "Longest first":
         filtered.sort(key=lambda v: -v.duration)
     elif sort_mode == "Shortest first":
@@ -628,9 +787,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         filtered.sort(key=lambda v: v.title.lower())
 
     n_total = len(videos)
-    n_cached = sum(
-        1 for v in videos if state_index.get(v.video_id, "new") != "new"
-    )
+    n_cached = sum(1 for v in videos if state_index.get(v.video_id, "new") != "new")
     st.caption(
         f"Showing **{len(filtered)}** of **{n_total}** videos · "
         f"{n_cached} already cached (🟢/🔵) · "
@@ -642,19 +799,15 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         return None
 
     selected_id = st.session_state.get("selected_visual_id")
-    # Resolve the persisted selection against the FULL catalog, not just
-    # the current page — so flipping pages or filters preserves it.
     selected_video: Optional[CatalogVideo] = next(
         (v for v in videos if v.video_id == selected_id), None
     )
 
-    # Pagination so 247 items don't all render at once.
-    PAGE_SIZE = 24
     page = st.session_state.get("gallery_page", 0)
     total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(page, total_pages - 1)
     start = page * PAGE_SIZE
-    page_videos = filtered[start:start + PAGE_SIZE]
+    page_videos = filtered[start : start + PAGE_SIZE]
 
     if selected_video is not None:
         st.success(
@@ -680,7 +833,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
                 f"{_format_duration(v.duration)} · "
                 f"{_channel_display_name(channels, v.channel_slug)}"
             )
-            is_active = (selected_id == v.video_id)
+            is_active = selected_id == v.video_id
             st.button(
                 "✓ Selected (click to deselect)" if is_active else "Select",
                 type=("primary" if is_active else "secondary"),
@@ -690,7 +843,6 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
                 use_container_width=True,
             )
 
-    # Pager
     if total_pages > 1:
         pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
         with pcol1:
@@ -700,11 +852,18 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         with pcol2:
             st.caption(f"Page {page + 1} / {total_pages}")
         with pcol3:
-            if st.button("Next ▶", disabled=page >= total_pages - 1, key="gallery_next"):
+            if st.button(
+                "Next ▶", disabled=page >= total_pages - 1, key="gallery_next"
+            ):
                 st.session_state["gallery_page"] = min(total_pages - 1, page + 1)
                 st.rerun()
 
     return selected_video
+
+
+# ---------------------------------------------------------------------------
+# Surah-render handler (tab_simple)
+# ---------------------------------------------------------------------------
 
 
 def _render_and_display(
@@ -714,21 +873,23 @@ def _render_and_display(
     metadata: OverlayMetadata,
     upscale: bool,
 ) -> None:
-    """Invoke Agent C's backend, stream logs, store the result in session."""
+    """Invoke the surah-numbers backend, stream logs, store the result."""
     assert st is not None
-    # Import here so that a missing contract function only breaks at render
-    # time, not at module import (lets the smoke test pass regardless).
     try:
         from yt_audio_filter.overlay_pipeline import run_overlay_from_surah_numbers
     except ImportError as exc:
         st.error(
             "Backend function `run_overlay_from_surah_numbers` is not "
-            "available yet. Agent C's pipeline extension hasn't landed.\n\n"
+            "available.\n\n"
             f"ImportError: {exc}"
         )
         return
 
     project_logger = logging.getLogger("yt_audio_filter")
+    # Review fix: scrub leftover handlers from any previous (possibly
+    # crashed) render cycle before we attach our pair.
+    _scrub_streamlit_handlers(project_logger)
+
     buf = _StreamlitLogBuffer()
     previous_level = project_logger.level
     project_logger.setLevel(logging.INFO)
@@ -737,8 +898,6 @@ def _render_and_display(
     status = st.status("Rendering...", expanded=True)
     log_placeholder = status.empty()
 
-    # A class so we can periodically flush the buffer to the UI from the
-    # logging handler. We override emit() to update Streamlit too.
     class _FlushingHandler(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
             log_placeholder.code(buf.snapshot() or "(waiting for logs)")
@@ -748,25 +907,30 @@ def _render_and_display(
 
     result = None
     try:
-        # Agent C's signature takes an optional output_path; we let them
-        # default to a NamedTemporaryFile internally per the design doc.
-        # We still pass ``output_path=None`` explicitly so the call is
-        # robust against a missing default.
-        result = run_overlay_from_surah_numbers(
-            surah_numbers=surah_numbers,
-            reciter_slug=reciter.slug,
-            visual_video_id=visual.video_id,
-            metadata=metadata,
-            output_path=None,
-            cache_dir=DEFAULT_CACHE_DIR,
-            upscale=upscale,
-            upload=False,
-        )
-        status.update(label="Render complete", state="complete")
-    except Exception as exc:  # noqa: BLE001 - surfacing to the UI
-        status.update(label=f"Render failed: {exc}", state="error")
-        st.exception(exc)
+        try:
+            result = run_overlay_from_surah_numbers(
+                surah_numbers=surah_numbers,
+                reciter_slug=reciter.slug,
+                visual_video_id=visual.video_id,
+                metadata=metadata,
+                output_path=None,
+                cache_dir=DEFAULT_CACHE_DIR,
+                upscale=upscale,
+                upload=False,
+            )
+            status.update(label="Render complete", state="complete")
+        except Exception as exc:  # noqa: BLE001 - surfacing to the UI
+            status.update(label=f"Render failed: {exc}", state="error")
+            if isinstance(exc, OverlayError):
+                # User-friendly: no traceback for our own validation errors.
+                st.error(exc.message)
+                if exc.details:
+                    st.caption(exc.details)
+            else:
+                st.exception(exc)
     finally:
+        # Review fix: handler removal must always run, even if the
+        # ``try`` above raised before assigning ``flusher``.
         project_logger.removeHandler(buf)
         project_logger.removeHandler(flusher)
         project_logger.setLevel(previous_level)
@@ -780,8 +944,7 @@ def _render_and_display(
         return
 
     st.session_state["rendered_path"] = output_path
-    # Stash identifying info so the later Upload button can call
-    # upload_rendered() without the user reselecting.
+    st.session_state["rendered_kind"] = "surah"
     st.session_state["rendered_title_vars"] = {
         "surah_numbers": list(surah_numbers),
         "reciter_slug": reciter.slug,
@@ -790,7 +953,112 @@ def _render_and_display(
     }
 
 
-def _preview_and_download(metadata: OverlayMetadata) -> None:
+# ---------------------------------------------------------------------------
+# Ayah-range render handler (tab_ayah)
+# ---------------------------------------------------------------------------
+
+
+def _render_ayah_ranges_and_display(
+    ranges: List[object],  # List[AyahRange] but lazy-imported
+    reciter_slug: str,
+    visual: CatalogVideo,
+    metadata: OverlayMetadata,
+    *,
+    upscale: bool,
+    preset_slug: str,
+    burn_subtitles: bool,
+    playlist_id: Optional[str],
+) -> None:
+    """Invoke the ayah-ranges backend, stream logs, store the result."""
+    assert st is not None
+    try:
+        from yt_audio_filter.overlay_pipeline import run_overlay_from_ayah_ranges
+    except ImportError as exc:
+        st.error(
+            "Backend function `run_overlay_from_ayah_ranges` is not "
+            f"available.\n\nImportError: {exc}"
+        )
+        return
+
+    project_logger = logging.getLogger("yt_audio_filter")
+    _scrub_streamlit_handlers(project_logger)
+
+    buf = _StreamlitLogBuffer()
+    previous_level = project_logger.level
+    project_logger.setLevel(logging.INFO)
+    project_logger.addHandler(buf)
+
+    status = st.status("Rendering ayah-range video...", expanded=True)
+    log_placeholder = status.empty()
+
+    class _FlushingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            log_placeholder.code(buf.snapshot() or "(waiting for logs)")
+
+    flusher = _FlushingHandler()
+    project_logger.addHandler(flusher)
+
+    result = None
+    try:
+        try:
+            result = run_overlay_from_ayah_ranges(
+                ranges=ranges,
+                reciter_slug=reciter_slug,
+                visual_video_id=visual.video_id,
+                metadata=metadata,
+                output_path=None,
+                cache_dir=DEFAULT_CACHE_DIR,
+                upscale=upscale,
+                upload=False,
+                playlist_id=playlist_id,
+                preset_slug=preset_slug,
+                burn_subtitles=burn_subtitles,
+            )
+            status.update(label="Render complete", state="complete")
+        except Exception as exc:  # noqa: BLE001
+            status.update(label=f"Render failed: {exc}", state="error")
+            if isinstance(exc, OverlayError):
+                st.error(exc.message)
+                if exc.details:
+                    st.caption(exc.details)
+            else:
+                st.exception(exc)
+    finally:
+        project_logger.removeHandler(buf)
+        project_logger.removeHandler(flusher)
+        project_logger.setLevel(previous_level)
+
+    if result is None:
+        return
+
+    output_path = Path(getattr(result, "output_path", ""))
+    if not output_path or not output_path.exists():
+        st.error(f"Render returned but output file is missing: {output_path!r}")
+        return
+
+    # Build a synthetic surah_numbers list for the upload metadata path —
+    # ``upload_rendered`` builds title vars from a list of surah numbers.
+    surah_numbers: List[int] = []
+    for rng in ranges:
+        # rng is an AyahRange dataclass; access by attribute.
+        surah_numbers.extend([rng.surah] * rng.repeats)  # type: ignore[attr-defined]
+
+    st.session_state["rendered_path"] = output_path
+    st.session_state["rendered_kind"] = "ayah"
+    st.session_state["rendered_title_vars"] = {
+        "surah_numbers": surah_numbers,
+        "reciter_slug": reciter_slug,
+        "visual_video_id": visual.video_id,
+        "visual_title": visual.title,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Preview / download / upload (shared between tab_simple and tab_ayah)
+# ---------------------------------------------------------------------------
+
+
+def _preview_and_download(metadata: OverlayMetadata, playlist_id: Optional[str]) -> None:
     """Show the rendered video inline plus a download + upload button."""
     assert st is not None
     path: Optional[Path] = st.session_state.get("rendered_path")
@@ -815,17 +1083,19 @@ def _preview_and_download(metadata: OverlayMetadata) -> None:
     )
 
     if st.button("Upload to YouTube", type="secondary"):
-        _upload_and_show(metadata)
+        _upload_and_show(metadata, playlist_id=playlist_id)
 
 
-def _upload_and_show(metadata: OverlayMetadata) -> None:
-    """Call Agent C's upload_rendered and display the resulting URL."""
+def _upload_and_show(
+    metadata: OverlayMetadata, *, playlist_id: Optional[str] = None
+) -> None:
+    """Call upload_rendered and display the resulting URL."""
     assert st is not None
     try:
         from yt_audio_filter.overlay_pipeline import upload_rendered
     except ImportError as exc:
         st.error(
-            "Backend function `upload_rendered` is not available yet.\n\n"
+            "Backend function `upload_rendered` is not available.\n\n"
             f"ImportError: {exc}"
         )
         return
@@ -844,7 +1114,13 @@ def _upload_and_show(metadata: OverlayMetadata) -> None:
                 surah_numbers=vars_["surah_numbers"],
                 reciter_slug=vars_["reciter_slug"],
                 visual_title=vars_.get("visual_title"),
+                playlist_id=playlist_id,
             )
+        except OverlayError as exc:
+            st.error(exc.message)
+            if exc.details:
+                st.caption(exc.details)
+            return
         except Exception as exc:  # noqa: BLE001
             st.exception(exc)
             return
@@ -854,31 +1130,21 @@ def _upload_and_show(metadata: OverlayMetadata) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Tab: Surah render (legacy flow)
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    """Streamlit ``main()``. Safe to import; renders when Streamlit is live."""
-    if st is None:
-        raise RuntimeError(
-            "streamlit is not installed. Install with: pip install -e '.[app]'"
-        )
-
-    st.set_page_config(page_title="yt-quran-overlay", layout="wide")
-    _init_session_state()
-
-    surahs = _surah_entries()
-    metadata, _metadata_path, upscale = _sidebar(surahs)
-
-    try:
-        channels = _load_channels_cached(str(DEFAULT_CHANNELS_PATH))
-    except Exception as e:
-        st.error(f"Cannot load channels: {e}")
-        channels = []
-
+def _render_tab_simple(
+    surahs: List[SurahEntry],
+    channels: List[CartoonChannel],
+    metadata: Optional[OverlayMetadata],
+    upscale: bool,
+    playlist_id: Optional[str],
+) -> None:
+    """The classic surah-render flow, nested in its own tab."""
+    assert st is not None
     surah_numbers = _surah_picker(surahs)
-    reciter = _reciter_picker()
+    reciter = _reciter_picker(only_everyayah=False, key="reciter_select")
     visual = _cartoon_gallery(channels)
 
     ready = (
@@ -888,7 +1154,6 @@ def main() -> None:
         and visual is not None
     )
 
-    # Validation feedback for the Render button.
     missing: List[str] = []
     if metadata is None:
         missing.append("valid metadata JSON")
@@ -918,10 +1183,477 @@ def main() -> None:
             upscale=upscale,
         )
 
-    # Keep the preview + upload section below so it stays visible after
-    # the render even though the button click triggered a rerun.
-    if metadata is not None:
-        _preview_and_download(metadata)
+    if (
+        metadata is not None
+        and st.session_state.get("rendered_kind") == "surah"
+    ):
+        _preview_and_download(metadata, playlist_id=playlist_id)
+
+
+# ---------------------------------------------------------------------------
+# Tab: Ayah range (memorisation)
+# ---------------------------------------------------------------------------
+
+
+def _add_ayah_range_callback() -> None:
+    """Append a fresh blank row to the session-state range list."""
+    if st is None:  # pragma: no cover
+        return
+    rows = list(st.session_state.get("ayah_ranges", []))
+    rows.append(
+        {
+            "surah": 1,
+            "start": 1,
+            "end": 1,
+            "repeats": 3,
+            "gap": 0.0,
+        }
+    )
+    st.session_state["ayah_ranges"] = rows
+
+
+def _remove_ayah_range_callback(idx: int) -> None:
+    if st is None:  # pragma: no cover
+        return
+    rows = list(st.session_state.get("ayah_ranges", []))
+    if 0 <= idx < len(rows):
+        del rows[idx]
+        st.session_state["ayah_ranges"] = rows
+
+
+def _render_tab_ayah(
+    channels: List[CartoonChannel],
+    metadata: Optional[OverlayMetadata],
+    upscale: bool,
+    preset_slug: str,
+    burn_subtitles: bool,
+    playlist_id: Optional[str],
+) -> None:
+    """Ayah-range memorisation tab (wishlist M2/M3)."""
+    assert st is not None
+
+    st.markdown(
+        "Build a memorisation render by listing one or more **(surah, "
+        "start..end, repeats, gap)** blocks. The audio plays each block "
+        "back-to-back with optional silent gaps between repeats — useful "
+        "for sabaq drilling."
+    )
+
+    # Initialise with one row when the list is empty so the user has
+    # something to fill in immediately.
+    if not st.session_state.get("ayah_ranges"):
+        _add_ayah_range_callback()
+
+    rows: List[dict] = list(st.session_state.get("ayah_ranges", []))
+
+    # ------------------------------------------------------------------
+    # Per-row controls
+    # ------------------------------------------------------------------
+    new_rows: List[dict] = []
+    for i, row in enumerate(rows):
+        with st.container(border=True):
+            st.caption(f"Range {i + 1}")
+            # Layout: surah | from | to | repeats | gap | (delete)
+            c_surah, c_from, c_to, c_rep, c_gap, c_del = st.columns(
+                [3, 2, 2, 2, 2, 1]
+            )
+            surah_options = list(range(1, 115))
+            label_by_number = {e.number: e.label for e in _surah_entries()}
+            with c_surah:
+                surah = st.selectbox(
+                    "Surah",
+                    options=surah_options,
+                    index=surah_options.index(row.get("surah", 1)),
+                    format_func=lambda n: label_by_number.get(n, str(n)),
+                    key=f"ayah_surah_{i}",
+                )
+            try:
+                max_ayah = ayah_data.ayah_count(surah)
+            except Exception:
+                max_ayah = 286
+            with c_from:
+                start = st.number_input(
+                    "From ayah",
+                    min_value=1,
+                    max_value=max_ayah,
+                    value=min(int(row.get("start", 1) or 1), max_ayah),
+                    step=1,
+                    key=f"ayah_start_{i}",
+                )
+            with c_to:
+                end_default = min(int(row.get("end", start) or start), max_ayah)
+                end_default = max(end_default, int(start))
+                end = st.number_input(
+                    "To ayah",
+                    min_value=int(start),
+                    max_value=max_ayah,
+                    value=end_default,
+                    step=1,
+                    key=f"ayah_end_{i}",
+                )
+            with c_rep:
+                repeats = st.number_input(
+                    "Repeats",
+                    min_value=1,
+                    max_value=99,
+                    value=int(row.get("repeats", 3) or 3),
+                    step=1,
+                    key=f"ayah_repeats_{i}",
+                )
+            with c_gap:
+                gap = st.number_input(
+                    "Gap (s)",
+                    min_value=0.0,
+                    max_value=5.0,
+                    value=float(row.get("gap", 0.0) or 0.0),
+                    step=0.5,
+                    key=f"ayah_gap_{i}",
+                    help=(
+                        "Silent gap between repeats. Use 3-5s for "
+                        "self-test prompt mode."
+                    ),
+                )
+            with c_del:
+                st.markdown("&nbsp;")  # spacer
+                st.button(
+                    "✕",
+                    key=f"ayah_del_{i}",
+                    help="Remove this range",
+                    on_click=_remove_ayah_range_callback,
+                    args=(i,),
+                )
+            new_rows.append(
+                {
+                    "surah": int(surah),
+                    "start": int(start),
+                    "end": int(end),
+                    "repeats": int(repeats),
+                    "gap": float(gap),
+                }
+            )
+    # Sync edits back to session state without losing additions/removals.
+    if new_rows != rows:
+        st.session_state["ayah_ranges"] = new_rows
+    rows = new_rows
+
+    st.button(
+        "+ Add another range",
+        on_click=_add_ayah_range_callback,
+        key="ayah_add_range",
+    )
+
+    st.divider()
+
+    # ------------------------------------------------------------------
+    # Reciter + visual
+    # ------------------------------------------------------------------
+    reciter = _reciter_picker(only_everyayah=True, key="reciter_select_ayah")
+    visual = _cartoon_gallery(channels)
+
+    # ------------------------------------------------------------------
+    # Validation + Render button
+    # ------------------------------------------------------------------
+    missing: List[str] = []
+    if metadata is None:
+        missing.append("valid metadata JSON")
+    if not rows:
+        missing.append("at least one ayah range")
+    if reciter is None:
+        missing.append("a reciter")
+    if visual is None:
+        missing.append("exactly one cartoon video")
+    if missing:
+        st.info("Select: " + ", ".join(missing))
+
+    ready = not missing
+
+    if st.button(
+        "Render ayah-range video",
+        type="primary",
+        disabled=not ready,
+        key="render_button_ayah",
+    ):
+        if not ready:
+            return
+        # Build AyahRange instances; surface validation errors inline.
+        try:
+            from yt_audio_filter.ayah_repeater import AyahRange
+
+            ranges = [
+                AyahRange(
+                    surah=r["surah"],
+                    start=r["start"],
+                    end=r["end"],
+                    repeats=r["repeats"],
+                    gap_seconds=r["gap"],
+                )
+                for r in rows
+            ]
+        except (ValueError, OverlayError) as exc:
+            st.error(f"Range validation failed: {exc}")
+            return
+
+        # Pick the EveryAyah short slug for the chosen reciter (the
+        # backend accepts both the short slug and the folder path).
+        short_slug = reciter.slug  # type: ignore[union-attr]
+        # Sanity check — the picker has already filtered, but be loud.
+        valid_qa_slugs = {
+            entry["quranicaudio_slug"]
+            for entry in ayah_data.EVERYAYAH_RECITERS.values()
+        }
+        if short_slug not in valid_qa_slugs:
+            st.error(
+                f"Reciter {short_slug!r} has no EveryAyah folder; "
+                "pick a different one."
+            )
+            return
+
+        assert metadata is not None and visual is not None
+        _render_ayah_ranges_and_display(
+            ranges=ranges,
+            reciter_slug=short_slug,
+            visual=visual,
+            metadata=metadata,
+            upscale=upscale,
+            preset_slug=preset_slug,
+            burn_subtitles=burn_subtitles,
+            playlist_id=playlist_id,
+        )
+
+    if (
+        metadata is not None
+        and st.session_state.get("rendered_kind") == "ayah"
+    ):
+        _preview_and_download(metadata, playlist_id=playlist_id)
+
+
+# ---------------------------------------------------------------------------
+# Tab: Weekly lesson plan
+# ---------------------------------------------------------------------------
+
+
+def _render_tab_lesson() -> None:
+    """Run a weekly lesson plan (wishlist C1).
+
+    Synchronous on purpose: ``lesson_planner.render_plan`` does N back-to-
+    back FFmpeg renders and the Streamlit thread is the simplest place
+    to drive it. We surface that with a clear warning before kick-off so
+    the teacher knows the page will sit unresponsive until done. A
+    threaded variant with a ``queue.Queue`` polled via ``st.empty`` is
+    a Phase 3 follow-up.
+    """
+    assert st is not None
+    st.markdown(
+        "Render every lesson in a JSON plan back-to-back. Useful for the "
+        "Saturday-evening 'prep next week's videos' workflow."
+    )
+
+    plan_path = st.text_input(
+        "Lesson plan JSON path",
+        value=st.session_state.get("lesson_plan_path", DEFAULT_LESSON_PLAN_PATH),
+        key="lesson_plan_path_input",
+        help="Path to a weekly-plan JSON. See examples/lesson-plan-week.json.",
+    )
+    st.session_state["lesson_plan_path"] = plan_path
+
+    cols = st.columns([1, 1, 4])
+    with cols[0]:
+        if st.button("Validate plan", key="lesson_validate"):
+            try:
+                from yt_audio_filter.lesson_planner import load_plan
+
+                plan = load_plan(Path(plan_path))
+                st.session_state["lesson_plan_validated"] = True
+                st.session_state["lesson_plan_error"] = ""
+                st.session_state["lesson_plan_summary"] = (
+                    f"{len(plan.lessons)} lesson(s); week of {plan.week_of}; "
+                    f"reciter={plan.default_reciter}"
+                )
+            except OverlayError as exc:
+                st.session_state["lesson_plan_validated"] = False
+                msg = exc.message
+                if exc.details:
+                    msg = f"{msg}\n\n{exc.details}"
+                st.session_state["lesson_plan_error"] = msg
+            except Exception as exc:  # noqa: BLE001
+                st.session_state["lesson_plan_validated"] = False
+                st.session_state["lesson_plan_error"] = repr(exc)
+
+    if st.session_state.get("lesson_plan_validated"):
+        st.success(
+            f"✅ Plan OK: {st.session_state.get('lesson_plan_summary', '')}"
+        )
+    elif st.session_state.get("lesson_plan_error"):
+        st.error(f"❌ {st.session_state['lesson_plan_error']}")
+
+    st.warning(
+        "Running the plan is **synchronous** — the page will be "
+        "unresponsive for the duration of every render. A 5-day plan can "
+        "take 30+ minutes depending on FFmpeg and upscale settings. "
+        "Don't close the tab; the renders write to disk as they "
+        "complete."
+    )
+
+    with cols[1]:
+        run_clicked = st.button(
+            "Run plan",
+            type="primary",
+            disabled=not st.session_state.get("lesson_plan_validated"),
+            key="lesson_run",
+        )
+
+    # Placeholders for streaming progress.
+    status_placeholder = st.empty()
+    results_placeholder = st.empty()
+    errors_placeholder = st.empty()
+
+    if run_clicked and st.session_state.get("lesson_plan_validated"):
+        try:
+            from yt_audio_filter.lesson_planner import load_plan, render_plan
+
+            plan = load_plan(Path(plan_path))
+        except OverlayError as exc:
+            st.error(f"Plan re-load failed: {exc.message}")
+            return
+
+        # Reset the previous run's tables.
+        st.session_state["lesson_results"] = []
+        st.session_state["lesson_errors"] = []
+
+        def on_lesson_start(lesson, idx: int, total: int) -> None:
+            status_placeholder.info(
+                f"Lesson {idx + 1}/{total}: {lesson.day} — surahs "
+                f"{lesson.surah_numbers}"
+            )
+
+        def on_lesson_done(lesson, output_path: Path) -> None:
+            st.session_state["lesson_results"].append(
+                (lesson.day, str(output_path))
+            )
+
+        def on_lesson_error(lesson, exc: Exception) -> None:
+            st.session_state["lesson_errors"].append((lesson.day, str(exc)))
+
+        try:
+            render_plan(
+                plan,
+                output_dir=DEFAULT_OUTPUT_DIR,
+                cache_dir=DEFAULT_CACHE_DIR,
+                on_lesson_start=on_lesson_start,
+                on_lesson_done=on_lesson_done,
+                on_lesson_error=on_lesson_error,
+            )
+            status_placeholder.success(
+                f"Plan finished: "
+                f"{len(st.session_state['lesson_results'])} OK, "
+                f"{len(st.session_state['lesson_errors'])} failed"
+            )
+        except Exception as exc:  # noqa: BLE001
+            status_placeholder.error(f"Plan run aborted: {exc}")
+
+    # Render the results / errors tables on every rerun so they survive
+    # navigation across tabs.
+    results = st.session_state.get("lesson_results") or []
+    errors = st.session_state.get("lesson_errors") or []
+
+    if results:
+        with results_placeholder.container():
+            st.subheader("Results")
+            st.table(
+                {
+                    "Day": [r[0] for r in results],
+                    "Output": [r[1] for r in results],
+                }
+            )
+            for day, path_str in results:
+                p = Path(path_str)
+                if p.exists():
+                    try:
+                        st.download_button(
+                            label=f"Download {p.name}",
+                            data=p.read_bytes(),
+                            file_name=p.name,
+                            mime="video/mp4",
+                            key=f"lesson_dl_{day}_{p.name}",
+                        )
+                    except OSError as exc:
+                        st.warning(f"Could not read {p}: {exc}")
+
+    if errors:
+        with errors_placeholder.container():
+            st.subheader("Errors")
+            st.table(
+                {
+                    "Day": [e[0] for e in errors],
+                    "Error": [e[1] for e in errors],
+                }
+            )
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    """Streamlit ``main()``. Safe to import; renders when Streamlit is live."""
+    if st is None:
+        raise RuntimeError(
+            "streamlit is not installed. Install with: pip install -e '.[app]'"
+        )
+
+    # set_page_config must be the FIRST Streamlit call on every rerun.
+    st.set_page_config(page_title="yt-quran-overlay", layout="wide")
+    _init_session_state()
+
+    surahs = _surah_entries()
+    (
+        metadata,
+        _metadata_path,
+        upscale,
+        preset_slug,
+        burn_subtitles,
+        playlist_id,
+    ) = _sidebar(surahs)
+
+    try:
+        channels = _load_channels_cached(str(DEFAULT_CHANNELS_PATH))
+    except Exception as e:
+        st.error(f"Cannot load channels: {e}")
+        channels = []
+
+    # Review fix: prune ``ch_<slug>`` keys for slugs that no longer exist.
+    _prune_stale_channel_filters(channels)
+
+    tab_simple, tab_ayah, tab_lesson = st.tabs(
+        [
+            "Surah render",
+            "Ayah range (memorization)",
+            "Weekly lesson plan",
+        ]
+    )
+
+    with tab_simple:
+        _render_tab_simple(
+            surahs=surahs,
+            channels=channels,
+            metadata=metadata,
+            upscale=upscale,
+            playlist_id=playlist_id,
+        )
+
+    with tab_ayah:
+        _render_tab_ayah(
+            channels=channels,
+            metadata=metadata,
+            upscale=upscale,
+            preset_slug=preset_slug,
+            burn_subtitles=burn_subtitles,
+            playlist_id=playlist_id,
+        )
+
+    with tab_lesson:
+        _render_tab_lesson()
 
 
 if __name__ == "__main__":  # pragma: no cover

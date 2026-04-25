@@ -106,16 +106,71 @@ def _logo_overlay_xy(position: str, padding: int = LOGO_PADDING_PX) -> Tuple[str
     return mapping[position]
 
 
+def _video_scale_chain(width: int, height: int, scale_mode: str) -> str:
+    """Return the FFmpeg scale-chain fragment for a given fit/fill mode.
+
+    ``"fit"`` (default) — straight ``scale=W:H`` keeping the source's pixel
+    contents intact. Aspect-mismatched sources stretch unless the caller
+    pre-letterboxes; this matches the long-standing behaviour of the overlay
+    pipeline.
+
+    ``"fill"`` — scale to cover the target box (using
+    ``force_original_aspect_ratio=increase``) then ``crop`` exactly to
+    ``WxH``. This preserves the source aspect ratio while filling the frame,
+    which is what the WhatsApp / Instagram presets need so a 16:9 cartoon
+    fed into a 9:16 frame doesn't show black bars top and bottom.
+    """
+    if scale_mode == "fit":
+        return f"scale={width}:{height},setsar=1"
+    if scale_mode == "fill":
+        return (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},setsar=1"
+        )
+    raise OverlayError(f"Invalid scale_mode: {scale_mode!r}")
+
+
+def _format_subtitles_filter(subtitles_path: Path) -> str:
+    """Return the ``subtitles=`` filter clause for the given subtitle path.
+
+    FFmpeg's ``subtitles`` filter is finicky about Windows-style paths:
+    backslashes are interpreted as escape characters and drive-letter
+    colons collide with the filter's own ``key:value`` separator. The
+    documented workaround is to use forward-slash paths and to wrap the
+    filename in single quotes; we additionally escape any literal
+    single-quote inside the path so a path like
+    ``C:/o'brien/sub.ass`` survives both the filter parser and libass's
+    own filename parser.
+    """
+    posix = subtitles_path.as_posix()
+    escaped = posix.replace("\\", "/").replace("'", r"'\''")
+    return f"subtitles=filename='{escaped}'"
+
+
 def build_filter_graph(
     resolution: Tuple[int, int],
     measurements: LoudnormMeasurements,
     logo: Optional[Tuple[Path, str]],
+    scale_mode: str = "fit",
+    subtitles_path: Optional[Path] = None,
 ) -> str:
     """Build the -filter_complex string.
 
-    logo: (path, position) or None.
+    Args:
+        resolution: target (width, height).
+        measurements: pre-measured loudnorm parameters from pass 1.
+        logo: ``(path, position)`` or ``None``.
+        scale_mode: ``"fit"`` (default, preserves prior behaviour) or
+            ``"fill"`` (crop to fill the target frame). Use ``"fill"`` for
+            vertical / square presets where letterboxing would waste screen
+            space.
+        subtitles_path: optional ``.ass``/``.srt`` to burn-in via libass.
+            ``None`` is a no-op (default). When non-None, ``subtitles=`` is
+            appended after scale + any logo overlay so the subtitles render
+            on top of everything else in the frame.
     """
     width, height = resolution
+    scale_chain = _video_scale_chain(width, height, scale_mode)
     loudnorm_clause = (
         f"loudnorm=I={LOUDNORM_TARGETS['I']}:TP={LOUDNORM_TARGETS['TP']}"
         f":LRA={LOUDNORM_TARGETS['LRA']}"
@@ -126,19 +181,24 @@ def build_filter_graph(
         f":offset={measurements.target_offset}"
         f":linear=true:print_format=summary"
     )
+    subs_clause = (
+        f",{_format_subtitles_filter(subtitles_path)}"
+        if subtitles_path is not None
+        else ""
+    )
 
     if logo is None:
         return (
-            f"[0:v]scale={width}:{height},setsar=1[vout];"
+            f"[0:v]{scale_chain}{subs_clause}[vout];"
             f"[1:a]{loudnorm_clause}[aout]"
         )
 
     _, position = logo
     x, y = _logo_overlay_xy(position)
     return (
-        f"[0:v]scale={width}:{height},setsar=1[vscaled];"
+        f"[0:v]{scale_chain}[vscaled];"
         f"[2:v]scale=w=iw*{LOGO_WIDTH_FRACTION}:h=-1[logo];"
-        f"[vscaled][logo]overlay=x={x}:y={y}[vout];"
+        f"[vscaled][logo]overlay=x={x}:y={y}{subs_clause}[vout];"
         f"[1:a]{loudnorm_clause}[aout]"
     )
 
@@ -152,12 +212,18 @@ def build_render_command(
     resolution: Tuple[int, int] = (1920, 1080),
     logo: Optional[Tuple[Path, str]] = None,
     force: bool = False,
+    subtitles_path: Optional[Path] = None,
 ) -> List[str]:
     """Construct the full ffmpeg render argv.
 
     Video input is preceded by `-stream_loop -1` (input option, must appear
     before `-i`). Output is bounded by `-t` using the pre-measured audio
     duration so the video loop stops when the recitation ends.
+
+    ``subtitles_path`` is optional. When provided, ``subtitles=`` is woven
+    into the filter graph and libass renders the file on top of every
+    rendered frame. ``None`` (default) preserves the prior behaviour
+    exactly — the produced argv is byte-identical.
     """
     cmd: List[str] = [
         "ffmpeg",
@@ -173,7 +239,8 @@ def build_render_command(
         cmd.extend(["-i", str(logo_path)])
 
     cmd.extend([
-        "-filter_complex", build_filter_graph(resolution, measurements, logo),
+        "-filter_complex",
+        build_filter_graph(resolution, measurements, logo, subtitles_path=subtitles_path),
         "-map", "[vout]",
         "-map", "[aout]",
     ])
@@ -229,8 +296,14 @@ def render_overlay(
     logo: Optional[Tuple[Path, str]] = None,
     max_duration: Optional[float] = None,
     force: bool = False,
+    subtitles_path: Optional[Path] = None,
 ) -> Path:
-    """Two-pass render: loudnorm analysis, then single ffmpeg render."""
+    """Two-pass render: loudnorm analysis, then single ffmpeg render.
+
+    ``subtitles_path`` (optional) is forwarded to :func:`build_render_command`
+    so a pre-built ``.ass`` track is burned into the output. ``None`` is a
+    no-op and preserves the prior behaviour byte-for-byte.
+    """
     ensure_ffmpeg_available()
 
     if not video_path.exists():
@@ -239,6 +312,8 @@ def render_overlay(
         raise OverlayError(f"Audio input not found: {audio_path}")
     if logo is not None and not logo[0].exists():
         raise OverlayError(f"Logo file not found: {logo[0]}")
+    if subtitles_path is not None and not subtitles_path.exists():
+        raise OverlayError(f"Subtitles file not found: {subtitles_path}")
     if output_path.exists() and not force:
         raise OverlayError(
             f"Output already exists: {output_path}",
@@ -268,6 +343,7 @@ def render_overlay(
         resolution=resolution,
         logo=logo,
         force=force,
+        subtitles_path=subtitles_path,
     )
 
     logger.info(f"Rendering overlay to {output_path.name} (pass 2/2)...")

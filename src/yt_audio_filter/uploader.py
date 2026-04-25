@@ -625,9 +625,13 @@ This video has been processed to remove background music while preserving speech
         logger.info(f"Upload complete! Video ID: {video_id}")
         logger.info(f"Video URL: https://youtube.com/watch?v={video_id}")
 
-        # Add to playlist if specified
+        # Add to playlist if specified. Failures here MUST NOT roll back the
+        # upload — log and continue.
         if playlist_id:
-            add_to_playlist(youtube, video_id, playlist_id)
+            try:
+                add_to_playlist(youtube, video_id, playlist_id)
+            except Exception as e:
+                logger.warning("Upload succeeded but playlist add failed: %s", e)
 
         return video_id
 
@@ -731,8 +735,13 @@ def upload_with_explicit_metadata(
         logger.info(f"Upload complete! Video ID: {video_id}")
         logger.info(f"Video URL: https://youtube.com/watch?v={video_id}")
 
+        # Add to playlist if specified. Failures here MUST NOT roll back the
+        # upload — log and continue.
         if playlist_id:
-            add_to_playlist(youtube, video_id, playlist_id)
+            try:
+                add_to_playlist(youtube, video_id, playlist_id)
+            except Exception as e:
+                logger.warning("Upload succeeded but playlist add failed: %s", e)
 
         return video_id
 
@@ -755,24 +764,28 @@ def add_to_playlist(youtube, video_id: str, playlist_id: str) -> None:
     """
     Add a video to a YouTube playlist.
 
+    This is a thin wrapper over ``playlistItems().insert``. Errors propagate
+    to the caller so the caller can decide whether playlist-add failure
+    should fail the broader operation or just be logged. The upload helpers
+    in this module wrap calls to this function in try/except and downgrade
+    failures to a warning, because a successful upload should never be rolled
+    back over a playlist-add error.
+
     Args:
-        youtube: Authenticated YouTube API service
-        video_id: YouTube video ID
-        playlist_id: YouTube playlist ID
+        youtube: Authenticated YouTube API service.
+        video_id: YouTube video ID just uploaded.
+        playlist_id: YouTube playlist ID to append to.
     """
-    try:
-        youtube.playlistItems().insert(
-            part="snippet",
-            body={
-                "snippet": {
-                    "playlistId": playlist_id,
-                    "resourceId": {"kind": "youtube#video", "videoId": video_id},
-                }
-            },
-        ).execute()
-        logger.info(f"Added to playlist: {playlist_id}")
-    except Exception as e:
-        logger.warning(f"Failed to add to playlist: {e}")
+    youtube.playlistItems().insert(
+        part="snippet",
+        body={
+            "snippet": {
+                "playlistId": playlist_id,
+                "resourceId": {"kind": "youtube#video", "videoId": video_id},
+            }
+        },
+    ).execute()
+    logger.info(f"Added to playlist: {playlist_id}")
 
 
 def list_playlists() -> list:
