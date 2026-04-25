@@ -430,6 +430,161 @@ def test_cli_numbers_mode_invalid_reciter_errors() -> None:
         _validate_source_args(args, _FakeParser())
 
 
+# ---------------------------------------------------------------------------
+# Per-surah repeat expansion (Streamlit "10× Al-Fatiha" feature)
+# ---------------------------------------------------------------------------
+
+
+@patch("yt_audio_filter.overlay_pipeline.render_overlay")
+@patch("yt_audio_filter.overlay_pipeline.download_stream")
+@patch("yt_audio_filter.overlay_pipeline.concat_audio")
+@patch("yt_audio_filter.cartoon_catalog.list_videos")
+@patch("yt_audio_filter.quran_audio_source.download_surah")
+@patch("yt_audio_filter.quran_audio_source.get_reciter")
+def test_repeats_concat_correctly(
+    mock_get_reciter: MagicMock,
+    mock_download_surah: MagicMock,
+    mock_list_videos: MagicMock,
+    mock_concat: MagicMock,
+    mock_download_stream: MagicMock,
+    mock_render: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """``[1, 1, 1, 5]`` produces 4 paths in order; auto-vars compact to ``(\u00d7N)``.
+
+    Mirrors the Streamlit UI's expansion of per-surah repeats. Because
+    ``download_surah`` caches by ``(surah_number, reciter_slug)``, calling
+    it 4 times with two distinct numbers is at most 2 actual network
+    fetches; the test mocks it so we just assert call ordering and that
+    ``concat_audio`` sees 4 file paths in the expected order.
+    """
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    mock_get_reciter.return_value = _reciter()
+
+    # download_surah caches by (number, reciter); same path returned for repeats.
+    p1 = cache_dir / "audio_surah_001_alafasy.mp3"
+    p1.write_bytes(b"\x00" * 16)
+    p5 = cache_dir / "audio_surah_005_alafasy.mp3"
+    p5.write_bytes(b"\x00" * 16)
+    by_number = {1: p1, 5: p5}
+    mock_download_surah.side_effect = lambda n, r, c: by_number[n]
+
+    video = _catalog_video("vid42", "Looping Visual")
+    mock_list_videos.return_value = [video]
+
+    visual_path = cache_dir / "video_only_vid42.mp4"
+    visual_path.write_bytes(b"\x00" * 16)
+    mock_download_stream.return_value = visual_path
+
+    def _fake_render(**kwargs):
+        kwargs["output_path"].write_bytes(b"\x00" * 16)
+        return kwargs["output_path"]
+
+    mock_render.side_effect = _fake_render
+
+    result = run_overlay_from_surah_numbers(
+        surah_numbers=[1, 1, 1, 5],
+        reciter_slug="alafasy",
+        visual_video_id="vid42",
+        metadata=_metadata(),
+        cache_dir=cache_dir,
+        upload=False,
+    )
+
+    # download_surah called exactly 4 times in the expanded order.
+    assert mock_download_surah.call_count == 4
+    called_numbers = [c.args[0] for c in mock_download_surah.call_args_list]
+    assert called_numbers == [1, 1, 1, 5]
+
+    # concat_audio was invoked with 4 paths in [p1, p1, p1, p5] order.
+    assert mock_concat.called
+    concat_inputs = mock_concat.call_args.args[0]
+    assert concat_inputs == [p1, p1, p1, p5]
+
+    # The output file lands somewhere; auto-vars compaction is checked
+    # separately below so a render-time error here doesn't mask it.
+    assert result.output_path.exists()
+    # Compact filename: AlFatiha-x3_+1more_vid42.mp4 (extras sums to 1).
+    assert "AlFatiha-x3" in result.output_path.name
+    assert "+1more" in result.output_path.name
+
+
+def test_compact_consecutive_duplicates_groups_runs() -> None:
+    """``_compact_consecutive_duplicates`` returns (number, run_length) pairs."""
+    from yt_audio_filter.overlay_pipeline import _compact_consecutive_duplicates
+
+    assert _compact_consecutive_duplicates([1]) == [(1, 1)]
+    assert _compact_consecutive_duplicates([1, 1, 1, 5]) == [(1, 3), (5, 1)]
+    assert _compact_consecutive_duplicates([1, 5, 1]) == [(1, 1), (5, 1), (1, 1)]
+    assert _compact_consecutive_duplicates([1] * 10) == [(1, 10)]
+
+
+def test_auto_vars_compact_repeated_surahs() -> None:
+    """``[1, 1, 1, 5]`` renders ``Al-Fatiha (\u00d73) + Al-Maidah`` for the title."""
+    from yt_audio_filter.overlay_pipeline import _build_surah_numbers_auto_vars
+
+    auto_vars = _build_surah_numbers_auto_vars(
+        surah_numbers=[1, 1, 1, 5],
+        reciter_display_name="Mishary Rashid Alafasy",
+        visual_title="Looping Visual",
+    )
+    assert auto_vars["detected_surah"] == "Al-Fatiha (\u00d73) + Al-Maidah"
+    # Tag stays alphanumeric (no parentheses) so it's hashtag-safe.
+    assert auto_vars["surah_tag"] == "AlFatihax3AlMaidah"
+    # surah_number is empty for multi-entry runs even when the run is a repeat.
+    assert auto_vars["surah_number"] == ""
+
+    # Single-surah, repeat=10 still compacts cleanly.
+    auto_vars_single = _build_surah_numbers_auto_vars(
+        surah_numbers=[1] * 10,
+        reciter_display_name="Mishary Rashid Alafasy",
+        visual_title="",
+    )
+    assert auto_vars_single["detected_surah"] == "Al-Fatiha (\u00d710)"
+    assert auto_vars_single["surah_tag"] == "AlFatihax10"
+
+
+def test_repeat_one_matches_single_surah_path(tmp_path: Path) -> None:
+    """``[1]`` produces identical filename + auto-vars to the existing single-surah path."""
+    from yt_audio_filter.overlay_pipeline import (
+        _build_surah_numbers_auto_vars,
+        _surah_numbers_output_filename,
+    )
+
+    name = _surah_numbers_output_filename([1], "vid42")
+    # Existing convention: no -xN suffix when count is 1.
+    assert name == "AlFatiha_vid42.mp4"
+
+    auto_vars = _build_surah_numbers_auto_vars(
+        surah_numbers=[1],
+        reciter_display_name="Mishary Rashid Alafasy",
+        visual_title="",
+    )
+    assert auto_vars["detected_surah"] == "Al-Fatiha"
+    assert auto_vars["surah_tag"] == "AlFatiha"
+    assert auto_vars["surah_number"] == "1"
+
+
+def test_concat_list_file_handles_duplicate_paths(tmp_path: Path) -> None:
+    """`_write_concat_list` writes one ``file '...'`` line per list entry,
+    even when the same path appears 10 times. Defensive check for the
+    Streamlit "10× Al-Fatiha" flow."""
+    from yt_audio_filter.audio_concat import _write_concat_list
+
+    audio = tmp_path / "audio_surah_001_alafasy.mp3"
+    audio.write_bytes(b"\x00" * 16)
+    list_path = tmp_path / ".concat_test.txt"
+    _write_concat_list([audio] * 10, list_path)
+    lines = list_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 10
+    # Every line should reference the same absolute path.
+    expected = str(audio.resolve()).replace("\\", "/")
+    for line in lines:
+        assert line == f"file '{expected}'"
+
+
 def test_cli_numbers_mode_parser_accepts_repeated_flags() -> None:
     from yt_audio_filter.overlay_cli import build_parser
 

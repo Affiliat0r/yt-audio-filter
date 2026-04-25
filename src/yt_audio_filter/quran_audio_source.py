@@ -140,6 +140,29 @@ def get_surah_url(surah_number: int, reciter: Union[str, Reciter]) -> str:
         ) from exc
 
 
+def is_surah_cached(
+    surah_number: int,
+    reciter_slug: str,
+    cache_dir: Path,
+) -> bool:
+    """Return True iff the per-surah MP3 for ``reciter_slug`` is on disk.
+
+    Mirrors the file-naming used by :func:`download_surah`
+    (``audio_surah_{num:03d}_{slug}.mp3``) and treats a zero-byte file as
+    not cached so an interrupted download isn't reported as ready. This
+    helper is intentionally read-only and side-effect free — callers can
+    invoke it 114 times per render without touching the network.
+    """
+    _validate_surah_number(surah_number)
+    if not isinstance(reciter_slug, str) or not reciter_slug.strip():
+        raise OverlayError("reciter_slug must be a non-empty string")
+    target = Path(cache_dir) / f"audio_surah_{surah_number:03d}_{reciter_slug}.mp3"
+    try:
+        return target.exists() and target.stat().st_size > 0
+    except OSError:
+        return False
+
+
 def download_surah(
     surah_number: int,
     reciter: Union[str, Reciter],

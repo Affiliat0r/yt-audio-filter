@@ -23,6 +23,7 @@ from yt_audio_filter.quran_audio_source import (
     download_surah,
     get_reciter,
     get_surah_url,
+    is_surah_cached,
     list_reciters,
 )
 
@@ -233,3 +234,53 @@ def test_download_surah_creates_cache_dir(tmp_path: Path) -> None:
         result = download_surah(2, "sudais", nested)
     assert result.parent == nested
     assert nested.is_dir()
+
+
+# ---------- is_surah_cached ----------
+
+
+def test_is_surah_cached_returns_true_for_existing_file(tmp_path: Path) -> None:
+    target = tmp_path / "audio_surah_001_alafasy.mp3"
+    target.write_bytes(b"fakemp3" * 100)
+    assert is_surah_cached(1, "alafasy", tmp_path) is True
+
+
+def test_is_surah_cached_returns_false_for_missing_file(tmp_path: Path) -> None:
+    assert is_surah_cached(1, "alafasy", tmp_path) is False
+    # Filling in for a different reciter / number doesn't satisfy the lookup.
+    (tmp_path / "audio_surah_001_sudais.mp3").write_bytes(b"x" * 16)
+    assert is_surah_cached(1, "alafasy", tmp_path) is False
+    assert is_surah_cached(2, "sudais", tmp_path) is False
+
+
+def test_is_surah_cached_returns_false_for_zero_byte_file(tmp_path: Path) -> None:
+    """An interrupted download leaves a zero-byte file; treat as not cached."""
+    target = tmp_path / "audio_surah_005_alafasy.mp3"
+    target.write_bytes(b"")
+    assert is_surah_cached(5, "alafasy", tmp_path) is False
+
+
+def test_is_surah_cached_handles_padded_numbers(tmp_path: Path) -> None:
+    """File-name uses zero-padded 3-digit form; the helper must match."""
+    (tmp_path / "audio_surah_036_alafasy.mp3").write_bytes(b"x" * 16)
+    assert is_surah_cached(36, "alafasy", tmp_path) is True
+    # The non-padded form should NOT exist (we never write it that way).
+    assert not (tmp_path / "audio_surah_36_alafasy.mp3").exists()
+
+
+def test_is_surah_cached_validates_inputs(tmp_path: Path) -> None:
+    with pytest.raises(OverlayError):
+        is_surah_cached(0, "alafasy", tmp_path)
+    with pytest.raises(OverlayError):
+        is_surah_cached(115, "alafasy", tmp_path)
+    with pytest.raises(OverlayError):
+        is_surah_cached(1, "", tmp_path)
+    with pytest.raises(OverlayError):
+        is_surah_cached(1, "   ", tmp_path)
+
+
+def test_is_surah_cached_does_not_create_cache_dir(tmp_path: Path) -> None:
+    """Pure read; should not mkdir on miss."""
+    nonexistent = tmp_path / "no" / "such" / "dir"
+    assert is_surah_cached(1, "alafasy", nonexistent) is False
+    assert not nonexistent.exists()

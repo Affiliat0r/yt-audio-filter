@@ -516,12 +516,37 @@ def _pascal_case(text: str) -> str:
     return "".join(p[:1].upper() + p[1:].lower() for p in parts if p)
 
 
+def _compact_consecutive_duplicates(surah_numbers: List[int]) -> List[Tuple[int, int]]:
+    """Group consecutive duplicates into ``(number, run_length)`` pairs.
+
+    ``[1, 1, 1, 5]`` -> ``[(1, 3), (5, 1)]``; ``[1, 5, 1]`` -> ``[(1, 1),
+    (5, 1), (1, 1)]`` (non-consecutive duplicates stay separate).
+    """
+    out: List[Tuple[int, int]] = []
+    for n in surah_numbers:
+        if out and out[-1][0] == n:
+            prev_n, prev_count = out[-1]
+            out[-1] = (prev_n, prev_count + 1)
+        else:
+            out.append((n, 1))
+    return out
+
+
 def _surah_numbers_output_filename(surah_numbers: List[int], video_id: str) -> str:
-    """`AlFatiha_<vid>.mp4` for one surah; `AlFatiha_+2more_<vid>.mp4` for several."""
-    first = get_surah_info(surah_numbers[0])
-    if len(surah_numbers) == 1:
-        return f"{first.tag}_{video_id}.mp4"
-    return f"{first.tag}_+{len(surah_numbers) - 1}more_{video_id}.mp4"
+    """`AlFatiha_<vid>.mp4` for one surah; `AlFatiha_+2more_<vid>.mp4` for several.
+
+    Consecutive duplicates compact to ``AlFatiha-x10_<vid>.mp4`` so a
+    "10× Al-Fatiha" render produces a sensible filename instead of
+    ``AlFatiha_+9more_<vid>.mp4``.
+    """
+    groups = _compact_consecutive_duplicates(surah_numbers)
+    first_n, first_count = groups[0]
+    first_info = get_surah_info(first_n)
+    first_tag = f"{first_info.tag}-x{first_count}" if first_count > 1 else first_info.tag
+    if len(groups) == 1:
+        return f"{first_tag}_{video_id}.mp4"
+    extras = sum(count for _, count in groups[1:])
+    return f"{first_tag}_+{extras}more_{video_id}.mp4"
 
 
 def _build_surah_numbers_auto_vars(
@@ -536,9 +561,19 @@ def _build_surah_numbers_auto_vars(
     map straight to ``SurahInfo`` via ``get_surah_info`` and the reciter's
     display name comes directly from the manifest.
     """
-    infos = [get_surah_info(n) for n in surah_numbers]
-    detected_surah = " + ".join(info.name for info in infos)
-    surah_tag = "".join(info.tag for info in infos)
+    groups = _compact_consecutive_duplicates(surah_numbers)
+    name_parts: List[str] = []
+    tag_parts: List[str] = []
+    for n, count in groups:
+        info = get_surah_info(n)
+        if count > 1:
+            name_parts.append(f"{info.name} (\u00d7{count})")
+            tag_parts.append(f"{info.tag}x{count}")
+        else:
+            name_parts.append(info.name)
+            tag_parts.append(info.tag)
+    detected_surah = " + ".join(name_parts)
+    surah_tag = "".join(tag_parts)
     surah_number_str = (
         str(surah_numbers[0]) if len(surah_numbers) == 1 else ""
     )
@@ -667,7 +702,12 @@ def run_overlay_from_surah_numbers(
         concatenated = audio_paths[0]
         logger.info("Single surah; skipping concat.")
     else:
-        joined_tag = "_".join(f"{n:03d}" for n in surah_numbers)
+        # Compact consecutive duplicates so 10x Al-Fatiha doesn't expand to
+        # ``001_001_..._001`` — produces ``001x10`` instead.
+        joined_tag = "_".join(
+            f"{n:03d}x{count}" if count > 1 else f"{n:03d}"
+            for n, count in _compact_consecutive_duplicates(surah_numbers)
+        )
         concatenated = cache_dir / f"concat_{reciter.slug}_{joined_tag}.m4a"
         if not (concatenated.exists() and concatenated.stat().st_size > 0):
             concat_audio(audio_paths, concatenated)

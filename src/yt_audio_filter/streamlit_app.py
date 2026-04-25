@@ -51,7 +51,7 @@ from yt_audio_filter.cartoon_catalog import (
     load_channels,
 )
 from yt_audio_filter.metadata import OverlayMetadata, load_metadata
-from yt_audio_filter.quran_audio_source import Reciter, list_reciters
+from yt_audio_filter.quran_audio_source import Reciter, is_surah_cached, list_reciters
 from yt_audio_filter.surah_detector import _SURAHS
 
 
@@ -195,6 +195,20 @@ def _load_reciters_cached() -> List[Reciter]:
 
 
 @_cache_data
+def _cached_surah_status(
+    reciter_slug: str, cache_dir_str: str, cache_bust: int
+) -> List[bool]:
+    """Return ``[is_cached_for_surah_1, ..., is_cached_for_surah_114]``.
+
+    Keyed on ``(reciter_slug, cache_dir, cache_bust)`` so the panel
+    doesn't re-stat 114 files on every Streamlit rerun. Cleared by
+    bumping ``st.session_state["audio_cache_bust"]``.
+    """
+    cache_dir = Path(cache_dir_str)
+    return [is_surah_cached(n, reciter_slug, cache_dir) for n in range(1, 115)]
+
+
+@_cache_data
 def _load_metadata_cached(path_str: str) -> Tuple[bool, str, Optional[OverlayMetadata]]:
     """Return ``(ok, message, metadata_or_none)`` for the sidebar badge."""
     try:
@@ -235,6 +249,7 @@ def _init_session_state() -> None:
     ss.setdefault("rendered_title_vars", {})
     ss.setdefault("selected_visual_id", None)
     ss.setdefault("catalog_cache_bust", 0)
+    ss.setdefault("audio_cache_bust", 0)
 
 
 def _sidebar(surahs: List[SurahEntry]) -> Tuple[Optional[OverlayMetadata], str, bool]:
@@ -290,10 +305,17 @@ def _sidebar(surahs: List[SurahEntry]) -> Tuple[Optional[OverlayMetadata], str, 
 
 
 def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
-    """Return the selected surah numbers in user-provided order."""
+    """Return the selected surah numbers expanded by per-surah repeats.
+
+    Order is preserved from the multiselect. Each row gets a number_input
+    (1..99); an entry with repeat=N expands to N consecutive copies of
+    that surah number, so the downstream pipeline concatenates the same
+    audio file N times.
+    """
     assert st is not None
     st.subheader("Surahs")
     by_label = {e.label: e.number for e in surahs}
+    label_by_number = {e.number: e.label for e in surahs}
     selected_labels = st.multiselect(
         "Surahs",
         options=list(by_label.keys()),
@@ -305,7 +327,32 @@ def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
         "Use the arrow keys after typing to filter. Order matters — audios "
         "are concatenated in the order you pick."
     )
-    return [by_label[label] for label in selected_labels]
+
+    selected_numbers = [by_label[label] for label in selected_labels]
+    if not selected_numbers:
+        return []
+
+    # Per-surah repeat widget. Defaults to 1 so the existing single-pick
+    # flow is unchanged. Cap at 99; that's already a 50+ minute video for
+    # most surahs.
+    st.caption("Audio plays in this order; the visual loops underneath.")
+    expanded: List[int] = []
+    for idx, number in enumerate(selected_numbers):
+        col_label, col_count = st.columns([3, 1])
+        with col_label:
+            st.write(label_by_number.get(number, str(number)))
+        with col_count:
+            repeats = st.number_input(
+                f"Repeat × for surah {number}",
+                min_value=1,
+                max_value=99,
+                value=1,
+                step=1,
+                key=f"surah_repeat_{idx}_{number}",
+                label_visibility="collapsed",
+            )
+        expanded.extend([number] * int(repeats))
+    return expanded
 
 
 def _reciter_picker() -> Optional[Reciter]:
@@ -332,7 +379,56 @@ def _reciter_picker() -> Optional[Reciter]:
     # its own HTTP range requests, so we don't burn bandwidth pre-fetching.
     st.audio(chosen.sample_url)
     st.caption(f"Slug: `{chosen.slug}`  —  sample: Al-Fatiha")
+
+    _cached_audio_panel(chosen)
     return chosen
+
+
+def _cached_audio_panel(reciter: Reciter) -> None:
+    """Collapsible panel showing which surahs are already cached on disk.
+
+    Mirrors the gallery's per-visual badge pattern but for the 114 surahs
+    of the currently-selected reciter. Informational only — selection
+    happens upstairs in the multiselect.
+    """
+    assert st is not None
+    cache_bust = st.session_state.get("audio_cache_bust", 0)
+    statuses = _cached_surah_status(reciter.slug, str(DEFAULT_CACHE_DIR), cache_bust)
+    cached_count = sum(1 for s in statuses if s)
+
+    expander_label = (
+        f"Cached audio for this reciter ({cached_count} / 114)"
+    )
+    with st.expander(expander_label, expanded=False):
+        st.caption(
+            f"{cached_count} / 114 surahs cached for "
+            f"**{reciter.display_name}**. Surahs not yet cached will "
+            f"download on render."
+        )
+
+        if st.button(
+            "🗑 Refresh cached-audio counts",
+            key=f"audio_cache_refresh_{reciter.slug}",
+            help=(
+                "Re-stat the cache directory. Use this if you've manually "
+                "moved/deleted files outside the app."
+            ),
+        ):
+            st.session_state["audio_cache_bust"] = (
+                st.session_state.get("audio_cache_bust", 0) + 1
+            )
+            st.rerun()
+
+        # Compact 4-column grid of "✅ 001. Al-Fatiha" / "·  002. Al-Baqarah".
+        # Avoids 114 separate widgets — just markdown lines.
+        surahs = _surah_entries()
+        cols = st.columns(4)
+        for i, entry in enumerate(surahs):
+            mark = "✅" if statuses[entry.number - 1] else "·"
+            with cols[i % 4]:
+                st.markdown(
+                    f"{mark} `{entry.number:03d}` {entry.name}",
+                )
 
 
 def _visual_download_state(video_id: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> str:
