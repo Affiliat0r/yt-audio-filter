@@ -654,14 +654,25 @@ def _prune_stale_channel_filters(channels: List[CartoonChannel]) -> None:
         del st.session_state[k]
 
 
-def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
-    """Thumbnail grid with filters, badges, and cached-first ordering."""
+def _cartoon_gallery(
+    channels: List[CartoonChannel], *, key_prefix: str = "gallery"
+) -> Optional[CatalogVideo]:
+    """Thumbnail grid with filters, badges, and cached-first ordering.
+
+    ``key_prefix`` namespaces every widget key so the same gallery can be
+    rendered in multiple tabs (e.g. simple + ayah) on the same page
+    without colliding on Streamlit's auto-generated element ids.
+    """
     assert st is not None
     st.subheader("Cartoon video")
 
     col_refresh, col_search = st.columns([1, 3])
     with col_refresh:
-        if st.button("Refresh catalog", help="Rescrape channels, then relist."):
+        if st.button(
+            "Refresh catalog",
+            help="Rescrape channels, then relist.",
+            key=f"{key_prefix}_refresh_catalog",
+        ):
             catalog_cache = DEFAULT_CACHE_DIR / CATALOG_CACHE_FILENAME
             if catalog_cache.exists():
                 try:
@@ -681,6 +692,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
                 "Filter by title",
                 value="",
                 placeholder="e.g. train, bus, dinosaur",
+                key=f"{key_prefix}_search",
             )
             .strip()
             .lower()
@@ -735,7 +747,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
                 if st.checkbox(
                     _channel_display_name(channels, slug),
                     value=True,
-                    key=f"ch_{slug}",
+                    key=f"{key_prefix}_ch_{slug}",
                 ):
                     active_slugs.add(slug)
 
@@ -750,6 +762,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
             "Title A-Z",
         ),
         index=0,
+        key=f"{key_prefix}_sort",
     )
 
     filter_signature = (search, sort_mode, frozenset(active_slugs))
@@ -837,7 +850,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
             st.button(
                 "✓ Selected (click to deselect)" if is_active else "Select",
                 type=("primary" if is_active else "secondary"),
-                key=f"sel_btn_{v.video_id}",
+                key=f"{key_prefix}_sel_btn_{v.video_id}",
                 on_click=_select_visual_callback,
                 args=(v.video_id,),
                 use_container_width=True,
@@ -846,14 +859,18 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
     if total_pages > 1:
         pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
         with pcol1:
-            if st.button("◀ Previous", disabled=page == 0, key="gallery_prev"):
+            if st.button(
+                "◀ Previous", disabled=page == 0, key=f"{key_prefix}_prev"
+            ):
                 st.session_state["gallery_page"] = max(0, page - 1)
                 st.rerun()
         with pcol2:
             st.caption(f"Page {page + 1} / {total_pages}")
         with pcol3:
             if st.button(
-                "Next ▶", disabled=page >= total_pages - 1, key="gallery_next"
+                "Next ▶",
+                disabled=page >= total_pages - 1,
+                key=f"{key_prefix}_next",
             ):
                 st.session_state["gallery_page"] = min(total_pages - 1, page + 1)
                 st.rerun()
@@ -1145,7 +1162,7 @@ def _render_tab_simple(
     assert st is not None
     surah_numbers = _surah_picker(surahs)
     reciter = _reciter_picker(only_everyayah=False, key="reciter_select")
-    visual = _cartoon_gallery(channels)
+    visual = _cartoon_gallery(channels, key_prefix="simple_gallery")
 
     ready = (
         metadata is not None
@@ -1348,7 +1365,7 @@ def _render_tab_ayah(
     # Reciter + visual
     # ------------------------------------------------------------------
     reciter = _reciter_picker(only_everyayah=True, key="reciter_select_ayah")
-    visual = _cartoon_gallery(channels)
+    visual = _cartoon_gallery(channels, key_prefix="ayah_gallery")
 
     # ------------------------------------------------------------------
     # Validation + Render button
