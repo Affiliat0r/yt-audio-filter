@@ -799,6 +799,7 @@ def upload_rendered(
     surah_numbers: List[int],
     reciter_slug: str,
     visual_title: Optional[str] = None,
+    playlist_id: Optional[str] = None,
 ) -> str:
     """Upload an already-rendered MP4 using the surah-numbers auto-var
     machinery. Used by the Streamlit "Upload" button, which fires after a
@@ -813,6 +814,9 @@ def upload_rendered(
         reciter_slug: Reciter slug from the render call.
         visual_title: Optional; passed through to $visual_title. When None,
             the placeholder is rendered as an empty string.
+        playlist_id: Optional YouTube playlist id; when set, the uploaded
+            video is appended to that playlist after upload (Phase 1
+            ``upload_with_explicit_metadata`` extension).
 
     Returns:
         The YouTube video id of the uploaded video.
@@ -850,4 +854,368 @@ def upload_rendered(
         tags=metadata.tags,
         category_id=metadata.category_id,
         privacy=metadata.privacy_status,
+        playlist_id=playlist_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ayah-range mode (Streamlit memorisation tab — wishlist M2/M3)
+# ---------------------------------------------------------------------------
+
+
+def _build_ayah_ranges_auto_vars(
+    ranges: "List[AyahRange]",
+    reciter_display_name: str,
+    visual_title: str,
+) -> dict:
+    """Auto-vars for the ayah-range upload path.
+
+    Title shape mirrors the design-doc example:
+    ``"Al-Fatiha (×3) — Ustadh Yusuf | Madrasah"`` for one range
+    ``AyahRange(1, 1, 7, 3)``. For multi-range plays we join range
+    descriptions with ``" + "``: e.g.
+    ``"Al-Fatiha:1-7 (×3) + Al-Baqarah:255 (×5)"``.
+    """
+    from .ayah_data import ayah_count as _ayah_count
+
+    parts: List[str] = []
+    tag_parts: List[str] = []
+    for rng in ranges:
+        info = get_surah_info(rng.surah)
+        max_ayah = _ayah_count(rng.surah)
+        if rng.start == 1 and rng.end == max_ayah:
+            ayat_label = info.name
+        else:
+            if rng.start == rng.end:
+                ayat_label = f"{info.name}:{rng.start}"
+            else:
+                ayat_label = f"{info.name}:{rng.start}-{rng.end}"
+        if rng.repeats > 1:
+            parts.append(f"{ayat_label} (\u00d7{rng.repeats})")
+            tag_parts.append(f"{info.tag}{rng.start}_{rng.end}x{rng.repeats}")
+        else:
+            parts.append(ayat_label)
+            tag_parts.append(f"{info.tag}{rng.start}_{rng.end}")
+    detected_surah = " + ".join(parts)
+    surah_tag = "".join(tag_parts)
+    reciter_tag = _pascal_case(reciter_display_name)
+    surah_number_str = (
+        str(ranges[0].surah) if len(ranges) == 1 else ""
+    )
+    return {
+        "audio_title": detected_surah,
+        "audio_channel": reciter_display_name,
+        "audio_uploader": reciter_display_name,
+        "detected_surah": detected_surah,
+        "surah_tag": surah_tag,
+        "surah_number": surah_number_str,
+        "surah_count": str(len(ranges)),
+        "reciter": reciter_display_name,
+        "reciter_tag": reciter_tag,
+        "visual_title": visual_title or "",
+    }
+
+
+def _ayah_ranges_output_filename(
+    ranges: "List[AyahRange]", video_id: str
+) -> str:
+    """``AlFatiha1_7x3_<vid>.mp4`` for one range; suffix ``_+Nmore`` for
+    multi-range plays. Mirrors :func:`_surah_numbers_output_filename` so
+    teachers see consistent file names across modes."""
+    head_tag = ""
+    first = ranges[0]
+    info = get_surah_info(first.surah)
+    head_tag = f"{info.tag}{first.start}_{first.end}"
+    if first.repeats > 1:
+        head_tag = f"{head_tag}x{first.repeats}"
+    if len(ranges) == 1:
+        return f"{head_tag}_{video_id}.mp4"
+    extras = len(ranges) - 1
+    return f"{head_tag}_+{extras}more_{video_id}.mp4"
+
+
+def run_overlay_from_ayah_ranges(
+    ranges: "List[AyahRange]",
+    reciter_slug: str,
+    visual_video_id: str,
+    metadata: OverlayMetadata,
+    *,
+    output_path: Optional[Path] = None,
+    cache_dir: Path = Path("cache"),
+    upscale: bool = False,
+    upload: bool = False,
+    playlist_id: Optional[str] = None,
+    preset_slug: Optional[str] = None,
+    burn_subtitles: bool = False,
+    extra_translation_id: Optional[int] = None,
+    cookies_from_browser: Optional[str] = None,
+    proxy: Optional[str] = None,
+) -> OverlayResult:
+    """Render an ayah-range repetition video for memorisation drills.
+
+    Backs the Streamlit "Ayah range (memorization)" tab. The audio track
+    is built from per-ayah EveryAyah MP3s via
+    :func:`ayah_repeater.build_ayah_audio` (range repetition + optional
+    silent gaps between repeats), then rendered against a cartoon visual
+    chosen the same way the surah-numbers flow does it.
+
+    Subtitle generation (``burn_subtitles=True``) is **v1: ayah-level
+    only**; word-level karaoke needs per-reciter timing data not yet
+    wired in. The .ass file is built from running-duration timestamps
+    of the cached per-ayah audio files, so each ayah subtitle event
+    runs from the start to the end of that ayah's audio segment.
+
+    Args:
+        ranges: One or more :class:`AyahRange` specs in playback order.
+        reciter_slug: EveryAyah short slug (see
+            :data:`ayah_data.EVERYAYAH_RECITERS`). Used both for audio
+            download and for resolving the reciter display name for the
+            upload title — when the slug is also a quranicaudio.com slug
+            we round-trip through ``quran_audio_source.get_reciter`` to
+            pull the display name; otherwise we fall back to the slug.
+        visual_video_id: Cartoon-catalog YouTube id (same as the
+            surah-numbers flow).
+        metadata: OverlayMetadata for the upload title/description
+            template + logo.
+        output_path: Destination MP4 (defaults to a tempfile).
+        cache_dir: Cache directory for ayah MP3s + visual + subtitles.
+        upscale: Real-ESRGAN upscale before render.
+        upload: After render, push to YouTube via
+            :func:`uploader.upload_with_explicit_metadata`.
+        playlist_id: Optional YouTube playlist id (forwarded on upload).
+        preset_slug: Optional :mod:`render_presets` slug; when set the
+            preset's resolution flows into ``render_overlay``. Otherwise
+            defaults to (1280, 720) under upscale else (1920, 1080).
+        burn_subtitles: Build a trilingual ``.ass`` file via
+            :mod:`subtitle_builder` and pass it through to
+            ``render_overlay`` for hard-burn into the output MP4. Falls
+            back silently if Quran text data is missing.
+        extra_translation_id: Optional Quran.com translation resource id
+            for the third subtitle line (e.g. 235 for the shipped Dutch
+            translation). Ignored when ``burn_subtitles`` is False.
+        cookies_from_browser: Forwarded to visual ``download_stream``.
+        proxy: Forwarded to visual ``download_stream``.
+
+    Returns:
+        OverlayResult with the rendered output_path. ``audio_url`` is
+        always the empty string (audio comes from EveryAyah, not YouTube).
+
+    Raises:
+        OverlayError: On validation, render, or catalog lookup failures.
+    """
+    from .ayah_repeater import AyahRange, build_ayah_audio
+    from .render_presets import get_preset
+
+    if not ranges:
+        raise OverlayError("run_overlay_from_ayah_ranges requires at least one AyahRange")
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve render resolution from preset, upscale fallback, or 1080p default.
+    if preset_slug:
+        preset = get_preset(preset_slug)
+        resolution = preset.resolution
+    else:
+        resolution = (1280, 720) if upscale else (1920, 1080)
+
+    # Resolve reciter display name. Many EveryAyah short slugs map 1:1 to
+    # quranicaudio slugs (alafasy, sudais, ...); when they don't we fall
+    # back to the EveryAyah display name in the EVERYAYAH_RECITERS table.
+    reciter_display = reciter_slug
+    try:
+        from .quran_audio_source import get_reciter
+
+        reciter_display = get_reciter(reciter_slug).display_name
+    except OverlayError:
+        from .ayah_data import EVERYAYAH_RECITERS
+
+        entry = EVERYAYAH_RECITERS.get(reciter_slug.lower())
+        if entry is not None:
+            reciter_display = entry.get("display_name", reciter_slug)
+
+    # Build the audio track first so we know where to read it from.
+    logger.info(
+        "[1/5] Building ayah-range audio (%d range(s)) for %s",
+        len(ranges),
+        reciter_slug,
+    )
+    # Stable, content-addressable audio filename so two runs with the same
+    # spec hit the cache.
+    audio_tag_parts: List[str] = []
+    for rng in ranges:
+        audio_tag_parts.append(
+            f"s{rng.surah:03d}_{rng.start:03d}_{rng.end:03d}"
+            f"x{rng.repeats}g{int(round(rng.gap_seconds * 1000))}"
+        )
+    audio_tag = "_".join(audio_tag_parts)
+    audio_output = cache_dir / f"ayah_audio_{reciter_slug}_{audio_tag}.m4a"
+    if not (audio_output.exists() and audio_output.stat().st_size > 0):
+        build_ayah_audio(
+            ranges=ranges,
+            reciter_slug=reciter_slug,
+            cache_dir=cache_dir,
+            output=audio_output,
+        )
+    else:
+        logger.info("Using cached ayah-range audio: %s", audio_output.name)
+
+    logger.info("[2/5] Resolving visual video_id against cartoon catalog...")
+    visual = _resolve_visual_video(visual_video_id, cache_dir)
+    visual_path = download_stream(
+        url=visual.url,
+        output_dir=cache_dir,
+        mode="video-only",
+        cookies_from_browser=cookies_from_browser,
+        proxy=proxy,
+    )
+
+    if upscale:
+        logger.info("[2.5/5] Upscaling visual via Real-ESRGAN (cached)...")
+        visual_path = get_or_create_upscaled(visual_path, visual.video_id, cache_dir)
+
+    # Optional subtitle .ass file via subtitle_builder.
+    subtitles_path: Optional[Path] = None
+    if burn_subtitles:
+        try:
+            from .quran_text import get_ayah_text
+            from .subtitle_builder import TimedAyah, build_ass_file
+
+            # Walk a running clock over the ranges; attach the slug to
+            # each AyahRange in-flight so _estimate_ayah_timings can find
+            # the cache files. We re-implement the clock here (rather
+            # than calling _estimate_ayah_timings) so we don't have to
+            # mutate the frozen AyahRange dataclass.
+            from .ffmpeg_overlay import get_audio_duration
+
+            timed_ayat: List[TimedAyah] = []
+            texts = {}
+            cursor = 0.0
+            for rng in ranges:
+                block_durations: List[float] = []
+                for ayah in range(rng.start, rng.end + 1):
+                    target = (
+                        cache_dir
+                        / f"audio_ayah_{reciter_slug.lower()}_s{rng.surah:03d}a{ayah:03d}.mp3"
+                    )
+                    if target.exists() and target.stat().st_size > 0:
+                        try:
+                            block_durations.append(get_audio_duration(target))
+                        except Exception:
+                            block_durations.append(2.0)
+                    else:
+                        block_durations.append(2.0)
+                    # Resolve the AyahText once; same key dedupes repeats.
+                    key = (rng.surah, ayah)
+                    if key not in texts:
+                        try:
+                            texts[key] = get_ayah_text(
+                                rng.surah,
+                                ayah,
+                                cache_dir=cache_dir,
+                                extra_translation_id=extra_translation_id,
+                            )
+                        except OverlayError as exc:
+                            logger.warning(
+                                "Skipping subtitle for %s: %s", key, exc
+                            )
+
+                for r in range(rng.repeats):
+                    if r > 0 and rng.gap_seconds > 0:
+                        cursor += rng.gap_seconds
+                    for ayah, dur in zip(
+                        range(rng.start, rng.end + 1), block_durations
+                    ):
+                        start = cursor
+                        end = cursor + dur
+                        timed_ayat.append(
+                            TimedAyah(
+                                surah=rng.surah,
+                                ayah=ayah,
+                                start_seconds=start,
+                                end_seconds=end,
+                            )
+                        )
+                        cursor = end
+
+            languages = ("ar", "en")
+            if extra_translation_id is not None:
+                languages = ("ar", "en", "extra")
+
+            subtitles_path = cache_dir / f"subs_{reciter_slug}_{audio_tag}.ass"
+            build_ass_file(
+                timed_ayat,
+                texts,
+                subtitles_path,
+                languages=languages,
+                karaoke=False,  # v1: ayah-level only
+                resolution_height=resolution[1],
+            )
+            logger.info("Built subtitle track: %s", subtitles_path.name)
+        except OverlayError as exc:
+            logger.warning("Subtitle build failed; rendering without: %s", exc)
+            subtitles_path = None
+
+    # Resolve destination.
+    if output_path is None:
+        output_name = _ayah_ranges_output_filename(ranges, visual.video_id)
+        output_path = Path(tempfile.gettempdir()) / output_name
+    else:
+        output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"[3/5] Rendering overlay -> {output_path.name}")
+    logo_arg: Optional[Tuple[Path, str]] = None
+    if metadata.logo_path is not None:
+        if not metadata.logo_path.exists():
+            raise OverlayError(f"Logo file not found: {metadata.logo_path}")
+        logo_arg = (metadata.logo_path, metadata.logo_position)
+    elif upload:
+        raise OverlayError(
+            "Upload requested but no logo configured",
+            "Set logo_path in metadata JSON or pass --logo on the CLI.",
+        )
+
+    render_overlay(
+        video_path=visual_path,
+        audio_path=audio_output,
+        output_path=output_path,
+        resolution=resolution,
+        logo=logo_arg,
+        max_duration=None,
+        force=True,
+        subtitles_path=subtitles_path,
+    )
+
+    uploaded_id: Optional[str] = None
+    if upload:
+        logger.info("[4/5] Uploading to YouTube...")
+        auto_vars = _build_ayah_ranges_auto_vars(
+            ranges=ranges,
+            reciter_display_name=reciter_display,
+            visual_title=visual.title,
+        )
+        title = metadata.render_title(extra_vars=auto_vars)
+        description = metadata.render_description(extra_vars=auto_vars)
+        logger.info(f"Resolved title: {title}")
+
+        from .uploader import upload_with_explicit_metadata
+
+        uploaded_id = upload_with_explicit_metadata(
+            video_path=output_path,
+            title=title,
+            description=description,
+            tags=metadata.tags,
+            category_id=metadata.category_id,
+            privacy=metadata.privacy_status,
+            playlist_id=playlist_id,
+        )
+    else:
+        logger.info("[4/5] Upload skipped (upload=False)")
+
+    return OverlayResult(
+        output_path=output_path,
+        uploaded_video_id=uploaded_id,
+        audio_url="",
+        video_url=visual.url,
     )
