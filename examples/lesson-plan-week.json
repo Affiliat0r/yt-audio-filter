@@ -1,0 +1,49 @@
+{
+  "week_of": "2026-05-04",
+  "channel_metadata_template": "metadata-surah-arrahman.json",
+  "default_reciter": "alafasy",
+  "default_visual_video_id": "0-XhgcYJuU8",
+  "default_upscale": false,
+  "lessons": [
+    {
+      "day": "Monday",
+      "title_override": null,
+      "surah_numbers": [1, 112, 113, 114],
+      "repeats": [3, 3, 3, 3]
+    },
+    {
+      "day": "Tuesday",
+      "surah_numbers": [95],
+      "repeats": [10],
+      "reciter_override": "sudais"
+    },
+    {
+      "day": "Wednesday",
+      "surah_numbers": [103, 108, 109],
+      "repeats": [5, 5, 5]
+    },
+    {
+      "day": "Thursday",
+      "surah_numbers": [97],
+      "repeats": [7]
+    },
+    {
+      "day": "Friday",
+      "surah_numbers": [18],
+      "repeats": [1],
+      "reciter_override": "sudais"
+    },
+    {
+      "day": "Saturday",
+      "surah_numbers": [36],
+      "repeats": [1],
+      "visual_video_id_override": "a4ynpTpD0rI",
+      "upscale_override": true
+    },
+    {
+      "day": "Sunday",
+      "surah_numbers": [67],
+      "repeats": [3]
+    }
+  ]
+}

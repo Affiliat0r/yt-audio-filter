@@ -52,6 +52,40 @@ def test_filter_graph_without_logo_has_no_overlay_node() -> None:
     assert "linear=true" in graph
 
 
+def test_filter_graph_default_scale_mode_is_fit() -> None:
+    """Backwards-compat: omitting scale_mode produces the original ``scale=W:H`` chain."""
+    graph = build_filter_graph(
+        resolution=(1920, 1080), measurements=_fake_measurements(), logo=None
+    )
+    # The plain scale form (no force_original_aspect_ratio, no crop) is the
+    # historical fit behaviour.
+    assert "scale=1920:1080" in graph
+    assert "force_original_aspect_ratio" not in graph
+    assert "crop=" not in graph
+
+
+def test_filter_graph_fill_mode_uses_scale_increase_and_crop() -> None:
+    """Vertical / square presets pass scale_mode='fill' to crop-cover the frame."""
+    graph = build_filter_graph(
+        resolution=(1080, 1920),
+        measurements=_fake_measurements(),
+        logo=None,
+        scale_mode="fill",
+    )
+    assert "scale=1080:1920:force_original_aspect_ratio=increase" in graph
+    assert "crop=1080:1920" in graph
+
+
+def test_filter_graph_invalid_scale_mode_raises() -> None:
+    with pytest.raises(OverlayError):
+        build_filter_graph(
+            resolution=(1920, 1080),
+            measurements=_fake_measurements(),
+            logo=None,
+            scale_mode="bogus",
+        )
+
+
 def test_filter_graph_with_logo_includes_overlay(tmp_path: Path) -> None:
     logo_path = tmp_path / "logo.png"
     logo_path.write_bytes(b"fake")
@@ -197,3 +231,119 @@ def test_video_encoder_args_falls_back_to_libx264(monkeypatch) -> None:
     args = ffmpeg_overlay._video_encoder_args()
     assert args[:2] == ["-c:v", "libx264"]
     assert "-crf" in args
+
+
+# ---------------------------------------------------------------------------
+# Subtitle burn-in (T1 / V1 follow-up).
+# ---------------------------------------------------------------------------
+
+
+def test_filter_graph_with_subtitles_appends_subtitles_filter(tmp_path: Path) -> None:
+    subs = tmp_path / "subs.ass"
+    subs.write_text("[Script Info]\n", encoding="utf-8")
+    graph = build_filter_graph(
+        resolution=(1920, 1080),
+        measurements=_fake_measurements(),
+        logo=None,
+        subtitles_path=subs,
+    )
+    assert "subtitles=" in graph
+    # Path uses forward slashes (libass / Windows-safe).
+    assert subs.as_posix() in graph
+    # Subtitles run after the scale chain, before the [vout] tag.
+    scale_idx = graph.index("scale=1920:1080")
+    subs_idx = graph.index("subtitles=")
+    vout_idx = graph.index("[vout]")
+    assert scale_idx < subs_idx < vout_idx
+
+
+def test_filter_graph_without_subtitles_unchanged() -> None:
+    """Default behaviour: no subtitle filter, byte-identical to before."""
+    graph = build_filter_graph(
+        resolution=(1920, 1080),
+        measurements=_fake_measurements(),
+        logo=None,
+    )
+    assert "subtitles=" not in graph
+
+
+def test_filter_graph_with_subtitles_and_logo(tmp_path: Path) -> None:
+    """Subtitle clause must come *after* the overlay, not inside the [vscaled] node."""
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"x")
+    subs = tmp_path / "subs.ass"
+    subs.write_text("[Script Info]\n", encoding="utf-8")
+    graph = build_filter_graph(
+        resolution=(1920, 1080),
+        measurements=_fake_measurements(),
+        logo=(logo, "top-left"),
+        subtitles_path=subs,
+    )
+    overlay_idx = graph.index("overlay=")
+    subs_idx = graph.index("subtitles=")
+    vout_idx = graph.index("[vout]")
+    assert overlay_idx < subs_idx < vout_idx
+
+
+def test_render_command_with_subtitles_filter(tmp_path: Path) -> None:
+    """The full render argv must contain the subtitles= clause when supplied."""
+    video = tmp_path / "v.mp4"
+    audio = tmp_path / "a.m4a"
+    out = tmp_path / "out.mp4"
+    subs = tmp_path / "subs.ass"
+    subs.write_text("[Script Info]\n", encoding="utf-8")
+    cmd = build_render_command(
+        video_path=video,
+        audio_path=audio,
+        output_path=out,
+        duration_seconds=10.0,
+        measurements=_fake_measurements(),
+        logo=None,
+        subtitles_path=subs,
+    )
+    fc_idx = cmd.index("-filter_complex")
+    filter_str = cmd[fc_idx + 1]
+    assert "subtitles=" in filter_str
+    assert subs.as_posix() in filter_str
+
+
+def test_render_command_without_subtitles_unchanged(tmp_path: Path) -> None:
+    """Omitting subtitles_path produces the same argv as before the feature."""
+    video = tmp_path / "v.mp4"
+    audio = tmp_path / "a.m4a"
+    out = tmp_path / "out.mp4"
+    cmd_with_default = build_render_command(
+        video_path=video,
+        audio_path=audio,
+        output_path=out,
+        duration_seconds=10.0,
+        measurements=_fake_measurements(),
+        logo=None,
+    )
+    cmd_explicit_none = build_render_command(
+        video_path=video,
+        audio_path=audio,
+        output_path=out,
+        duration_seconds=10.0,
+        measurements=_fake_measurements(),
+        logo=None,
+        subtitles_path=None,
+    )
+    assert cmd_with_default == cmd_explicit_none
+    fc_idx = cmd_with_default.index("-filter_complex")
+    filter_str = cmd_with_default[fc_idx + 1]
+    assert "subtitles=" not in filter_str
+
+
+def test_format_subtitles_filter_escapes_single_quotes(tmp_path: Path) -> None:
+    """Paths containing ' must survive the filter parser and libass."""
+    from yt_audio_filter.ffmpeg_overlay import _format_subtitles_filter
+
+    weird = tmp_path / "o'brien" / "subs.ass"
+    weird.parent.mkdir(parents=True, exist_ok=True)
+    weird.write_text("[Script Info]\n", encoding="utf-8")
+    clause = _format_subtitles_filter(weird)
+    # Escaped form: '\''
+    assert r"'\''" in clause
+    assert clause.startswith("subtitles=filename='")
+    assert clause.endswith("'")
