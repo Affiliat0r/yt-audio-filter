@@ -209,13 +209,28 @@ def _cached_surah_status(
 
 
 @_cache_data
-def _load_metadata_cached(path_str: str) -> Tuple[bool, str, Optional[OverlayMetadata]]:
-    """Return ``(ok, message, metadata_or_none)`` for the sidebar badge."""
+def _load_metadata_cached(
+    path_str: str, mtime_ns: int
+) -> Tuple[bool, str, Optional[OverlayMetadata]]:
+    """Return ``(ok, message, metadata_or_none)`` for the sidebar badge.
+
+    ``mtime_ns`` is part of the cache key so edits to the JSON file
+    are picked up on the next rerun without a process restart.
+    """
+    del mtime_ns  # only used for cache invalidation
     try:
         meta = load_metadata(Path(path_str))
     except Exception as exc:  # noqa: BLE001 - surface any validation error
         return False, str(exc), None
     return True, f"Loaded: {meta.title}", meta
+
+
+def _metadata_mtime_ns(path_str: str) -> int:
+    """Return the file's mtime_ns or 0 when missing (so the cache key is stable)."""
+    try:
+        return Path(path_str).stat().st_mtime_ns
+    except OSError:
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +277,9 @@ def _sidebar(surahs: List[SurahEntry]) -> Tuple[Optional[OverlayMetadata], str, 
         value=DEFAULT_METADATA_PATH,
         help="Path to the publish-metadata JSON. Used for the upload title/description template.",
     )
-    ok, msg, meta = _load_metadata_cached(metadata_path)
+    ok, msg, meta = _load_metadata_cached(
+        metadata_path, _metadata_mtime_ns(metadata_path)
+    )
     if ok:
         st.sidebar.success(f"Metadata OK: {msg}")
     else:
@@ -431,12 +448,50 @@ def _cached_audio_panel(reciter: Reciter) -> None:
                 )
 
 
-def _visual_download_state(video_id: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> str:
-    """Return one of: 'upscaled', 'downloaded', 'new' for the given video_id."""
-    if (cache_dir / f"upscaled_{video_id}.mp4").exists():
+@_cache_data
+def _visual_state_index(cache_dir_str: str, cache_bust: int) -> dict:
+    """Scan ``cache_dir`` once and return ``{video_id: state}``.
+
+    Caches one ``os.scandir`` pass instead of N×5 ``Path.exists`` calls
+    inside the gallery loop. Invalidated by bumping
+    ``st.session_state['visual_cache_bust']``.
+    """
+    import os
+
+    cache_dir = Path(cache_dir_str)
+    if not cache_dir.is_dir():
+        return {}
+    mapping: dict = {}
+    for entry in os.scandir(cache_dir):
+        if not entry.is_file():
+            continue
+        name = entry.name
+        if name.startswith("upscaled_") and name.endswith(".mp4"):
+            vid = name[len("upscaled_") : -len(".mp4")]
+            mapping[vid] = "upscaled"
+        elif name.startswith("video_"):
+            stem, _, _ext = name.rpartition(".")
+            if not stem:
+                continue
+            vid = stem[len("video_") :]
+            mapping.setdefault(vid, "downloaded")
+    return mapping
+
+
+def _visual_download_state(
+    video_id: str, index: Optional[dict] = None
+) -> str:
+    """Return ``'upscaled' | 'downloaded' | 'new'`` for ``video_id``.
+
+    Pass ``index`` from ``_visual_state_index`` to avoid re-stating; falls
+    back to the slow per-video path if no index is given (kept for tests).
+    """
+    if index is not None:
+        return index.get(video_id, "new")
+    if (DEFAULT_CACHE_DIR / f"upscaled_{video_id}.mp4").exists():
         return "upscaled"
     for ext in ("mp4", "m4a", "webm", "mkv"):
-        if (cache_dir / f"video_{video_id}.{ext}").exists():
+        if (DEFAULT_CACHE_DIR / f"video_{video_id}.{ext}").exists():
             return "downloaded"
     return "new"
 
@@ -448,34 +503,56 @@ _STATE_BADGE = {
 }
 
 
+def _select_visual_callback(video_id: str) -> None:
+    """Click handler for the per-tile Select button. Mutual-exclusion.
+
+    Used as ``on_click`` so the click is processed BEFORE the next
+    rerun renders, ensuring exactly one ``selected_visual_id`` survives
+    even if the click happens to be on a tile not currently visible.
+    """
+    if st is None:  # pragma: no cover
+        return
+    if st.session_state.get("selected_visual_id") == video_id:
+        st.session_state["selected_visual_id"] = None
+    else:
+        st.session_state["selected_visual_id"] = video_id
+
+
 def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
-    """Thumbnail grid with filters, badges, and cached-first ordering."""
+    """Thumbnail grid with filters, badges, and cached-first ordering.
+
+    Selection is tracked solely via ``st.session_state['selected_visual_id']``
+    and a click-callback per tile; the gallery does NOT clear the id when
+    the selected tile is offscreen, so paginating or filtering preserves
+    the user's choice.
+    """
     assert st is not None
     st.subheader("Cartoon video")
 
     col_refresh, col_search = st.columns([1, 3])
     with col_refresh:
-        refresh = st.toggle(
-            "Refresh catalog",
-            value=False,
-            help="Rescrape channels, then relist.",
-        )
+        # One-shot button; the previous st.toggle was sticky and re-deleted
+        # the catalog cache on every rerun for as long as it was ON.
+        if st.button("Refresh catalog", help="Rescrape channels, then relist."):
+            catalog_cache = DEFAULT_CACHE_DIR / CATALOG_CACHE_FILENAME
+            if catalog_cache.exists():
+                try:
+                    catalog_cache.unlink()
+                    st.info(f"Removed {catalog_cache}")
+                except OSError as e:
+                    st.warning(f"Could not remove {catalog_cache}: {e}")
+            st.session_state["catalog_cache_bust"] = (
+                st.session_state.get("catalog_cache_bust", 0) + 1
+            )
+            # Also nuke the on-disk visual-state index since cached files
+            # may have changed alongside the catalog.
+            st.session_state["visual_cache_bust"] = (
+                st.session_state.get("visual_cache_bust", 0) + 1
+            )
     with col_search:
         search = st.text_input(
             "Filter by title", value="", placeholder="e.g. train, bus, dinosaur"
         ).strip().lower()
-
-    if refresh:
-        catalog_cache = DEFAULT_CACHE_DIR / CATALOG_CACHE_FILENAME
-        if catalog_cache.exists():
-            try:
-                catalog_cache.unlink()
-                st.info(f"Removed {catalog_cache}")
-            except OSError as e:
-                st.warning(f"Could not remove {catalog_cache}: {e}")
-        st.session_state["catalog_cache_bust"] = (
-            st.session_state.get("catalog_cache_bust", 0) + 1
-        )
 
     try:
         videos = _list_videos_cached(
@@ -488,7 +565,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         return None
     if not videos:
         st.warning(
-            "No cartoon videos cached. Toggle 'Refresh catalog' or check "
+            "No cartoon videos cached. Click 'Refresh catalog' or check "
             "config/channels.json."
         )
         return None
@@ -514,8 +591,22 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         index=0,
     )
 
-    # Apply filter + sort (keep original catalog order as tiebreaker).
-    states = {v.video_id: _visual_download_state(v.video_id) for v in videos}
+    # Reset pagination whenever the filter / sort / search changes so a
+    # user on page 5 doesn't end up looking at unrelated tiles after
+    # narrowing the result set.
+    filter_signature = (search, sort_mode, frozenset(active_slugs))
+    last_signature = st.session_state.get("gallery_filter_signature")
+    if last_signature is not None and last_signature != filter_signature:
+        st.session_state["gallery_page"] = 0
+    st.session_state["gallery_filter_signature"] = filter_signature
+
+    # One stat-pass over the cache dir, memoized by st.cache_data — the
+    # previous per-video Path.exists ran ~5N stat calls per rerun.
+    state_index = _visual_state_index(
+        str(DEFAULT_CACHE_DIR),
+        st.session_state.get("visual_cache_bust", 0),
+    )
+
     filtered = [
         v for v in videos
         if v.channel_slug in active_slugs
@@ -524,7 +615,7 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
 
     rank_state = {"upscaled": 0, "downloaded": 1, "new": 2}
     if sort_mode == "Downloaded first":
-        filtered.sort(key=lambda v: (rank_state[states[v.video_id]], -v.view_count))
+        filtered.sort(key=lambda v: (rank_state[state_index.get(v.video_id, "new")], -v.view_count))
     elif sort_mode == "Longest first":
         filtered.sort(key=lambda v: -v.duration)
     elif sort_mode == "Shortest first":
@@ -537,7 +628,9 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         filtered.sort(key=lambda v: v.title.lower())
 
     n_total = len(videos)
-    n_cached = sum(1 for v in videos if states[v.video_id] != "new")
+    n_cached = sum(
+        1 for v in videos if state_index.get(v.video_id, "new") != "new"
+    )
     st.caption(
         f"Showing **{len(filtered)}** of **{n_total}** videos · "
         f"{n_cached} already cached (🟢/🔵) · "
@@ -549,16 +642,26 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
         return None
 
     selected_id = st.session_state.get("selected_visual_id")
-    selected_video: Optional[CatalogVideo] = None
+    # Resolve the persisted selection against the FULL catalog, not just
+    # the current page — so flipping pages or filters preserves it.
+    selected_video: Optional[CatalogVideo] = next(
+        (v for v in videos if v.video_id == selected_id), None
+    )
 
     # Pagination so 247 items don't all render at once.
     PAGE_SIZE = 24
-    page_key = "gallery_page"
-    page = st.session_state.get(page_key, 0)
+    page = st.session_state.get("gallery_page", 0)
     total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(page, total_pages - 1)
     start = page * PAGE_SIZE
     page_videos = filtered[start:start + PAGE_SIZE]
+
+    if selected_video is not None:
+        st.success(
+            f"Selected: **{selected_video.title}** · "
+            f"{_format_duration(selected_video.duration)} · "
+            f"{_channel_display_name(channels, selected_video.channel_slug)}"
+        )
 
     cols = st.columns(4)
     for i, v in enumerate(page_videos):
@@ -570,40 +673,36 @@ def _cartoon_gallery(channels: List[CartoonChannel]) -> Optional[CatalogVideo]:
                 st.image(thumb_path, use_container_width=True)
             else:
                 st.caption("(thumbnail unavailable)")
-            state = states[v.video_id]
+            state = state_index.get(v.video_id, "new")
             st.caption(
                 f"{_STATE_BADGE[state]}  \n"
                 f"**{v.title}**  \n"
                 f"{_format_duration(v.duration)} · "
                 f"{_channel_display_name(channels, v.channel_slug)}"
             )
-            is_selected = st.checkbox(
-                "Select",
-                key=f"sel_{v.video_id}",
-                value=(selected_id == v.video_id),
+            is_active = (selected_id == v.video_id)
+            st.button(
+                "✓ Selected (click to deselect)" if is_active else "Select",
+                type=("primary" if is_active else "secondary"),
+                key=f"sel_btn_{v.video_id}",
+                on_click=_select_visual_callback,
+                args=(v.video_id,),
+                use_container_width=True,
             )
-            if is_selected:
-                if selected_video is None:
-                    selected_video = v
-                if selected_id != v.video_id:
-                    st.session_state["selected_visual_id"] = v.video_id
 
     # Pager
     if total_pages > 1:
         pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
         with pcol1:
             if st.button("◀ Previous", disabled=page == 0, key="gallery_prev"):
-                st.session_state[page_key] = max(0, page - 1)
+                st.session_state["gallery_page"] = max(0, page - 1)
                 st.rerun()
         with pcol2:
             st.caption(f"Page {page + 1} / {total_pages}")
         with pcol3:
             if st.button("Next ▶", disabled=page >= total_pages - 1, key="gallery_next"):
-                st.session_state[page_key] = min(total_pages - 1, page + 1)
+                st.session_state["gallery_page"] = min(total_pages - 1, page + 1)
                 st.rerun()
-
-    if selected_video is None:
-        st.session_state["selected_visual_id"] = None
 
     return selected_video
 
