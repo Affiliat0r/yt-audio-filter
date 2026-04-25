@@ -12,6 +12,7 @@ def _ns_with(**kwargs):
         video_url=None, audio_url=None,
         video_channel=None, audio_channel=None,
         surah=None, count=1,
+        surah_numbers=None, reciter=None, video_id=None,
     )
     base.update(kwargs)
     return argparse.Namespace(**base)

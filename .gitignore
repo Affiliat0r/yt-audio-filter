@@ -94,8 +94,9 @@ ffmpeg-*-essentials_build/
 youtubeuploader.exe
 youtubeuploader.zip
 
-# Data and output directories
-data/
+# Data and output directories (top-level only; src/yt_audio_filter/data/
+# is an intentionally-tracked source data dir for reciter manifest etc.)
+/data/
 output/
 input/
 pot-provider/

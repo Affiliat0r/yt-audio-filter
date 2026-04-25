@@ -1,0 +1,147 @@
+{
+  "source": "quranicaudio.com",
+  "url_base": "https://download.quranicaudio.com/quran/",
+  "notes": "All reciters below were verified against https://quranicaudio.com/api/qaris. URL pattern is {url_base}{relative_path}{num:03d}.mp3 where num is the surah number (1..114). Four target reciters were unavailable on this source and substituted: (1) Salim Bahanan (no quranicaudio listing; commonly mirrored on Indonesian sites) -> Abdullah Awad al-Juhani; (2) Khalid Al-Jalil (not in dataset) -> AbdulBari ath-Thubaity; (3) Muhammad Thaha Al-Junayd (child reciter not on quranicaudio) -> Mahmoud Khaleel Al-Husary; (4) 'Saud bin Ibraheem Al-Shuraim' is the same person as 'Saud Al-Shuraim' (duplicate in the target list) -> Abu Bakr al-Shatri.",
+  "reciters": [
+    {
+      "slug": "alafasy",
+      "display_name": "Mishary Rashid Alafasy",
+      "arabic_name": "\u0645\u0634\u0627\u0631\u064a \u0631\u0627\u0634\u062f \u0627\u0644\u0639\u0641\u0627\u0633\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/mishaari_raashid_al_3afaasee/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/mishaari_raashid_al_3afaasee/{num:03d}.mp3"
+    },
+    {
+      "slug": "sudais",
+      "display_name": "Abdur-Rahman As-Sudais",
+      "arabic_name": "\u0639\u0628\u062f \u0627\u0644\u0631\u062d\u0645\u0646 \u0627\u0644\u0633\u062f\u064a\u0633",
+      "sample_url": "https://download.quranicaudio.com/quran/abdurrahmaan_as-sudays/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/abdurrahmaan_as-sudays/{num:03d}.mp3"
+    },
+    {
+      "slug": "shuraim",
+      "display_name": "Saud Al-Shuraim",
+      "arabic_name": "\u0633\u0639\u0648\u062f \u0627\u0644\u0634\u0631\u064a\u0645",
+      "sample_url": "https://download.quranicaudio.com/quran/sa3ood_al-shuraym/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/sa3ood_al-shuraym/{num:03d}.mp3"
+    },
+    {
+      "slug": "maher",
+      "display_name": "Maher Al-Muaiqly",
+      "arabic_name": "\u0645\u0627\u0647\u0631 \u0627\u0644\u0645\u0639\u064a\u0642\u0644\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/maher_256/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/maher_256/{num:03d}.mp3"
+    },
+    {
+      "slug": "ajmi",
+      "display_name": "Ahmed Al-Ajmi",
+      "arabic_name": "\u0623\u062d\u0645\u062f \u0628\u0646 \u0639\u0644\u064a \u0627\u0644\u0639\u062c\u0645\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/ahmed_ibn_3ali_al-3ajamy/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/ahmed_ibn_3ali_al-3ajamy/{num:03d}.mp3"
+    },
+    {
+      "slug": "abdulbasit",
+      "display_name": "Abdul Basit Abdul Samad",
+      "arabic_name": "\u0639\u0628\u062f \u0627\u0644\u0628\u0627\u0633\u0637 \u0639\u0628\u062f \u0627\u0644\u0635\u0645\u062f",
+      "sample_url": "https://download.quranicaudio.com/quran/abdul_basit_murattal/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/abdul_basit_murattal/{num:03d}.mp3"
+    },
+    {
+      "slug": "minshawi",
+      "display_name": "Muhammad Siddiq Al-Minshawi",
+      "arabic_name": "\u0645\u062d\u0645\u062f \u0635\u062f\u064a\u0642 \u0627\u0644\u0645\u0646\u0634\u0627\u0648\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/muhammad_siddeeq_al-minshaawee/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/muhammad_siddeeq_al-minshaawee/{num:03d}.mp3"
+    },
+    {
+      "slug": "ghamdi",
+      "display_name": "Saad Al-Ghamdi",
+      "arabic_name": "\u0633\u0639\u062f \u0627\u0644\u063a\u0627\u0645\u062f\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/sa3d_al-ghaamidi/complete/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/sa3d_al-ghaamidi/complete/{num:03d}.mp3"
+    },
+    {
+      "slug": "qatami",
+      "display_name": "Nasser Al-Qatami",
+      "arabic_name": "\u0646\u0627\u0635\u0631 \u0627\u0644\u0642\u0637\u0627\u0645\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/nasser_bin_ali_alqatami/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/nasser_bin_ali_alqatami/{num:03d}.mp3"
+    },
+    {
+      "slug": "dosari",
+      "display_name": "Yasser Ad-Dosari",
+      "arabic_name": "\u064a\u0627\u0633\u0631 \u0627\u0644\u062f\u0648\u0633\u0631\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/yasser_ad-dussary/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/yasser_ad-dussary/{num:03d}.mp3"
+    },
+    {
+      "slug": "abkar",
+      "display_name": "Idris Abkar",
+      "arabic_name": "\u0625\u062f\u0631\u064a\u0633 \u0623\u0628\u0643\u0631",
+      "sample_url": "https://download.quranicaudio.com/quran/idrees_abkar/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/idrees_abkar/{num:03d}.mp3"
+    },
+    {
+      "slug": "fares",
+      "display_name": "Fares Abbad",
+      "arabic_name": "\u0641\u0627\u0631\u0633 \u0639\u0628\u0627\u062f",
+      "sample_url": "https://download.quranicaudio.com/quran/fares/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/fares/{num:03d}.mp3"
+    },
+    {
+      "slug": "luhaidan",
+      "display_name": "Muhammad Al-Luhaidan",
+      "arabic_name": "\u0645\u062d\u0645\u062f \u0627\u0644\u0644\u062d\u064a\u062f\u0627\u0646",
+      "sample_url": "https://download.quranicaudio.com/quran/muhammad_alhaidan/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/muhammad_alhaidan/{num:03d}.mp3"
+    },
+    {
+      "slug": "rifai",
+      "display_name": "Hani Ar-Rifai",
+      "arabic_name": "\u0647\u0627\u0646\u064a \u0627\u0644\u0631\u0641\u0627\u0639\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/rifai/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/rifai/{num:03d}.mp3"
+    },
+    {
+      "slug": "basfar",
+      "display_name": "Abdullah Basfar",
+      "arabic_name": "\u0639\u0628\u062f \u0627\u0644\u0644\u0647 \u0628\u0633\u0641\u0631",
+      "sample_url": "https://download.quranicaudio.com/quran/abdullaah_basfar/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/abdullaah_basfar/{num:03d}.mp3"
+    },
+    {
+      "slug": "alijaber",
+      "display_name": "Ali Jaber",
+      "arabic_name": "\u0639\u0644\u064a \u062c\u0627\u0628\u0631",
+      "sample_url": "https://download.quranicaudio.com/quran/ali_jaber/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/ali_jaber/{num:03d}.mp3"
+    },
+    {
+      "slug": "juhani",
+      "display_name": "Abdullah Awad Al-Juhani",
+      "arabic_name": "\u0639\u0628\u062f \u0627\u0644\u0644\u0647 \u0639\u0648\u0627\u062f \u0627\u0644\u062c\u0647\u0646\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/abdullaah_3awwaad_al-juhaynee/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/abdullaah_3awwaad_al-juhaynee/{num:03d}.mp3"
+    },
+    {
+      "slug": "thubaity",
+      "display_name": "AbdulBari Ath-Thubaity",
+      "arabic_name": "\u0639\u0628\u062f \u0627\u0644\u0628\u0627\u0631\u064a \u0627\u0644\u062b\u0628\u064a\u062a\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/thubaity/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/thubaity/{num:03d}.mp3"
+    },
+    {
+      "slug": "husary",
+      "display_name": "Mahmoud Khalil Al-Husary",
+      "arabic_name": "\u0645\u062d\u0645\u0648\u062f \u062e\u0644\u064a\u0644 \u0627\u0644\u062d\u0635\u0631\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/mahmood_khaleel_al-husaree/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/mahmood_khaleel_al-husaree/{num:03d}.mp3"
+    },
+    {
+      "slug": "shatri",
+      "display_name": "Abu Bakr Al-Shatri",
+      "arabic_name": "\u0623\u0628\u0648 \u0628\u0643\u0631 \u0627\u0644\u0634\u0627\u0637\u0631\u064a",
+      "sample_url": "https://download.quranicaudio.com/quran/abu_bakr_ash-shaatree/001.mp3",
+      "url_pattern": "https://download.quranicaudio.com/quran/abu_bakr_ash-shaatree/{num:03d}.mp3"
+    }
+  ]
+}

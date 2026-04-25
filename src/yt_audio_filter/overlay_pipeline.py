@@ -3,6 +3,7 @@
 Four stages: download video-only, download audio-only, render, optional upload.
 """
 
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -15,7 +16,7 @@ from .logger import get_logger
 from .metadata import OverlayMetadata
 from .pair_selector import PairChoice, select_pairs
 from .pair_state import DEFAULT_STATE_PATH, load_state, save_state
-from .surah_detector import ReciterMatch, SurahMatch, detect_reciter, detect_surah
+from .surah_detector import ReciterMatch, SurahMatch, detect_reciter, detect_surah, get_surah_info
 from .surah_resolver import resolve_surahs
 from .upscale import get_or_create_upscaled
 from .youtube import download_stream, extract_video_id
@@ -499,4 +500,354 @@ def run_overlay_surahs(
         uploaded_video_id=uploaded_id,
         audio_url=resolved[0].url,
         video_url=visual.url,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Surah-number mode (Streamlit UI backend + CLI `--surah-number`)
+# ---------------------------------------------------------------------------
+
+
+def _pascal_case(text: str) -> str:
+    """PascalCase a free-form display name for use as an auto-var tag."""
+    import re
+
+    parts = re.split(r"[\s\-]+", (text or "").strip())
+    return "".join(p[:1].upper() + p[1:].lower() for p in parts if p)
+
+
+def _compact_consecutive_duplicates(surah_numbers: List[int]) -> List[Tuple[int, int]]:
+    """Group consecutive duplicates into ``(number, run_length)`` pairs.
+
+    ``[1, 1, 1, 5]`` -> ``[(1, 3), (5, 1)]``; ``[1, 5, 1]`` -> ``[(1, 1),
+    (5, 1), (1, 1)]`` (non-consecutive duplicates stay separate).
+    """
+    out: List[Tuple[int, int]] = []
+    for n in surah_numbers:
+        if out and out[-1][0] == n:
+            prev_n, prev_count = out[-1]
+            out[-1] = (prev_n, prev_count + 1)
+        else:
+            out.append((n, 1))
+    return out
+
+
+def _surah_numbers_output_filename(surah_numbers: List[int], video_id: str) -> str:
+    """`AlFatiha_<vid>.mp4` for one surah; `AlFatiha_+2more_<vid>.mp4` for several.
+
+    Consecutive duplicates compact to ``AlFatiha-x10_<vid>.mp4`` so a
+    "10× Al-Fatiha" render produces a sensible filename instead of
+    ``AlFatiha_+9more_<vid>.mp4``.
+    """
+    groups = _compact_consecutive_duplicates(surah_numbers)
+    first_n, first_count = groups[0]
+    first_info = get_surah_info(first_n)
+    first_tag = f"{first_info.tag}-x{first_count}" if first_count > 1 else first_info.tag
+    if len(groups) == 1:
+        return f"{first_tag}_{video_id}.mp4"
+    extras = sum(count for _, count in groups[1:])
+    return f"{first_tag}_+{extras}more_{video_id}.mp4"
+
+
+def _build_surah_numbers_auto_vars(
+    surah_numbers: List[int],
+    reciter_display_name: str,
+    visual_title: str,
+) -> dict:
+    """Build render auto-vars for the numbers-mode flow.
+
+    Unlike ``_build_surah_auto_vars`` which has to detect surahs/reciter from
+    free-form YouTube metadata, here everything is already canonical: numbers
+    map straight to ``SurahInfo`` via ``get_surah_info`` and the reciter's
+    display name comes directly from the manifest.
+    """
+    groups = _compact_consecutive_duplicates(surah_numbers)
+    name_parts: List[str] = []
+    tag_parts: List[str] = []
+    for n, count in groups:
+        info = get_surah_info(n)
+        if count > 1:
+            name_parts.append(f"{info.name} (\u00d7{count})")
+            tag_parts.append(f"{info.tag}x{count}")
+        else:
+            name_parts.append(info.name)
+            tag_parts.append(info.tag)
+    detected_surah = " + ".join(name_parts)
+    surah_tag = "".join(tag_parts)
+    surah_number_str = (
+        str(surah_numbers[0]) if len(surah_numbers) == 1 else ""
+    )
+    reciter_tag = _pascal_case(reciter_display_name)
+    return {
+        "audio_title": detected_surah,
+        "audio_channel": reciter_display_name,
+        "audio_uploader": reciter_display_name,
+        "detected_surah": detected_surah,
+        "surah_tag": surah_tag,
+        "surah_number": surah_number_str,
+        "surah_count": str(len(surah_numbers)),
+        "reciter": reciter_display_name,
+        "reciter_tag": reciter_tag,
+        "visual_title": visual_title or "",
+    }
+
+
+def _resolve_visual_video(visual_video_id: str, cache_dir: Path):
+    """Look up the given video_id in the cartoon catalog; raise a clear
+    OverlayError listing the first-10 available ids if it's missing."""
+    from .cartoon_catalog import list_videos
+
+    videos = list_videos(cache_dir=cache_dir)
+    for v in videos:
+        if v.video_id == visual_video_id:
+            return v
+    sample = ", ".join(v.video_id for v in videos[:10]) or "(catalog empty)"
+    raise OverlayError(
+        f"Unknown visual video_id: {visual_video_id!r}",
+        f"Not found in the cartoon catalog. First 10 available ids: {sample}",
+    )
+
+
+def run_overlay_from_surah_numbers(
+    surah_numbers: List[int],
+    reciter_slug: str,
+    visual_video_id: str,
+    metadata: OverlayMetadata,
+    *,
+    output_path: Optional[Path] = None,
+    cache_dir: Path = Path("cache"),
+    resolution: Optional[Tuple[int, int]] = None,
+    upscale: bool = False,
+    cookies_from_browser: Optional[str] = None,
+    proxy: Optional[str] = None,
+    upload: bool = False,
+) -> OverlayResult:
+    """Render a Quran-overlay video from canonical surah numbers + a
+    pre-selected visual from the cartoon catalog.
+
+    This is the backend for the Streamlit UI, and also the function behind
+    the CLI's ``--surah-number / --reciter / --video-id`` mode. Unlike
+    ``run_overlay_surahs`` it does NOT search channels for audio — instead
+    it downloads each surah directly from the ``quran_audio_source``
+    manifest (stable mirrors) and resolves the visual via the already-
+    scraped cartoon catalog.
+
+    Steps:
+        1. Download audio for every surah via quran_audio_source.
+        2. Concat via audio_concat.concat_audio (cached per joined ids).
+        3. Resolve visual_video_id → CatalogVideo → YouTube URL, then
+           download video-only via youtube.download_stream.
+        4. Optional upscale via upscale.get_or_create_upscaled.
+        5. Render via ffmpeg_overlay.render_overlay.
+        6. Optional upload via uploader.upload_with_explicit_metadata,
+           with auto-vars built from the canonical surah names + reciter.
+
+    Args:
+        surah_numbers: Ordered list of surah numbers (1..114). Concatenated
+            in the given order.
+        reciter_slug: Manifest slug from ``quran_audio_source.list_reciters``.
+        visual_video_id: YouTube video id resolved against
+            ``cartoon_catalog.list_videos``.
+        metadata: OverlayMetadata (title, description template, logo, tags).
+        output_path: Destination MP4. When None, a named temp file is used
+            (UI flow: preview + optional upload from the same path).
+        cache_dir: Cache directory for audio/visual downloads.
+        resolution: Render resolution. When None, defaults to (1280, 720)
+            under ``upscale=True`` else (1920, 1080).
+        upscale: Real-ESRGAN upscale the visual before rendering.
+        cookies_from_browser: Passed through to visual download_stream.
+        proxy: Passed through to visual download_stream.
+        upload: If True AND metadata.logo_path is set, upload after render.
+
+    Returns:
+        OverlayResult with output_path, uploaded_video_id (or None),
+        audio_url (empty string — the audio isn't a YouTube URL), and
+        video_url (the visual's YouTube URL).
+
+    Raises:
+        OverlayError: On validation / render / catalog lookup failures.
+    """
+    from .quran_audio_source import download_surah, get_reciter
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    if not surah_numbers:
+        raise OverlayError("run_overlay_from_surah_numbers requires at least one surah number")
+    for n in surah_numbers:
+        # get_surah_info validates range and integer-ness; re-raise as
+        # OverlayError so the CLI/UI get a consistent exception type.
+        try:
+            get_surah_info(n)
+        except ValueError as exc:
+            raise OverlayError(f"Invalid surah number: {n!r}", str(exc)) from exc
+
+    if resolution is None:
+        resolution = (1280, 720) if upscale else (1920, 1080)
+
+    reciter = get_reciter(reciter_slug)
+
+    logger.info(
+        "[1/5] Downloading audio for %d surah(s) from %s",
+        len(surah_numbers),
+        reciter.display_name,
+    )
+    audio_paths: List[Path] = []
+    for n in surah_numbers:
+        path = download_surah(n, reciter, cache_dir)
+        audio_paths.append(path)
+
+    logger.info(f"[2/5] Concatenating {len(audio_paths)} audio file(s)...")
+    if len(audio_paths) == 1:
+        concatenated = audio_paths[0]
+        logger.info("Single surah; skipping concat.")
+    else:
+        # Compact consecutive duplicates so 10x Al-Fatiha doesn't expand to
+        # ``001_001_..._001`` — produces ``001x10`` instead.
+        joined_tag = "_".join(
+            f"{n:03d}x{count}" if count > 1 else f"{n:03d}"
+            for n, count in _compact_consecutive_duplicates(surah_numbers)
+        )
+        concatenated = cache_dir / f"concat_{reciter.slug}_{joined_tag}.m4a"
+        if not (concatenated.exists() and concatenated.stat().st_size > 0):
+            concat_audio(audio_paths, concatenated)
+        else:
+            logger.info(f"Using cached concat: {concatenated.name}")
+
+    logger.info("[3/5] Resolving visual video_id against cartoon catalog...")
+    visual = _resolve_visual_video(visual_video_id, cache_dir)
+    visual_path = download_stream(
+        url=visual.url,
+        output_dir=cache_dir,
+        mode="video-only",
+        cookies_from_browser=cookies_from_browser,
+        proxy=proxy,
+    )
+
+    if upscale:
+        logger.info("[3.5/5] Upscaling visual via Real-ESRGAN (cached)...")
+        visual_path = get_or_create_upscaled(visual_path, visual.video_id, cache_dir)
+
+    # Resolve destination. None → tempfile under gettempdir() so the UI can
+    # preview + upload from the same path without owning an output dir.
+    if output_path is None:
+        output_name = _surah_numbers_output_filename(surah_numbers, visual.video_id)
+        output_path = Path(tempfile.gettempdir()) / output_name
+    else:
+        output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"[4/5] Rendering overlay → {output_path.name}")
+    logo_arg: Optional[Tuple[Path, str]] = None
+    if metadata.logo_path is not None:
+        if not metadata.logo_path.exists():
+            raise OverlayError(f"Logo file not found: {metadata.logo_path}")
+        logo_arg = (metadata.logo_path, metadata.logo_position)
+    elif upload:
+        raise OverlayError(
+            "Upload requested but no logo configured",
+            "Set logo_path in metadata JSON or pass --logo on the CLI.",
+        )
+
+    render_overlay(
+        video_path=visual_path,
+        audio_path=concatenated,
+        output_path=output_path,
+        resolution=resolution,
+        logo=logo_arg,
+        max_duration=None,
+        force=True,
+    )
+
+    uploaded_id: Optional[str] = None
+    if upload:
+        logger.info("[5/5] Uploading to YouTube...")
+        auto_vars = _build_surah_numbers_auto_vars(
+            surah_numbers=surah_numbers,
+            reciter_display_name=reciter.display_name,
+            visual_title=visual.title,
+        )
+        title = metadata.render_title(extra_vars=auto_vars)
+        description = metadata.render_description(extra_vars=auto_vars)
+        logger.info(f"Resolved title: {title}")
+
+        from .uploader import upload_with_explicit_metadata
+
+        uploaded_id = upload_with_explicit_metadata(
+            video_path=output_path,
+            title=title,
+            description=description,
+            tags=metadata.tags,
+            category_id=metadata.category_id,
+            privacy=metadata.privacy_status,
+        )
+    else:
+        logger.info("[5/5] Upload skipped (upload=False)")
+
+    return OverlayResult(
+        output_path=output_path,
+        uploaded_video_id=uploaded_id,
+        audio_url="",
+        video_url=visual.url,
+    )
+
+
+def upload_rendered(
+    rendered_path: Path,
+    metadata: OverlayMetadata,
+    *,
+    surah_numbers: List[int],
+    reciter_slug: str,
+    visual_title: Optional[str] = None,
+) -> str:
+    """Upload an already-rendered MP4 using the surah-numbers auto-var
+    machinery. Used by the Streamlit "Upload" button, which fires after a
+    successful render + preview.
+
+    Args:
+        rendered_path: The MP4 produced by run_overlay_from_surah_numbers.
+        metadata: Same OverlayMetadata used for the render, so title /
+            description templates render identically.
+        surah_numbers: Surah numbers from the render call (needed to build
+            the $detected_surah / $surah_tag vars).
+        reciter_slug: Reciter slug from the render call.
+        visual_title: Optional; passed through to $visual_title. When None,
+            the placeholder is rendered as an empty string.
+
+    Returns:
+        The YouTube video id of the uploaded video.
+
+    Raises:
+        OverlayError: If the rendered file is missing or the metadata
+            template references a placeholder we can't resolve.
+    """
+    from .quran_audio_source import get_reciter
+    from .uploader import upload_with_explicit_metadata
+
+    rendered_path = Path(rendered_path)
+    if not rendered_path.exists():
+        raise OverlayError(
+            f"Rendered file not found: {rendered_path}",
+            "upload_rendered requires a previously-produced MP4.",
+        )
+    if not surah_numbers:
+        raise OverlayError("upload_rendered requires at least one surah number")
+
+    reciter = get_reciter(reciter_slug)
+    auto_vars = _build_surah_numbers_auto_vars(
+        surah_numbers=surah_numbers,
+        reciter_display_name=reciter.display_name,
+        visual_title=visual_title or "",
+    )
+    title = metadata.render_title(extra_vars=auto_vars)
+    description = metadata.render_description(extra_vars=auto_vars)
+    logger.info(f"Uploading previously-rendered file with title: {title}")
+
+    return upload_with_explicit_metadata(
+        video_path=rendered_path,
+        title=title,
+        description=description,
+        tags=metadata.tags,
+        category_id=metadata.category_id,
+        privacy=metadata.privacy_status,
     )
