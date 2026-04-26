@@ -1412,6 +1412,238 @@ def _upload_and_show(
 # ---------------------------------------------------------------------------
 
 
+def _classify_music_removal_stage(stage: str) -> str:
+    """Map a ``pipeline.process_video`` stage name to one of three UI
+    buckets: ``"extract"``, ``"demucs"``, ``"remux"``, or ``"other"``.
+
+    The Streamlit tab renders three progress bars (one per bucket); the
+    callback uses this routing to advance the right one. Chunked-mode
+    stages share buckets with their non-chunked equivalents because
+    visually they're the same step (split/extract = setup,
+    process-chunks = Demucs work, concatenate = remux).
+    """
+    s = (stage or "").strip().lower()
+    if not s:
+        return "other"
+    if "extract" in s or "split" in s:
+        return "extract"
+    if "isolat" in s or "demucs" in s or "vocal" in s or "process chunks" in s:
+        return "demucs"
+    if "remux" in s or "concatenate" in s:
+        return "remux"
+    return "other"
+
+
+def _render_music_removal_and_display(
+    youtube_url: str,
+    privacy: str,
+    do_upload: bool,
+    playlist_id: Optional[str],
+) -> None:
+    """Download the YouTube video, run ``pipeline.process_video`` to
+    strip background music via Demucs, store the result in session
+    state, and (optionally) upload with auto-SEO metadata.
+
+    Streams progress via three ``st.progress`` bars routed through
+    :func:`_classify_music_removal_stage`.
+    """
+    assert st is not None
+    try:
+        from yt_audio_filter.pipeline import process_video
+        from yt_audio_filter.youtube import download_youtube_video, is_youtube_url
+    except ImportError as exc:
+        st.error(f"Backend imports failed: {exc}")
+        return
+
+    if not is_youtube_url(youtube_url):
+        st.error("Please enter a valid YouTube URL.")
+        return
+
+    cache_dir = DEFAULT_CACHE_DIR / "youtube"
+    output_dir = DEFAULT_CACHE_DIR / "music_removed"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    st.markdown("**1/2 — Downloading source video**")
+    with st.spinner("Downloading from YouTube..."):
+        try:
+            video_metadata = download_youtube_video(
+                url=youtube_url,
+                output_dir=cache_dir,
+                use_cache=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Download failed: {exc!r}")
+            return
+
+    st.markdown(
+        f"**2/2 — Removing music** "
+        f"({video_metadata.duration//60}:{video_metadata.duration%60:02d}, "
+        f"~30-60s per minute on GPU)"
+    )
+
+    bar_extract = st.progress(0, text="Extract audio")
+    bar_demucs = st.progress(0, text="Isolate vocals (Demucs)")
+    bar_remux = st.progress(0, text="Remux video")
+
+    def on_progress(stage: str, percent: int, _info: Optional[dict] = None) -> None:
+        bucket = _classify_music_removal_stage(stage)
+        try:
+            pct = max(0, min(100, int(percent)))
+        except (TypeError, ValueError):
+            return
+        if bucket == "extract":
+            bar_extract.progress(pct, text=f"Extract audio · {pct}%")
+        elif bucket == "demucs":
+            bar_demucs.progress(pct, text=f"Isolate vocals · {pct}%")
+        elif bucket == "remux":
+            bar_remux.progress(pct, text=f"Remux video · {pct}%")
+
+    output_path = output_dir / f"music_removed_{video_metadata.video_id}.mp4"
+    try:
+        process_video(
+            input_path=video_metadata.file_path,
+            output_path=output_path,
+            progress_callback=on_progress,
+        )
+    except Exception as exc:  # noqa: BLE001
+        st.exception(exc)
+        return
+
+    st.session_state["rendered_path"] = output_path
+    st.session_state["rendered_kind"] = "music_removal"
+    st.session_state["music_removal_metadata"] = video_metadata
+
+    st.success(f"Music removed: {output_path}")
+    try:
+        st.video(str(output_path))
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"Inline preview failed ({exc}); use the download button.")
+    try:
+        data = output_path.read_bytes()
+        st.download_button(
+            label="Download MP4",
+            data=data,
+            file_name=output_path.name,
+            mime="video/mp4",
+        )
+    except OSError as exc:
+        st.error(f"Cannot read rendered file: {exc}")
+
+    if do_upload:
+        from yt_audio_filter.uploader import upload_to_youtube
+
+        st.markdown("**Uploading to YouTube** (auto-SEO metadata)")
+        with st.spinner("Uploading..."):
+            try:
+                video_id = upload_to_youtube(
+                    video_path=output_path,
+                    original_metadata=video_metadata,
+                    privacy=privacy,
+                    playlist_id=playlist_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.exception(exc)
+                return
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        st.success(f"Uploaded: {url}")
+        st.markdown(f"[Open on YouTube]({url})")
+
+
+def _render_tab_music_removal(playlist_id: Optional[str]) -> None:
+    """The "Music removal" tab — strip background music from a YouTube
+    video using Demucs, optionally upload with auto-SEO metadata.
+
+    No metadata template, no surah picker, no cartoon gallery. Single
+    URL in, single MP4 out (with optional upload). Reuses the legacy
+    music-removal pipeline (`pipeline.process_video`) verbatim — this is
+    just the Streamlit-side wiring that the legacy CLI users already
+    have via ``yt-audio-filter <url>``.
+    """
+    assert st is not None
+    st.subheader("Music removal — strip background music with Demucs")
+    st.caption(
+        "Removes music from a YouTube video while preserving vocals / "
+        "dialogue. Output is the original video re-muxed with the "
+        "isolated vocal track. Uses your GPU (CUDA) when available."
+    )
+
+    url = st.text_input(
+        "YouTube URL",
+        value="",
+        placeholder="https://www.youtube.com/watch?v=...",
+        key="music_removal_url",
+        help="Paste a YouTube URL. Long videos (>30 min) auto-chunk.",
+    )
+
+    col_upload, col_privacy = st.columns([1, 1])
+    with col_upload:
+        do_upload = st.checkbox(
+            "Upload to YouTube after processing",
+            value=False,
+            key="music_removal_upload",
+        )
+    with col_privacy:
+        privacy = st.selectbox(
+            "Privacy",
+            options=("private", "unlisted", "public"),
+            index=0,
+            key="music_removal_privacy",
+            help="Only used when 'Upload' is checked. Private is safest for first runs.",
+            disabled=not do_upload,
+        )
+
+    ready = bool(url.strip())
+    if not ready:
+        st.info("Paste a YouTube URL to enable Process.")
+
+    process_clicked = st.button(
+        "Process",
+        type="primary",
+        disabled=not ready,
+        key="music_removal_process",
+    )
+
+    if process_clicked and ready:
+        _render_music_removal_and_display(
+            youtube_url=url.strip(),
+            privacy=privacy,
+            do_upload=do_upload,
+            playlist_id=playlist_id,
+        )
+
+    # Allow a one-click upload AFTER an initial render (if the user did
+    # not check "Upload" first). Mirrors the surah/ayah-tab pattern.
+    rp = st.session_state.get("rendered_path")
+    rk = st.session_state.get("rendered_kind")
+    if rp and rk == "music_removal" and not process_clicked:
+        st.divider()
+        st.caption("Last music-removed file is cached in session.")
+        if st.button(
+            "Upload last result to YouTube",
+            type="secondary",
+            key="music_removal_upload_last",
+        ):
+            md = st.session_state.get("music_removal_metadata")
+            if md is None:
+                st.error("Source metadata is missing from session; rerun Process.")
+                return
+            from yt_audio_filter.uploader import upload_to_youtube
+
+            with st.spinner("Uploading..."):
+                try:
+                    video_id = upload_to_youtube(
+                        video_path=rp,
+                        original_metadata=md,
+                        privacy=privacy,
+                        playlist_id=playlist_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    st.exception(exc)
+                    return
+            url_out = f"https://www.youtube.com/watch?v={video_id}"
+            st.success(f"Uploaded: {url_out}")
+
+
 def _render_tab_simple(
     surahs: List[SurahEntry],
     channels: List[CartoonChannel],
@@ -1903,11 +2135,12 @@ def main() -> None:
     # Review fix: prune ``ch_<slug>`` keys for slugs that no longer exist.
     _prune_stale_channel_filters(channels)
 
-    tab_simple, tab_ayah, tab_lesson = st.tabs(
+    tab_simple, tab_ayah, tab_lesson, tab_music = st.tabs(
         [
             "Surah render",
             "Ayah range (memorization)",
             "Weekly lesson plan",
+            "Music removal",
         ]
     )
 
@@ -1932,6 +2165,9 @@ def main() -> None:
 
     with tab_lesson:
         _render_tab_lesson()
+
+    with tab_music:
+        _render_tab_music_removal(playlist_id=playlist_id)
 
 
 if __name__ == "__main__":  # pragma: no cover
