@@ -10,7 +10,12 @@ from .ffmpeg_path import setup_ffmpeg_path
 from .logger import setup_logger
 from .pipeline import process_video
 from .utils import create_temp_dir, generate_output_path
-from .youtube import VideoMetadata, download_youtube_video, ensure_ytdlp_available, is_youtube_url
+from .youtube import (
+    VideoMetadata,
+    download_video_with_metadata,
+    ensure_ytdlp_available,
+    is_youtube_url,
+)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -311,15 +316,17 @@ def main(args=None) -> int:
             cache_dir = Path.cwd() / "cache" / "youtube"
             cache_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download the video and get metadata (uses cache if available)
-            gui_exe_path = Path(parsed.gui_downloader_path) if parsed.gui_downloader_path else None
-            video_metadata = download_youtube_video(
+            # Download the video and get metadata via the SHARED chain
+            # (pytubefix → yt-dlp), the same one ``yt-quran-overlay`` uses.
+            # The legacy ``download_youtube_video`` chain
+            # (Invidious / Piped / Cobalt / YTDownloader.exe) is no longer
+            # invoked from the CLI; ``--cookies-from-browser`` / ``--proxy``
+            # / ``--gui-downloader-path`` arguments are accepted for
+            # backwards compatibility but ignored by the new path.
+            video_metadata = download_video_with_metadata(
                 parsed.input,
                 cache_dir,
                 use_cache=True,
-                cookies_from_browser=parsed.cookies_from_browser,
-                proxy=parsed.proxy,
-                gui_exe_path=gui_exe_path
             )
             downloaded_path = video_metadata.file_path
             logger.debug(f"Using video file: {downloaded_path}")

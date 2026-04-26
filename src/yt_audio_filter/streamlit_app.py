@@ -1454,7 +1454,10 @@ def _render_music_removal_and_display(
     assert st is not None
     try:
         from yt_audio_filter.pipeline import process_video
-        from yt_audio_filter.youtube import download_youtube_video, is_youtube_url
+        from yt_audio_filter.youtube import (
+            download_video_with_metadata,
+            is_youtube_url,
+        )
     except ImportError as exc:
         st.error(f"Backend imports failed: {exc}")
         return
@@ -1470,7 +1473,11 @@ def _render_music_removal_and_display(
     st.markdown("**1/2 — Downloading source video**")
     with st.spinner("Downloading from YouTube..."):
         try:
-            video_metadata = download_youtube_video(
+            # Same pytubefix → yt-dlp chain that ``yt-quran-overlay``
+            # uses; the legacy ``download_youtube_video`` chain
+            # (Invidious / Cobalt / YTDownloader.exe) is no longer used
+            # here.
+            video_metadata = download_video_with_metadata(
                 url=youtube_url,
                 output_dir=cache_dir,
                 use_cache=True,
