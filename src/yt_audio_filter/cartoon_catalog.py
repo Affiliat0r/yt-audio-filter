@@ -249,6 +249,22 @@ def list_videos(
     if mutated:
         _write_cache(cache_dir, cache)
 
+    # Also expose user-picked videos from keyword search (`__search__` slug),
+    # which aren't backed by a configured channel and therefore aren't in
+    # the loop above. The render pipeline resolves visuals against this
+    # combined list, so a search-pick must be visible here.
+    search_entry = cache["channels"].get("__search__")
+    if isinstance(search_entry, dict):
+        for raw in search_entry.get("videos", []) or []:
+            try:
+                video = _video_from_dict(raw)
+            except (KeyError, ValueError, TypeError):
+                continue
+            if video.video_id in seen_ids:
+                continue
+            seen_ids.add(video.video_id)
+            combined.append(video)
+
     return combined
 
 
