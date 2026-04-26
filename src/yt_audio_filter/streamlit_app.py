@@ -1549,15 +1549,17 @@ def _render_music_removal_and_display(
         st.markdown(f"[Open on YouTube]({url})")
 
 
-def _render_tab_music_removal(playlist_id: Optional[str]) -> None:
+def _render_tab_music_removal(
+    channels: List[CartoonChannel],
+    playlist_id: Optional[str],
+) -> None:
     """The "Music removal" tab — strip background music from a YouTube
     video using Demucs, optionally upload with auto-SEO metadata.
 
-    No metadata template, no surah picker, no cartoon gallery. Single
-    URL in, single MP4 out (with optional upload). Reuses the legacy
-    music-removal pipeline (`pipeline.process_video`) verbatim — this is
-    just the Streamlit-side wiring that the legacy CLI users already
-    have via ``yt-audio-filter <url>``.
+    Reuses the same picker UX as the Surah-render tab: curated-channels
+    gallery + YouTube keyword search via :func:`_cartoon_gallery`. The
+    selected video's URL feeds into the legacy
+    :func:`pipeline.process_video` flow.
     """
     assert st is not None
     st.subheader("Music removal — strip background music with Demucs")
@@ -1567,13 +1569,9 @@ def _render_tab_music_removal(playlist_id: Optional[str]) -> None:
         "isolated vocal track. Uses your GPU (CUDA) when available."
     )
 
-    url = st.text_input(
-        "YouTube URL",
-        value="",
-        placeholder="https://www.youtube.com/watch?v=...",
-        key="music_removal_url",
-        help="Paste a YouTube URL. Long videos (>30 min) auto-chunk.",
-    )
+    # Same gallery as the Surah / Ayah tabs (curated channels + YouTube
+    # search modes, channel/title filters, sort, pagination, badges).
+    visual = _cartoon_gallery(channels, key_prefix="music_removal_gallery")
 
     col_upload, col_privacy = st.columns([1, 1])
     with col_upload:
@@ -1592,9 +1590,9 @@ def _render_tab_music_removal(playlist_id: Optional[str]) -> None:
             disabled=not do_upload,
         )
 
-    ready = bool(url.strip())
+    ready = visual is not None
     if not ready:
-        st.info("Paste a YouTube URL to enable Process.")
+        st.info("Pick a video from the gallery above to enable Process.")
 
     process_clicked = st.button(
         "Process",
@@ -1604,8 +1602,9 @@ def _render_tab_music_removal(playlist_id: Optional[str]) -> None:
     )
 
     if process_clicked and ready:
+        assert visual is not None
         _render_music_removal_and_display(
-            youtube_url=url.strip(),
+            youtube_url=visual.url,
             privacy=privacy,
             do_upload=do_upload,
             playlist_id=playlist_id,
@@ -2167,7 +2166,7 @@ def main() -> None:
         _render_tab_lesson()
 
     with tab_music:
-        _render_tab_music_removal(playlist_id=playlist_id)
+        _render_tab_music_removal(channels=channels, playlist_id=playlist_id)
 
 
 if __name__ == "__main__":  # pragma: no cover
