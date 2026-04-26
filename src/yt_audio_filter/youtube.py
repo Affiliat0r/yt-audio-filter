@@ -506,3 +506,83 @@ def download_stream(
         f"Tip: install pytubefix (`pip install pytubefix`) or the PO-Token "
         f"provider plugin to widen client coverage.",
     )
+
+
+def download_video_with_metadata(
+    url: str,
+    output_dir: Path,
+    use_cache: bool = True,
+) -> VideoMetadata:
+    """Download a YouTube video AND its metadata, returning the
+    legacy ``VideoMetadata`` shape that ``process_video`` and
+    ``upload_to_youtube`` already consume.
+
+    This is the SHARED download chain — the same one ``yt-quran-overlay``
+    uses via :func:`download_stream` (pytubefix client cascade → yt-dlp
+    client cascade). The legacy :func:`download_youtube_video` chain
+    (Invidious / Piped / Cobalt / YTDownloader.exe) is no longer used
+    by the music-removal flow; this helper is its replacement.
+
+    Trade-off: there is **no GUI fallback** for heavily-protected
+    videos. If both pytubefix and yt-dlp fail, the call raises
+    ``YouTubeDownloadError`` and the caller decides what to do.
+
+    Metadata-fetch failures are NON-fatal: we still return a usable
+    ``VideoMetadata`` whose ``file_path`` is set, so the music-removal
+    pipeline can run even when the SEO fields couldn't be looked up.
+    """
+    # We deliberately reference the module-level functions so tests can
+    # patch them via ``patch("yt_audio_filter.youtube.download_stream", ...)``.
+    file_path = download_stream(
+        url=url,
+        output_dir=Path(output_dir),
+        mode="video+audio",
+        use_cache=use_cache,
+    )
+
+    # Best-effort SEO metadata. If the lookup fails, fall back to a
+    # filename-based stub so callers always get a valid VideoMetadata.
+    # ``fetch_yt_metadata`` is bound at module-load time (bottom of
+    # this file) — the late import dodges the yt_metadata.py ↔
+    # youtube.py circular dependency.
+    try:
+        meta = fetch_yt_metadata(url)
+        return VideoMetadata(
+            video_id=meta.video_id,
+            title=meta.title or file_path.stem,
+            description=meta.description,
+            channel=meta.channel or "Unknown",
+            tags=list(meta.tags),
+            duration=meta.duration,
+            view_count=0,  # not provided by fetch_yt_metadata
+            file_path=file_path,
+        )
+    except YouTubeDownloadError as e:
+        logger.warning(
+            f"Metadata fetch failed for {url}; falling back to filename "
+            f"({e.message}). The download itself succeeded."
+        )
+        try:
+            video_id = extract_video_id(url)
+        except Exception:  # noqa: BLE001
+            video_id = file_path.stem
+        return VideoMetadata(
+            video_id=video_id,
+            title=file_path.stem,
+            description="",
+            channel="Unknown",
+            tags=[],
+            duration=0,
+            view_count=0,
+            file_path=file_path,
+        )
+
+
+# Module-bottom import: yt_metadata.py imports ``ensure_ytdlp_available``
+# and ``validate_youtube_url`` from THIS module, so doing the import at
+# the top of youtube.py would re-enter youtube.py before those symbols
+# are bound. By the time we reach this line, every youtube.py symbol is
+# defined. ``fetch_yt_metadata`` is then a regular module-level name
+# that tests can patch via
+# ``patch("yt_audio_filter.youtube.fetch_yt_metadata", ...)``.
+from .yt_metadata import fetch_yt_metadata  # noqa: E402
