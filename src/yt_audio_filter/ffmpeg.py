@@ -186,6 +186,46 @@ def check_nvenc_available() -> bool:
         return False
 
 
+def check_cuda_filters_available() -> bool:
+    """Check if the full-CUDA video pipeline is supported by this build.
+
+    Requires the cuda hwaccel and the three filters used by
+    :func:`ffmpeg_overlay.build_cuda_filter_graph` —
+    ``scale_cuda``, ``overlay_cuda``, ``hwupload_cuda``. If anything is
+    missing, return ``False`` and the caller falls back to the CPU
+    filter graph (which always works on a vanilla FFmpeg build).
+    """
+    try:
+        filters = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-filters"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        for needed in ("scale_cuda", "overlay_cuda", "hwupload_cuda"):
+            if needed not in filters.stdout:
+                return False
+        hwaccels = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-hwaccels"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        # ``-hwaccels`` lists one method per line after the header. Match
+        # the bare token, not a substring (otherwise "vaapi" matches "aa"
+        # in some unrelated string and we miss real misconfigurations).
+        for line in hwaccels.stdout.splitlines():
+            if line.strip() == "cuda":
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def remux_video(
     video_path: Path,
     audio_path: Path,

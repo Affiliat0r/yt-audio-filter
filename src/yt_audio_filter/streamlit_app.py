@@ -53,6 +53,11 @@ from yt_audio_filter.cartoon_catalog import (
     list_videos,
     load_channels,
 )
+from yt_audio_filter.cartoon_search import (
+    SEARCH_CHANNEL_SLUG,
+    add_pick_to_catalog,
+    search_videos,
+)
 from yt_audio_filter.exceptions import OverlayError
 from yt_audio_filter.metadata import OverlayMetadata, load_metadata
 from yt_audio_filter.quran_audio_source import Reciter, is_surah_cached, list_reciters
@@ -187,6 +192,19 @@ def _list_videos_cached(
     return list_videos(channels=channels, cache_dir=Path(cache_dir_str))
 
 
+def _search_videos_cached(
+    query: str, max_results: int, cache_dir_str: str
+) -> List[CatalogVideo]:
+    """Thin wrapper around ``cartoon_search.search_videos``.
+
+    The on-disk per-query JSON cache (1h TTL) is the source of truth; we
+    don't add a Streamlit-layer cache because the disk read is cheap and
+    using ``st.cache_data`` would freeze stale results until the session
+    ends.
+    """
+    return search_videos(query, max_results, cache_dir=Path(cache_dir_str))
+
+
 @_cache_data
 def _ensure_thumbnail_cached(
     video_id: str, thumbnail_url: str, cache_dir_str: str
@@ -271,6 +289,8 @@ def _format_duration(seconds: int) -> str:
 
 
 def _channel_display_name(channels: List[CartoonChannel], slug: str) -> str:
+    if slug == "__search__":
+        return "YouTube search"
     for c in channels:
         if c.slug == slug:
             return c.display_name
@@ -435,6 +455,32 @@ def _sidebar(
     )
 
 
+def _expand_surah_selection(
+    selected_numbers: List[int],
+    per_surah_repeats: List[int],
+    set_loops: int,
+) -> List[int]:
+    """Build the final concat-order surah list.
+
+    The user picks N surahs, sets a repeat count for each, then optionally
+    loops the WHOLE set M times. Order = per-surah block repeated, then
+    the whole concatenation repeated ``set_loops`` times.
+
+    Example: selection [1, 112, 114] with repeats [2, 1, 1] and set_loops=2
+    → [1, 1, 112, 114, 1, 1, 112, 114].
+    """
+    if len(selected_numbers) != len(per_surah_repeats):
+        raise ValueError(
+            f"per_surah_repeats length ({len(per_surah_repeats)}) must match "
+            f"selected_numbers length ({len(selected_numbers)})"
+        )
+    loops = max(1, int(set_loops))
+    block: List[int] = []
+    for n, r in zip(selected_numbers, per_surah_repeats):
+        block.extend([n] * max(1, int(r)))
+    return block * loops
+
+
 def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
     """Return the selected surah numbers expanded by per-surah repeats."""
     assert st is not None
@@ -458,7 +504,7 @@ def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
         return []
 
     st.caption("Audio plays in this order; the visual loops underneath.")
-    expanded: List[int] = []
+    per_surah_repeats: List[int] = []
     for idx, number in enumerate(selected_numbers):
         col_label, col_count = st.columns([3, 1])
         with col_label:
@@ -473,8 +519,28 @@ def _surah_picker(surahs: List[SurahEntry]) -> List[int]:
                 key=f"surah_repeat_{idx}_{number}",
                 label_visibility="collapsed",
             )
-        expanded.extend([number] * int(repeats))
-    return expanded
+        per_surah_repeats.append(int(repeats))
+
+    set_loops = 1
+    if len(selected_numbers) > 1:
+        set_loops = int(
+            st.number_input(
+                "Loop the whole set ×",
+                min_value=1,
+                max_value=99,
+                value=1,
+                step=1,
+                key="surah_set_loops",
+                help=(
+                    "Plays the entire selection N times in order, in addition "
+                    "to per-surah repeats. Example: selection [Fatiha, Ikhlas, "
+                    "Nas] with per-surah repeats all 1 and set-loop 10 → "
+                    "10x alternating (F, I, N, F, I, N, …)."
+                ),
+            )
+        )
+
+    return _expand_surah_selection(selected_numbers, per_surah_repeats, set_loops)
 
 
 def _reciter_picker(
@@ -633,6 +699,26 @@ def _select_visual_callback(video_id: str) -> None:
         st.session_state["selected_visual_id"] = video_id
 
 
+def _select_search_pick_callback(video: CatalogVideo) -> None:
+    """Select-button handler for keyword-search results.
+
+    Also persists the pick into ``cartoon_catalog.json`` under the
+    ``__search__`` slug so the render pipeline can resolve it at render
+    time (``overlay_pipeline._resolve_visual_video`` reads the catalog).
+    """
+    if st is None:  # pragma: no cover
+        return
+    try:
+        add_pick_to_catalog(video, cache_dir=DEFAULT_CACHE_DIR)
+    except Exception as e:  # noqa: BLE001 - never block selection on cache write
+        st.warning(f"Could not persist pick to catalog: {e}")
+    # Bust the cached list so the curated tab can also see the new pick.
+    st.session_state["catalog_cache_bust"] = (
+        st.session_state.get("catalog_cache_bust", 0) + 1
+    )
+    _select_visual_callback(video.video_id)
+
+
 def _prune_stale_channel_filters(channels: List[CartoonChannel]) -> None:
     """Drop ``ch_<slug>`` keys for slugs that no longer exist in channels.json.
 
@@ -654,17 +740,113 @@ def _prune_stale_channel_filters(channels: List[CartoonChannel]) -> None:
         del st.session_state[k]
 
 
-def _cartoon_gallery(
-    channels: List[CartoonChannel], *, key_prefix: str = "gallery"
+def _render_gallery_grid(
+    *,
+    filtered: List[CatalogVideo],
+    full_pool: List[CatalogVideo],
+    channels: List[CartoonChannel],
+    state_index: dict,
+    key_prefix: str,
+    page_state_key: str,
+    on_select,
+    caption: str,
 ) -> Optional[CatalogVideo]:
-    """Thumbnail grid with filters, badges, and cached-first ordering.
+    """Render the shared 4-col thumbnail grid + pagination.
 
-    ``key_prefix`` namespaces every widget key so the same gallery can be
-    rendered in multiple tabs (e.g. simple + ayah) on the same page
-    without colliding on Streamlit's auto-generated element ids.
+    ``on_select`` is a callable taking a ``CatalogVideo``. ``filtered`` is
+    the (already-sorted) list to paginate. ``full_pool`` is the unfiltered
+    list — used only for resolving the ``Selected: ...`` banner so the
+    banner survives a query change that hides the chosen tile.
     """
     assert st is not None
-    st.subheader("Cartoon video")
+
+    st.caption(caption)
+
+    if not filtered:
+        st.warning("No videos match the current filter/search.")
+        return None
+
+    selected_id = st.session_state.get("selected_visual_id")
+    # Resolve against full_pool so the banner can render for an item that
+    # isn't on the current page. Falls back to filtered if the pool is empty.
+    pool = full_pool or filtered
+    selected_video: Optional[CatalogVideo] = next(
+        (v for v in pool if v.video_id == selected_id), None
+    )
+
+    page = st.session_state.get(page_state_key, 0)
+    total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(page, total_pages - 1)
+    start = page * PAGE_SIZE
+    page_videos = filtered[start : start + PAGE_SIZE]
+
+    if selected_video is not None:
+        st.success(
+            f"Selected: **{selected_video.title}** · "
+            f"{_format_duration(selected_video.duration)} · "
+            f"{_channel_display_name(channels, selected_video.channel_slug)}"
+        )
+
+    cols = st.columns(4)
+    for i, v in enumerate(page_videos):
+        with cols[i % 4]:
+            thumb_path = _ensure_thumbnail_cached(
+                v.video_id, v.thumbnail_url, str(DEFAULT_CACHE_DIR)
+            )
+            if thumb_path:
+                st.image(thumb_path, use_container_width=True)
+            else:
+                st.caption("(thumbnail unavailable)")
+            state = state_index.get(v.video_id, "new")
+            st.caption(
+                f"{_STATE_BADGE[state]}  \n"
+                f"**{v.title}**  \n"
+                f"{_format_duration(v.duration)} · "
+                f"{_channel_display_name(channels, v.channel_slug)}"
+            )
+            is_active = selected_id == v.video_id
+            st.button(
+                "✓ Selected (click to deselect)" if is_active else "Select",
+                type=("primary" if is_active else "secondary"),
+                key=f"{key_prefix}_sel_btn_{v.video_id}",
+                on_click=on_select,
+                args=(v,),
+                use_container_width=True,
+            )
+
+    if total_pages > 1:
+        pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
+        with pcol1:
+            if st.button(
+                "◀ Previous", disabled=page == 0, key=f"{key_prefix}_prev"
+            ):
+                st.session_state[page_state_key] = max(0, page - 1)
+                st.rerun()
+        with pcol2:
+            st.caption(f"Page {page + 1} / {total_pages}")
+        with pcol3:
+            if st.button(
+                "Next ▶",
+                disabled=page >= total_pages - 1,
+                key=f"{key_prefix}_next",
+            ):
+                st.session_state[page_state_key] = min(total_pages - 1, page + 1)
+                st.rerun()
+
+    return selected_video
+
+
+def _select_curated_callback(video: CatalogVideo) -> None:
+    """Adapter so the curated branch can use the same ``on_click`` shape
+    (``callable(CatalogVideo)``) as the search branch."""
+    _select_visual_callback(video.video_id)
+
+
+def _gallery_channel_mode(
+    channels: List[CartoonChannel], key_prefix: str
+) -> Optional[CatalogVideo]:
+    """Curated-channels filter pane + grid."""
+    assert st is not None
 
     col_refresh, col_search = st.columns([1, 3])
     with col_refresh:
@@ -693,6 +875,7 @@ def _cartoon_gallery(
                 value="",
                 placeholder="e.g. train, bus, dinosaur",
                 key=f"{key_prefix}_search",
+                help="Narrows the curated list. For broader results, switch to YouTube search above.",
             )
             .strip()
             .lower()
@@ -715,17 +898,11 @@ def _cartoon_gallery(
         return None
 
     # Review fix: stale ``selected_visual_id`` after a catalog refresh.
-    # If the persisted id isn't in the current catalog, clear it before
-    # the filter step so the gallery doesn't show a "Selected: ..."
-    # banner pointing at a video we can't find anymore.
     persisted_id = st.session_state.get("selected_visual_id")
     if persisted_id is not None and not any(
         v.video_id == persisted_id for v in videos
     ):
         st.session_state["selected_visual_id"] = None
-        # Also drop any stale per-tile checkbox keys (housekeeping for
-        # the older checkbox flow; we use buttons now, but keep the
-        # cleanup so a downgrade of session state stays bounded).
         for k in [
             k
             for k in list(st.session_state.keys())
@@ -735,14 +912,20 @@ def _cartoon_gallery(
             if not any(v.video_id == video_id for v in videos):
                 del st.session_state[k]
 
-    all_slugs = [c.slug for c in channels]
+    # Channel filter — only over channels in config (skip the synthetic
+    # ``__search__`` slug that holds picks from the YouTube-search tab).
+    visible_channel_slugs = [c.slug for c in channels]
     for v in videos:
-        if v.channel_slug not in all_slugs:
-            all_slugs.append(v.channel_slug)
-    with st.expander(f"Filter by channel ({len(all_slugs)} total)", expanded=False):
+        if v.channel_slug == SEARCH_CHANNEL_SLUG:
+            continue
+        if v.channel_slug not in visible_channel_slugs:
+            visible_channel_slugs.append(v.channel_slug)
+    with st.expander(
+        f"Filter by channel ({len(visible_channel_slugs)} total)", expanded=False
+    ):
         active_slugs = set()
-        cols = st.columns(min(len(all_slugs), 5))
-        for i, slug in enumerate(all_slugs):
+        cols = st.columns(min(len(visible_channel_slugs), 5))
+        for i, slug in enumerate(visible_channel_slugs):
             with cols[i % len(cols)]:
                 if st.checkbox(
                     _channel_display_name(channels, slug),
@@ -780,6 +963,7 @@ def _cartoon_gallery(
         v
         for v in videos
         if v.channel_slug in active_slugs
+        and v.channel_slug != SEARCH_CHANNEL_SLUG
         and (not search or search in v.title.lower())
     ]
 
@@ -799,81 +983,158 @@ def _cartoon_gallery(
     elif sort_mode == "Title A-Z":
         filtered.sort(key=lambda v: v.title.lower())
 
-    n_total = len(videos)
-    n_cached = sum(1 for v in videos if state_index.get(v.video_id, "new") != "new")
-    st.caption(
-        f"Showing **{len(filtered)}** of **{n_total}** videos · "
+    n_total = sum(1 for v in videos if v.channel_slug != SEARCH_CHANNEL_SLUG)
+    n_cached = sum(
+        1
+        for v in videos
+        if v.channel_slug != SEARCH_CHANNEL_SLUG
+        and state_index.get(v.video_id, "new") != "new"
+    )
+    caption = (
+        f"Showing **{len(filtered)}** of **{n_total}** curated videos · "
         f"{n_cached} already cached (🟢/🔵) · "
         f"{n_total - n_cached} would download on render."
     )
 
-    if not filtered:
-        st.warning("No videos match the current filter/search.")
-        return None
-
-    selected_id = st.session_state.get("selected_visual_id")
-    selected_video: Optional[CatalogVideo] = next(
-        (v for v in videos if v.video_id == selected_id), None
+    return _render_gallery_grid(
+        filtered=filtered,
+        full_pool=videos,
+        channels=channels,
+        state_index=state_index,
+        key_prefix=key_prefix,
+        page_state_key="gallery_page",
+        on_select=_select_curated_callback,
+        caption=caption,
     )
 
-    page = st.session_state.get("gallery_page", 0)
-    total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = min(page, total_pages - 1)
-    start = page * PAGE_SIZE
-    page_videos = filtered[start : start + PAGE_SIZE]
 
-    if selected_video is not None:
-        st.success(
-            f"Selected: **{selected_video.title}** · "
-            f"{_format_duration(selected_video.duration)} · "
-            f"{_channel_display_name(channels, selected_video.channel_slug)}"
-        )
+def _gallery_search_mode(
+    channels: List[CartoonChannel], key_prefix: str
+) -> Optional[CatalogVideo]:
+    """Live YouTube keyword search pane + grid."""
+    assert st is not None
 
-    cols = st.columns(4)
-    for i, v in enumerate(page_videos):
-        with cols[i % 4]:
-            thumb_path = _ensure_thumbnail_cached(
-                v.video_id, v.thumbnail_url, str(DEFAULT_CACHE_DIR)
+    with st.form(key=f"{key_prefix}_search_form", clear_on_submit=False):
+        col_q, col_n, col_btn = st.columns([5, 1, 1])
+        with col_q:
+            query_in = st.text_input(
+                "Keyword search",
+                value=st.session_state.get(f"{key_prefix}_search_query", ""),
+                placeholder="e.g. police car, dinosaur, fire truck",
+                help="Live YouTube search; results cached 1h per query.",
+                label_visibility="visible",
             )
-            if thumb_path:
-                st.image(thumb_path, use_container_width=True)
-            else:
-                st.caption("(thumbnail unavailable)")
-            state = state_index.get(v.video_id, "new")
-            st.caption(
-                f"{_STATE_BADGE[state]}  \n"
-                f"**{v.title}**  \n"
-                f"{_format_duration(v.duration)} · "
-                f"{_channel_display_name(channels, v.channel_slug)}"
+        with col_n:
+            max_results = st.selectbox(
+                "Results",
+                options=(15, 25, 40),
+                index=1,
+                help="More results = slower fetch (~2-4 s for 40).",
             )
-            is_active = selected_id == v.video_id
-            st.button(
-                "✓ Selected (click to deselect)" if is_active else "Select",
-                type=("primary" if is_active else "secondary"),
-                key=f"{key_prefix}_sel_btn_{v.video_id}",
-                on_click=_select_visual_callback,
-                args=(v.video_id,),
-                use_container_width=True,
-            )
+        with col_btn:
+            st.write("")
+            st.write("")
+            submitted = st.form_submit_button("Search", use_container_width=True)
 
-    if total_pages > 1:
-        pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
-        with pcol1:
-            if st.button(
-                "◀ Previous", disabled=page == 0, key=f"{key_prefix}_prev"
-            ):
-                st.session_state["gallery_page"] = max(0, page - 1)
-                st.rerun()
-        with pcol2:
-            st.caption(f"Page {page + 1} / {total_pages}")
-        with pcol3:
-            if st.button(
-                "Next ▶",
-                disabled=page >= total_pages - 1,
-                key=f"{key_prefix}_next",
-            ):
-                st.session_state["gallery_page"] = min(total_pages - 1, page + 1)
-                st.rerun()
+    query = (query_in or "").strip()
+    if submitted:
+        st.session_state[f"{key_prefix}_search_query"] = query
+        st.session_state[f"{key_prefix}_search_max"] = int(max_results)
+        st.session_state["gallery_search_page"] = 0
+
+    active_query = st.session_state.get(f"{key_prefix}_search_query", "").strip()
+    active_max = int(st.session_state.get(f"{key_prefix}_search_max", 25))
+
+    if not active_query:
+        st.info("Type a keyword and click **Search** to fetch live YouTube results.")
+        return None
+
+    try:
+        with st.spinner(f"Searching YouTube for {active_query!r}…"):
+            results = _search_videos_cached(
+                active_query, active_max, str(DEFAULT_CACHE_DIR)
+            )
+    except OverlayError as exc:
+        msg = exc.message + (f"\n\n{exc.details}" if exc.details else "")
+        st.error(msg)
+        return None
+    except Exception as exc:  # noqa: BLE001 - keep page alive on transient errors
+        st.error(f"Search failed: {exc!r}")
+        return None
+
+    if not results:
+        st.warning(f"No videos found for {active_query!r}.")
+        return None
+
+    sort_mode = st.selectbox(
+        "Sort",
+        options=("Most viewed", "Longest first", "Shortest first", "Newest", "Title A-Z"),
+        index=0,
+        key=f"{key_prefix}_search_sort",
+    )
+
+    if sort_mode == "Most viewed":
+        results.sort(key=lambda v: -v.view_count)
+    elif sort_mode == "Longest first":
+        results.sort(key=lambda v: -v.duration)
+    elif sort_mode == "Shortest first":
+        results.sort(key=lambda v: v.duration)
+    elif sort_mode == "Newest":
+        results.sort(key=lambda v: v.upload_date or "", reverse=True)
+    elif sort_mode == "Title A-Z":
+        results.sort(key=lambda v: v.title.lower())
+
+    state_index = _visual_state_index(
+        str(DEFAULT_CACHE_DIR),
+        st.session_state.get("visual_cache_bust", 0),
+    )
+
+    caption = (
+        f"Showing **{len(results)}** results for **{active_query!r}** · "
+        f"sorted by {sort_mode}. Click Select to use one as the cartoon visual."
+    )
+
+    return _render_gallery_grid(
+        filtered=results,
+        full_pool=results,
+        channels=channels,
+        state_index=state_index,
+        key_prefix=key_prefix,
+        page_state_key="gallery_search_page",
+        on_select=_select_search_pick_callback,
+        caption=caption,
+    )
+
+
+def _cartoon_gallery(
+    channels: List[CartoonChannel], *, key_prefix: str = "gallery"
+) -> Optional[CatalogVideo]:
+    """Thumbnail picker with two filter modes: curated channels OR live
+    YouTube keyword search.
+
+    ``key_prefix`` namespaces every widget key so the same gallery can be
+    rendered in multiple tabs (e.g. simple + ayah) on the same page
+    without colliding on Streamlit's auto-generated element ids.
+    """
+    assert st is not None
+    st.subheader("Cartoon video")
+
+    mode = st.radio(
+        "Source",
+        options=("Curated channels", "YouTube search"),
+        index=0,
+        horizontal=True,
+        key=f"{key_prefix}_mode",
+        help=(
+            "Curated channels: pick from the configured kid-friendly channels. "
+            "YouTube search: live keyword search across all of YouTube "
+            "(e.g. 'police car', 'dinosaur')."
+        ),
+    )
+
+    if mode == "Curated channels":
+        return _gallery_channel_mode(channels, key_prefix)
+    return _gallery_search_mode(channels, key_prefix)
 
     return selected_video
 

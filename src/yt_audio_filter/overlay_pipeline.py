@@ -516,6 +516,34 @@ def _pascal_case(text: str) -> str:
     return "".join(p[:1].upper() + p[1:].lower() for p in parts if p)
 
 
+def _detect_set_loop(surah_numbers: List[int]) -> Tuple[List[int], int]:
+    """If ``surah_numbers`` is ``base * loops`` with ``loops > 1`` and a
+    multi-element base, return ``(base, loops)``. Otherwise return
+    ``(surah_numbers, 1)`` so the caller falls through to the
+    consecutive-only compactor.
+
+    Picks the smallest period so ``[1, 2, 1, 2, 1, 2]`` becomes
+    ``([1, 2], 3)`` rather than ``([1, 2, 1, 2], <not-a-loop>)``.
+
+    Single-surah repeats like ``[1, 1, 1]`` are NOT classified as a set
+    loop — they should keep using the per-surah ``"Al-Fatiha (×3)"``
+    title format that the existing consecutive compactor produces.
+    """
+    n = len(surah_numbers)
+    if n < 2:
+        return surah_numbers, 1
+    if all(x == surah_numbers[0] for x in surah_numbers):
+        return surah_numbers, 1
+    for period in range(1, n // 2 + 1):
+        if n % period != 0:
+            continue
+        base = surah_numbers[:period]
+        loops = n // period
+        if base * loops == surah_numbers and len(base) > 1:
+            return base, loops
+    return surah_numbers, 1
+
+
 def _compact_consecutive_duplicates(surah_numbers: List[int]) -> List[Tuple[int, int]]:
     """Group consecutive duplicates into ``(number, run_length)`` pairs.
 
@@ -561,19 +589,43 @@ def _build_surah_numbers_auto_vars(
     map straight to ``SurahInfo`` via ``get_surah_info`` and the reciter's
     display name comes directly from the manifest.
     """
-    groups = _compact_consecutive_duplicates(surah_numbers)
-    name_parts: List[str] = []
-    tag_parts: List[str] = []
-    for n, count in groups:
-        info = get_surah_info(n)
-        if count > 1:
-            name_parts.append(f"{info.name} (\u00d7{count})")
-            tag_parts.append(f"{info.tag}x{count}")
-        else:
-            name_parts.append(info.name)
-            tag_parts.append(info.tag)
-    detected_surah = " + ".join(name_parts)
-    surah_tag = "".join(tag_parts)
+    # Set-loop detection: if the user picked N alternating surahs and
+    # looped the whole set M times via the Streamlit UI, the input is
+    # ``base * M`` (interleaved). The consecutive-only compactor below
+    # leaves that uncompressed and the title overflows YouTube's 100-char
+    # limit. Format as ``"X + Y + Z (set \u00d7M)"`` instead.
+    base, set_loops = _detect_set_loop(surah_numbers)
+    if set_loops > 1:
+        # Build the base label using the consecutive compactor so
+        # per-surah repeats inside the base still compact (e.g.
+        # ``base=[1,1,112]`` -> ``"Al-Fatiha (\u00d72) + Al-Ikhlas"``).
+        base_groups = _compact_consecutive_duplicates(base)
+        base_names: List[str] = []
+        base_tags: List[str] = []
+        for n, count in base_groups:
+            info = get_surah_info(n)
+            if count > 1:
+                base_names.append(f"{info.name} (\u00d7{count})")
+                base_tags.append(f"{info.tag}x{count}")
+            else:
+                base_names.append(info.name)
+                base_tags.append(info.tag)
+        detected_surah = f"{' + '.join(base_names)} (set \u00d7{set_loops})"
+        surah_tag = f"{''.join(base_tags)}_setx{set_loops}"
+    else:
+        groups = _compact_consecutive_duplicates(surah_numbers)
+        name_parts: List[str] = []
+        tag_parts: List[str] = []
+        for n, count in groups:
+            info = get_surah_info(n)
+            if count > 1:
+                name_parts.append(f"{info.name} (\u00d7{count})")
+                tag_parts.append(f"{info.tag}x{count}")
+            else:
+                name_parts.append(info.name)
+                tag_parts.append(info.tag)
+        detected_surah = " + ".join(name_parts)
+        surah_tag = "".join(tag_parts)
     surah_number_str = (
         str(surah_numbers[0]) if len(surah_numbers) == 1 else ""
     )

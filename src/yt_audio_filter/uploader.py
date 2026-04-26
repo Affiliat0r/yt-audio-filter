@@ -667,6 +667,29 @@ def upload_with_explicit_metadata(
     binary if available (handles some network conditions better), then falls
     back to the Python API.
     """
+    # Validate title BEFORE the API roundtrip. YouTube's
+    # ``invalidTitle`` 400 is opaque — surfaces what the user actually
+    # tried to upload so they can shorten the metadata template or pick
+    # fewer surahs without staring at a stack trace.
+    stripped = (title or "").strip()
+    if not stripped:
+        raise YouTubeUploadError(
+            "Cannot upload with an empty title",
+            "YouTube rejects videos with no snippet.title; check the "
+            "metadata JSON's title template.",
+        )
+    if len(title) > 100:
+        raise YouTubeUploadError(
+            f"Title is {len(title)} chars; YouTube's limit is 100",
+            f"Shorten the metadata template or pick fewer surahs.\n"
+            f"Title was: {title!r}",
+        )
+    if "<" in title or ">" in title:
+        raise YouTubeUploadError(
+            "YouTube rejects '<' or '>' in titles",
+            f"Title was: {title!r}",
+        )
+
     if not video_path.exists():
         raise YouTubeUploadError(f"Video file not found: {video_path}")
 
