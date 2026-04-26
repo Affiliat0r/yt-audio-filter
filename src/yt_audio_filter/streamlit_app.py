@@ -69,7 +69,6 @@ from yt_audio_filter.surah_detector import _SURAHS
 # ---------------------------------------------------------------------------
 
 DEFAULT_METADATA_PATH = "examples/metadata-surah-arrahman.json"
-DEFAULT_LESSON_PLAN_PATH = "examples/lesson-plan-week.json"
 LOG_BUFFER_MAX_LINES = 40
 PAGE_SIZE = 24
 DEFAULT_OUTPUT_DIR = Path("output")
@@ -303,16 +302,14 @@ def _init_session_state() -> None:
     ss = st.session_state
     ss.setdefault("rendered_path", None)
     ss.setdefault("rendered_title_vars", {})
-    ss.setdefault("rendered_kind", None)  # "surah" | "ayah" | None
+    # rendered_kind: "surah" | "ayah" | "music_removal" | None
+    ss.setdefault("rendered_kind", None)
     ss.setdefault("selected_visual_id", None)
     ss.setdefault("catalog_cache_bust", 0)
     ss.setdefault("audio_cache_bust", 0)
     ss.setdefault("ayah_ranges", [])  # List[dict]
-    ss.setdefault("lesson_plan_path", DEFAULT_LESSON_PLAN_PATH)
-    ss.setdefault("lesson_plan_validated", False)
-    ss.setdefault("lesson_plan_error", "")
-    ss.setdefault("lesson_results", [])  # List[Tuple[day, path]]
-    ss.setdefault("lesson_errors", [])  # List[Tuple[day, message]]
+    # studio_mode: drives which panel is visible below the cartoon gallery.
+    ss.setdefault("studio_mode", "surah")
 
 
 def _sidebar(
@@ -398,7 +395,14 @@ def _sidebar(
     ok, msg, meta = _load_metadata_cached(
         metadata_path, _metadata_mtime_ns(metadata_path)
     )
-    if ok:
+    # Music-removal mode generates its title from the source video's
+    # YouTube metadata (auto-SEO via uploader.upload_to_youtube), so a
+    # missing/invalid Quran-overlay metadata JSON must not show as an
+    # error there.
+    studio_mode = st.session_state.get("studio_mode", "surah")
+    if studio_mode == "music_removal":
+        st.sidebar.caption(f"Metadata JSON not used in music-removal mode ({msg}).")
+    elif ok:
         st.sidebar.success(f"Metadata OK: {msg}")
     else:
         st.sidebar.error(f"Metadata error: {msg}")
@@ -1549,29 +1553,23 @@ def _render_music_removal_and_display(
         st.markdown(f"[Open on YouTube]({url})")
 
 
-def _render_tab_music_removal(
-    channels: List[CartoonChannel],
+def _studio_panel_music(
+    visual: Optional[CatalogVideo],
     playlist_id: Optional[str],
 ) -> None:
-    """The "Music removal" tab — strip background music from a YouTube
-    video using Demucs, optionally upload with auto-SEO metadata.
+    """Studio panel: strip background music with Demucs.
 
-    Reuses the same picker UX as the Surah-render tab: curated-channels
-    gallery + YouTube keyword search via :func:`_cartoon_gallery`. The
-    selected video's URL feeds into the legacy
-    :func:`pipeline.process_video` flow.
+    The cartoon gallery lives upstream in :func:`_render_studio`; this
+    panel just consumes the chosen ``visual`` and orchestrates the
+    Demucs pipeline + optional auto-SEO upload.
     """
     assert st is not None
-    st.subheader("Music removal — strip background music with Demucs")
+    st.markdown("**Strip background music with Demucs**")
     st.caption(
-        "Removes music from a YouTube video while preserving vocals / "
-        "dialogue. Output is the original video re-muxed with the "
-        "isolated vocal track. Uses your GPU (CUDA) when available."
+        "Re-muxes the source video with vocals only (dialogue, foley, "
+        "loudness preserved; background music gone). Uses CUDA when "
+        "available."
     )
-
-    # Same gallery as the Surah / Ayah tabs (curated channels + YouTube
-    # search modes, channel/title filters, sort, pagination, badges).
-    visual = _cartoon_gallery(channels, key_prefix="music_removal_gallery")
 
     col_upload, col_privacy = st.columns([1, 1])
     with col_upload:
@@ -1643,18 +1641,18 @@ def _render_tab_music_removal(
             st.success(f"Uploaded: {url_out}")
 
 
-def _render_tab_simple(
+def _studio_panel_surah(
+    visual: Optional[CatalogVideo],
     surahs: List[SurahEntry],
-    channels: List[CartoonChannel],
     metadata: Optional[OverlayMetadata],
     upscale: bool,
     playlist_id: Optional[str],
 ) -> None:
-    """The classic surah-render flow, nested in its own tab."""
+    """Studio panel: pick surahs + reciter, overlay on the chosen visual."""
     assert st is not None
+    st.markdown("**Overlay full surahs on the selected video**")
     surah_numbers = _surah_picker(surahs)
     reciter = _reciter_picker(only_everyayah=False, key="reciter_select")
-    visual = _cartoon_gallery(channels, key_prefix="simple_gallery")
 
     ready = (
         metadata is not None
@@ -1671,7 +1669,7 @@ def _render_tab_simple(
     if reciter is None:
         missing.append("a reciter")
     if visual is None:
-        missing.append("exactly one cartoon video")
+        missing.append("a cartoon video from the gallery")
     if missing:
         st.info("Select: " + ", ".join(missing))
 
@@ -1730,15 +1728,15 @@ def _remove_ayah_range_callback(idx: int) -> None:
         st.session_state["ayah_ranges"] = rows
 
 
-def _render_tab_ayah(
-    channels: List[CartoonChannel],
+def _studio_panel_ayah(
+    visual: Optional[CatalogVideo],
     metadata: Optional[OverlayMetadata],
     upscale: bool,
     preset_slug: str,
     burn_subtitles: bool,
     playlist_id: Optional[str],
 ) -> None:
-    """Ayah-range memorisation tab (wishlist M2/M3)."""
+    """Studio panel: ayah-range memorisation render."""
     assert st is not None
 
     st.markdown(
@@ -1857,7 +1855,6 @@ def _render_tab_ayah(
     # Reciter + visual
     # ------------------------------------------------------------------
     reciter = _reciter_picker(only_everyayah=True, key="reciter_select_ayah")
-    visual = _cartoon_gallery(channels, key_prefix="ayah_gallery")
 
     # ------------------------------------------------------------------
     # Validation + Render button
@@ -1937,166 +1934,85 @@ def _render_tab_ayah(
 
 
 # ---------------------------------------------------------------------------
-# Tab: Weekly lesson plan
+# Studio orchestrator (gallery-first, mode-driven)
 # ---------------------------------------------------------------------------
 
 
-def _render_tab_lesson() -> None:
-    """Run a weekly lesson plan (wishlist C1).
+_STUDIO_MODES: Tuple[Tuple[str, str], ...] = (
+    ("surah", "Overlay full surahs"),
+    ("ayah", "Overlay an ayah range (memorisation)"),
+    ("music_removal", "Strip background music (Demucs)"),
+)
 
-    Synchronous on purpose: ``lesson_planner.render_plan`` does N back-to-
-    back FFmpeg renders and the Streamlit thread is the simplest place
-    to drive it. We surface that with a clear warning before kick-off so
-    the teacher knows the page will sit unresponsive until done. A
-    threaded variant with a ``queue.Queue`` polled via ``st.empty`` is
-    a Phase 3 follow-up.
+
+def _render_studio(
+    *,
+    channels: List[CartoonChannel],
+    surahs: List[SurahEntry],
+    metadata: Optional[OverlayMetadata],
+    upscale: bool,
+    preset_slug: str,
+    burn_subtitles: bool,
+    playlist_id: Optional[str],
+) -> None:
+    """Single-page workspace.
+
+    Layout (top → bottom): cartoon gallery → mode selectbox → mode-specific
+    panel. The gallery is the stable anchor; only the panel below it
+    re-renders when the user switches modes. ``selected_visual_id`` and
+    ``reciter_select`` persist across mode flips so a user can pick a
+    video, decide what to do with it, then revise that decision without
+    losing their other choices.
     """
     assert st is not None
-    st.markdown(
-        "Render every lesson in a JSON plan back-to-back. Useful for the "
-        "Saturday-evening 'prep next week's videos' workflow."
+    st.title("Studio")
+    st.caption(
+        "Pick a video, then choose what to do with it: overlay Quran "
+        "audio (full surahs or an ayah range) or strip the background "
+        "music."
     )
 
-    plan_path = st.text_input(
-        "Lesson plan JSON path",
-        value=st.session_state.get("lesson_plan_path", DEFAULT_LESSON_PLAN_PATH),
-        key="lesson_plan_path_input",
-        help="Path to a weekly-plan JSON. See examples/lesson-plan-week.json.",
+    # 1. Gallery — single instance for the whole page.
+    visual = _cartoon_gallery(channels, key_prefix="studio_gallery")
+
+    st.divider()
+
+    # 2. Mode selector. Labels are friendly; value is the canonical key.
+    labels_by_value = {v: lbl for v, lbl in _STUDIO_MODES}
+    values = [v for v, _ in _STUDIO_MODES]
+    current = st.session_state.get("studio_mode", "surah")
+    if current not in values:
+        current = "surah"
+    mode = st.selectbox(
+        "What do you want to do with this video?",
+        options=values,
+        index=values.index(current),
+        format_func=lambda v: labels_by_value[v],
+        key="studio_mode",
     )
-    st.session_state["lesson_plan_path"] = plan_path
 
-    cols = st.columns([1, 1, 4])
-    with cols[0]:
-        if st.button("Validate plan", key="lesson_validate"):
-            try:
-                from yt_audio_filter.lesson_planner import load_plan
+    st.divider()
 
-                plan = load_plan(Path(plan_path))
-                st.session_state["lesson_plan_validated"] = True
-                st.session_state["lesson_plan_error"] = ""
-                st.session_state["lesson_plan_summary"] = (
-                    f"{len(plan.lessons)} lesson(s); week of {plan.week_of}; "
-                    f"reciter={plan.default_reciter}"
-                )
-            except OverlayError as exc:
-                st.session_state["lesson_plan_validated"] = False
-                msg = exc.message
-                if exc.details:
-                    msg = f"{msg}\n\n{exc.details}"
-                st.session_state["lesson_plan_error"] = msg
-            except Exception as exc:  # noqa: BLE001
-                st.session_state["lesson_plan_validated"] = False
-                st.session_state["lesson_plan_error"] = repr(exc)
-
-    if st.session_state.get("lesson_plan_validated"):
-        st.success(
-            f"✅ Plan OK: {st.session_state.get('lesson_plan_summary', '')}"
+    # 3. Dispatch.
+    if mode == "surah":
+        _studio_panel_surah(
+            visual=visual,
+            surahs=surahs,
+            metadata=metadata,
+            upscale=upscale,
+            playlist_id=playlist_id,
         )
-    elif st.session_state.get("lesson_plan_error"):
-        st.error(f"❌ {st.session_state['lesson_plan_error']}")
-
-    st.warning(
-        "Running the plan is **synchronous** — the page will be "
-        "unresponsive for the duration of every render. A 5-day plan can "
-        "take 30+ minutes depending on FFmpeg and upscale settings. "
-        "Don't close the tab; the renders write to disk as they "
-        "complete."
-    )
-
-    with cols[1]:
-        run_clicked = st.button(
-            "Run plan",
-            type="primary",
-            disabled=not st.session_state.get("lesson_plan_validated"),
-            key="lesson_run",
+    elif mode == "ayah":
+        _studio_panel_ayah(
+            visual=visual,
+            metadata=metadata,
+            upscale=upscale,
+            preset_slug=preset_slug,
+            burn_subtitles=burn_subtitles,
+            playlist_id=playlist_id,
         )
-
-    # Placeholders for streaming progress.
-    status_placeholder = st.empty()
-    results_placeholder = st.empty()
-    errors_placeholder = st.empty()
-
-    if run_clicked and st.session_state.get("lesson_plan_validated"):
-        try:
-            from yt_audio_filter.lesson_planner import load_plan, render_plan
-
-            plan = load_plan(Path(plan_path))
-        except OverlayError as exc:
-            st.error(f"Plan re-load failed: {exc.message}")
-            return
-
-        # Reset the previous run's tables.
-        st.session_state["lesson_results"] = []
-        st.session_state["lesson_errors"] = []
-
-        def on_lesson_start(lesson, idx: int, total: int) -> None:
-            status_placeholder.info(
-                f"Lesson {idx + 1}/{total}: {lesson.day} — surahs "
-                f"{lesson.surah_numbers}"
-            )
-
-        def on_lesson_done(lesson, output_path: Path) -> None:
-            st.session_state["lesson_results"].append(
-                (lesson.day, str(output_path))
-            )
-
-        def on_lesson_error(lesson, exc: Exception) -> None:
-            st.session_state["lesson_errors"].append((lesson.day, str(exc)))
-
-        try:
-            render_plan(
-                plan,
-                output_dir=DEFAULT_OUTPUT_DIR,
-                cache_dir=DEFAULT_CACHE_DIR,
-                on_lesson_start=on_lesson_start,
-                on_lesson_done=on_lesson_done,
-                on_lesson_error=on_lesson_error,
-            )
-            status_placeholder.success(
-                f"Plan finished: "
-                f"{len(st.session_state['lesson_results'])} OK, "
-                f"{len(st.session_state['lesson_errors'])} failed"
-            )
-        except Exception as exc:  # noqa: BLE001
-            status_placeholder.error(f"Plan run aborted: {exc}")
-
-    # Render the results / errors tables on every rerun so they survive
-    # navigation across tabs.
-    results = st.session_state.get("lesson_results") or []
-    errors = st.session_state.get("lesson_errors") or []
-
-    if results:
-        with results_placeholder.container():
-            st.subheader("Results")
-            st.table(
-                {
-                    "Day": [r[0] for r in results],
-                    "Output": [r[1] for r in results],
-                }
-            )
-            for day, path_str in results:
-                p = Path(path_str)
-                if p.exists():
-                    try:
-                        st.download_button(
-                            label=f"Download {p.name}",
-                            data=p.read_bytes(),
-                            file_name=p.name,
-                            mime="video/mp4",
-                            key=f"lesson_dl_{day}_{p.name}",
-                        )
-                    except OSError as exc:
-                        st.warning(f"Could not read {p}: {exc}")
-
-    if errors:
-        with errors_placeholder.container():
-            st.subheader("Errors")
-            st.table(
-                {
-                    "Day": [e[0] for e in errors],
-                    "Error": [e[1] for e in errors],
-                }
-            )
+    elif mode == "music_removal":
+        _studio_panel_music(visual=visual, playlist_id=playlist_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2134,39 +2050,15 @@ def main() -> None:
     # Review fix: prune ``ch_<slug>`` keys for slugs that no longer exist.
     _prune_stale_channel_filters(channels)
 
-    tab_simple, tab_ayah, tab_lesson, tab_music = st.tabs(
-        [
-            "Surah render",
-            "Ayah range (memorization)",
-            "Weekly lesson plan",
-            "Music removal",
-        ]
+    _render_studio(
+        channels=channels,
+        surahs=surahs,
+        metadata=metadata,
+        upscale=upscale,
+        preset_slug=preset_slug,
+        burn_subtitles=burn_subtitles,
+        playlist_id=playlist_id,
     )
-
-    with tab_simple:
-        _render_tab_simple(
-            surahs=surahs,
-            channels=channels,
-            metadata=metadata,
-            upscale=upscale,
-            playlist_id=playlist_id,
-        )
-
-    with tab_ayah:
-        _render_tab_ayah(
-            channels=channels,
-            metadata=metadata,
-            upscale=upscale,
-            preset_slug=preset_slug,
-            burn_subtitles=burn_subtitles,
-            playlist_id=playlist_id,
-        )
-
-    with tab_lesson:
-        _render_tab_lesson()
-
-    with tab_music:
-        _render_tab_music_removal(channels=channels, playlist_id=playlist_id)
 
 
 if __name__ == "__main__":  # pragma: no cover
