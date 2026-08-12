@@ -33,6 +33,32 @@ function Info($m) { Write-Host "  $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "  $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "  $m" -ForegroundColor Yellow }
 
+<#
+Run a native command without letting PowerShell 5.1 mistake its chatter for
+failure.
+
+With $ErrorActionPreference='Stop', 5.1 wraps anything an external program
+writes to stderr in a NativeCommandError and treats it as terminating. pip
+writes ordinary warnings there ("A new release of pip is available", build
+notes), so a completely successful install aborted the script — the first
+version of this installer died right after creating the venv, leaving no
+worker/.env and no worker, with nothing on screen to say why.
+
+Exit code is the only trustworthy signal, so check that instead.
+#>
+function Invoke-Native {
+  param([Parameter(Mandatory)][string]$Exe, [string[]]$Arguments, [string]$What)
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    & $Exe @Arguments
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $prev
+  }
+  if ($code -ne 0) { throw "$What failed (exit $code). Command: $Exe $($Arguments -join ' ')" }
+}
+
 Write-Host "`nQuran Studio worker setup`n" -ForegroundColor White
 
 # --- prerequisites ----------------------------------------------------------
@@ -56,26 +82,34 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
 # --- repo -------------------------------------------------------------------
 if (Test-Path (Join-Path $InstallDir '.git')) {
   Info "Updating existing checkout at $InstallDir"
-  git -C $InstallDir pull --ff-only
+  # git writes progress to stderr, so this needs the same treatment as pip.
+  Invoke-Native git @('-C', $InstallDir, 'pull', '--ff-only') 'git pull'
 } else {
   Info "Cloning into $InstallDir"
-  git clone --depth 1 https://github.com/Affiliat0r/yt-audio-filter.git $InstallDir
+  Invoke-Native git @('clone', '--depth', '1', 'https://github.com/Affiliat0r/yt-audio-filter.git', $InstallDir) 'git clone'
 }
 Set-Location $InstallDir
 
 # --- venv + deps ------------------------------------------------------------
 $venvPy = Join-Path $InstallDir '.venv\Scripts\python.exe'
-if (-not (Test-Path $venvPy)) { Info "Creating virtualenv"; python -m venv .venv }
+if (-not (Test-Path $venvPy)) {
+  Info "Creating virtualenv"
+  Invoke-Native python @('-m', 'venv', '.venv') 'venv creation'
+}
 
-& $venvPy -m pip install --upgrade pip --quiet
+Invoke-Native $venvPy @('-m','pip','install','--upgrade','pip','--quiet','--disable-pip-version-check') 'pip upgrade'
 if ($WithMusicRemoval) {
   Info "Installing worker WITH Demucs + PyTorch (~5 GB, this takes a while)"
-  & $venvPy -m pip install -e ".[music]" --quiet
+  Invoke-Native $venvPy @('-m','pip','install','-e','.[music]','--disable-pip-version-check') 'pip install'
 } else {
   Info "Installing light worker (~150 MB): downloads, overlay renders, search, upload"
-  & $venvPy -m pip install -e . --quiet
+  Invoke-Native $venvPy @('-m','pip','install','-e','.','--disable-pip-version-check') 'pip install'
 }
-Ok "Dependencies installed"
+
+# Prove it actually works before claiming success. A half-installed venv used
+# to sail past this point and only surface as a silent worker much later.
+Invoke-Native $venvPy @('-c','import yt_audio_filter, worker.worker') 'import check'
+Ok "Dependencies installed and import-checked"
 
 # --- config -----------------------------------------------------------------
 if (-not $StudioUrl)   { $StudioUrl = Read-Host "Studio URL (e.g. https://quran-studio-mocha.vercel.app)" }
