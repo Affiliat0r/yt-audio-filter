@@ -296,22 +296,77 @@ Otherwise: libx264 `medium/crf=18`. Same detection is reused in
 - **Surah detector short-name boundaries.** Short surah names (Qaf, Sad, Hud, Yunus, Saba, Fatir, Nuh, Abasa) use `(?<![a-z])X(?![a-z])` instead of `\b` because `_` (underscore) is a word character in regex — titles like `"Surah Al Qaf__Salim Bahanan"` broke `\b` boundaries.
 - **bgutil script-mode cold start.** The `bgutil-ytdlp-pot-provider` plugin, if installed, auto-runs a Deno script per PO-token request. First invocation downloads npm deps and times out at 15 s. `download_stream()` and `yt_metadata.fetch_yt_metadata()` neutralize this by passing `youtubepot-bgutilscript: script_path: __disabled__` in `extractor_args`.
 
-## Streamlit UI
+## Quran Studio (Vercel + local worker) — the current UI
 
-Local single-page web app around `yt-quran-overlay`'s surah-numbers mode.
-Lets you pick surahs, reciter (with an inline audio sample), and a
-cartoon visual from a thumbnail grid, then render / preview / upload
-without touching a shell.
+The hosted replacement for the Streamlit app. Same three modes, but the UI
+lives on Vercel (always up, reachable from anywhere) and the compute stays on
+the user's PC.
+
+```
+Vercel (web/)                      Local PC (worker/)
+Next.js Studio UI                  worker.py polls for jobs
+/api/jobs        create      ◄──── claims via /api/worker/claim
+/api/jobs/:id    poll status ◄──── posts /api/worker/progress
+/api/worker/*    worker API  ◄──── posts /api/worker/complete
+Upstash Redis    job records        runs the EXISTING pipeline unchanged
+Vercel Blob      result MP4         uploads result for preview
+```
+
+The worker only makes **outbound** HTTPS calls — no inbound ports, no tunnel,
+works behind NAT, and keeps the residential IP that stops YouTube bot
+detection from blocking downloads.
+
+**Why not run it all on Vercel:** no GPU (NVENC / Real-ESRGAN / Demucs CUDA),
+250 MB function bundle limit (PyTorch alone is ~800 MB), no persistent
+filesystem for the multi-GB `cache/`, and an execution ceiling far below a
+real render.
+
+### Layout
+
+| Path | Role |
+|------|------|
+| `web/lib/types.ts` | **Authoritative job contract.** Mirrored in `worker/contract.py` — change both together. JSON is camelCase, Python is snake_case; convert at the boundary. |
+| `web/lib/jobs.ts` | Redis job store: create / claim / progress / complete / cancel / upload-requeue. Search jobs are `rpush`ed so they jump ahead of renders. |
+| `web/lib/auth.ts` | Password → HMAC-signed session cookie for users; static `x-worker-token` header for the worker. |
+| `web/data/*.json` | Surahs, reciters, presets, channels baked in at build time. **Generated — never hand-edit.** Run `python scripts/sync_web_data.py`. |
+| `web/scripts/dev-redis.mjs` | In-memory Upstash-REST stand-in for local dev. Test fixture only. |
+| `worker/handlers.py` | Dispatches each job kind to the existing pipeline functions. Always passes `upload=False` — uploads are a separate, explicitly user-triggered step. |
+| `worker/blob.py` | Direct REST upload to Vercel Blob. Degrades gracefully: a failed/absent token still completes the job, just without an in-browser preview. |
 
 ### Invocation
 
 ```bash
-pip install -e ".[app]"
-streamlit run src/yt_audio_filter/streamlit_app.py
+# frontend (see docs/DEPLOY.md for the full setup)
+cd web && npm run dev
+
+# worker
+worker\run_worker.bat
 ```
 
-Opens on `http://localhost:8501`. Single-session, no auth — assumes it's
-behind the OS.
+Setup, secrets, and deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
+
+### Gotchas
+
+- **Nothing uploads to YouTube automatically.** Renders always land as a
+  preview; publishing requires the explicit "Upload to YouTube" button, which
+  re-queues the job with `uploadRequested=true` and reuses the rendered file.
+- **Search runs on the worker**, not Vercel — yt-dlp cannot run in a
+  serverless function. The UI polls a `kind: "search"` job.
+- **Search picks must reach the catalog.** The frontend sends the whole
+  `CatalogVideo`; the worker calls `cartoon_search.add_pick_to_catalog` before
+  rendering, because `overlay_pipeline._resolve_visual_video` only resolves ids
+  present in `list_videos()`.
+- **YouTube OAuth stays machine-local** (`~/.yt-audio-filter/`). The hosted UI
+  never sees those credentials.
+- **`metadataPath` is a path on the worker's filesystem**, not an upload.
+
+### Legacy Streamlit UI (superseded)
+
+`src/yt_audio_filter/streamlit_app.py` still runs
+(`streamlit run src/yt_audio_filter/streamlit_app.py`) but is no longer the
+intended entry point. It is single-session, localhost-only, and unauthenticated.
+The sections below document it; they describe the same three modes the Studio
+now exposes.
 
 ### UI surface
 

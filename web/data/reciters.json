@@ -1,0 +1,142 @@
+[
+ {
+  "slug": "alafasy",
+  "displayName": "Mishary Rashid Alafasy",
+  "arabicName": "مشاري راشد العفاسي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/mishaari_raashid_al_3afaasee/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "sudais",
+  "displayName": "Abdur-Rahman As-Sudais",
+  "arabicName": "عبد الرحمن السديس",
+  "sampleUrl": "https://download.quranicaudio.com/quran/abdurrahmaan_as-sudays/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "shuraim",
+  "displayName": "Saud Al-Shuraim",
+  "arabicName": "سعود الشريم",
+  "sampleUrl": "https://download.quranicaudio.com/quran/sa3ood_al-shuraym/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "maher",
+  "displayName": "Maher Al-Muaiqly",
+  "arabicName": "ماهر المعيقلي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/maher_256/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "ajmi",
+  "displayName": "Ahmed Al-Ajmi",
+  "arabicName": "أحمد بن علي العجمي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/ahmed_ibn_3ali_al-3ajamy/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "abdulbasit",
+  "displayName": "Abdul Basit Abdul Samad",
+  "arabicName": "عبد الباسط عبد الصمد",
+  "sampleUrl": "https://download.quranicaudio.com/quran/abdul_basit_murattal/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "minshawi",
+  "displayName": "Muhammad Siddiq Al-Minshawi",
+  "arabicName": "محمد صديق المنشاوي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/muhammad_siddeeq_al-minshaawee/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "ghamdi",
+  "displayName": "Saad Al-Ghamdi",
+  "arabicName": "سعد الغامدي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/sa3d_al-ghaamidi/complete/001.mp3",
+  "supportsAyah": false
+ },
+ {
+  "slug": "qatami",
+  "displayName": "Nasser Al-Qatami",
+  "arabicName": "ناصر القطامي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/nasser_bin_ali_alqatami/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "dosari",
+  "displayName": "Yasser Ad-Dosari",
+  "arabicName": "ياسر الدوسري",
+  "sampleUrl": "https://download.quranicaudio.com/quran/yasser_ad-dussary/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "abkar",
+  "displayName": "Idris Abkar",
+  "arabicName": "إدريس أبكر",
+  "sampleUrl": "https://download.quranicaudio.com/quran/idrees_abkar/001.mp3",
+  "supportsAyah": false
+ },
+ {
+  "slug": "fares",
+  "displayName": "Fares Abbad",
+  "arabicName": "فارس عباد",
+  "sampleUrl": "https://download.quranicaudio.com/quran/fares/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "luhaidan",
+  "displayName": "Muhammad Al-Luhaidan",
+  "arabicName": "محمد اللحيدان",
+  "sampleUrl": "https://download.quranicaudio.com/quran/muhammad_alhaidan/001.mp3",
+  "supportsAyah": false
+ },
+ {
+  "slug": "rifai",
+  "displayName": "Hani Ar-Rifai",
+  "arabicName": "هاني الرفاعي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/rifai/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "basfar",
+  "displayName": "Abdullah Basfar",
+  "arabicName": "عبد الله بسفر",
+  "sampleUrl": "https://download.quranicaudio.com/quran/abdullaah_basfar/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "alijaber",
+  "displayName": "Ali Jaber",
+  "arabicName": "علي جابر",
+  "sampleUrl": "https://download.quranicaudio.com/quran/ali_jaber/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "juhani",
+  "displayName": "Abdullah Awad Al-Juhani",
+  "arabicName": "عبد الله عواد الجهني",
+  "sampleUrl": "https://download.quranicaudio.com/quran/abdullaah_3awwaad_al-juhaynee/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "thubaity",
+  "displayName": "AbdulBari Ath-Thubaity",
+  "arabicName": "عبد الباري الثبيتي",
+  "sampleUrl": "https://download.quranicaudio.com/quran/thubaity/001.mp3",
+  "supportsAyah": false
+ },
+ {
+  "slug": "husary",
+  "displayName": "Mahmoud Khalil Al-Husary",
+  "arabicName": "محمود خليل الحصري",
+  "sampleUrl": "https://download.quranicaudio.com/quran/mahmood_khaleel_al-husaree/001.mp3",
+  "supportsAyah": true
+ },
+ {
+  "slug": "shatri",
+  "displayName": "Abu Bakr Al-Shatri",
+  "arabicName": "أبو بكر الشاطري",
+  "sampleUrl": "https://download.quranicaudio.com/quran/abu_bakr_ash-shaatree/001.mp3",
+  "supportsAyah": true
+ }
+]

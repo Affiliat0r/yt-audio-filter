@@ -1,0 +1,8 @@
+# The CLI uploads this directory verbatim — keep local secrets and build
+# artifacts out of the deployment bundle.
+.env
+.env.*
+!.env.example
+node_modules
+.next
+scripts/dev-redis.mjs

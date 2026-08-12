@@ -1,0 +1,26 @@
+[
+ {
+  "slug": "youtube_landscape",
+  "label": "YouTube (1080p landscape)",
+  "width": 1920,
+  "height": 1080
+ },
+ {
+  "slug": "youtube_landscape_720",
+  "label": "YouTube (720p landscape)",
+  "width": 1280,
+  "height": 720
+ },
+ {
+  "slug": "whatsapp_vertical",
+  "label": "WhatsApp (9:16 vertical)",
+  "width": 1080,
+  "height": 1920
+ },
+ {
+  "slug": "instagram_square",
+  "label": "Instagram (1:1 square)",
+  "width": 1080,
+  "height": 1080
+ }
+]

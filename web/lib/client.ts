@@ -1,0 +1,150 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { isTerminal, type CatalogVideo, type Job, type JobInput } from "./types";
+
+export class ApiError extends Error {}
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+  });
+  if (res.status === 401) {
+    window.location.href = "/login";
+    throw new ApiError("Session expired");
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(body.error ?? `Request failed (${res.status})`);
+  return body as T;
+}
+
+export const createJob = (input: JobInput) =>
+  api<{ job: Job }>("/api/jobs", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }).then((r) => r.job);
+
+export const fetchJob = (id: string) =>
+  api<{ job: Job }>(`/api/jobs/${id}`).then((r) => r.job);
+
+export const cancelJob = (id: string) =>
+  api<{ job: Job }>(`/api/jobs/${id}`, { method: "DELETE" }).then((r) => r.job);
+
+export const requestUpload = (id: string) =>
+  api<{ job: Job }>(`/api/jobs/${id}/upload`, { method: "POST" }).then(
+    (r) => r.job
+  );
+
+export const fetchCatalog = () =>
+  api<{ videos: CatalogVideo[]; updatedAt: number | null }>("/api/catalog");
+
+/**
+ * Server-side job history. This is what makes a render survive a reload or
+ * follow you to another device — the job lives in Redis, not in the tab that
+ * started it.
+ */
+export const fetchJobs = () =>
+  api<{ jobs: Job[] }>("/api/jobs").then((r) => r.jobs);
+
+export const fetchWorkerStatus = () =>
+  api<{ online: boolean; queueDepth: number; heartbeat: unknown }>(
+    "/api/worker/status"
+  );
+
+/**
+ * Poll a job until it reaches a terminal state. Polling (rather than SSE) is
+ * deliberate: Vercel functions are short-lived, and a render can run for tens
+ * of minutes across many cold starts.
+ */
+export function useJobPolling(jobId: string | null, intervalMs = 2000) {
+  const [job, setJob] = useState<Job | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Bumped to restart polling after a job leaves a terminal state — which
+  // happens when the user requests a YouTube upload of a finished render.
+  const [generation, setGeneration] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!jobId) {
+      setJob(null);
+      return;
+    }
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const next = await fetchJob(jobId);
+        if (cancelled) return;
+        setJob(next);
+        setError(null);
+        if (next.status === "done" || next.status === "error" || next.status === "cancelled") {
+          return; // stop polling
+        }
+      } catch (e) {
+        if (cancelled) return;
+        // Transient failures are expected on cold starts; keep polling.
+        setError(e instanceof Error ? e.message : "Poll failed");
+      }
+      if (!cancelled) timer.current = setTimeout(tick, intervalMs);
+    };
+
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [jobId, intervalMs, generation]);
+
+  /**
+   * Adopt a job returned by a mutation. If it went back to a non-terminal
+   * state, resume polling — the effect above has already stopped.
+   */
+  const adoptJob = useCallback((next: Job | null) => {
+    setJob(next);
+    if (next && !isTerminal(next.status)) setGeneration((g) => g + 1);
+  }, []);
+
+  return { job, error, setJob: adoptJob };
+}
+
+export function useWorkerStatus(intervalMs = 20000) {
+  const [status, setStatus] = useState<{
+    online: boolean;
+    queueDepth: number;
+  } | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await fetchWorkerStatus();
+      setStatus({ online: s.online, queueDepth: s.queueDepth });
+    } catch {
+      setStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const h = setInterval(refresh, intervalMs);
+    return () => clearInterval(h);
+  }, [refresh, intervalMs]);
+
+  return status;
+}
+
+export function formatDuration(seconds: number): string {
+  if (!seconds || seconds < 0) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export function formatViews(n: number): string {
+  if (!n) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
