@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
-from yt_audio_filter import cartoon_search, overlay_pipeline, pipeline, uploader, youtube
+from yt_audio_filter import cartoon_search, overlay_pipeline, uploader, youtube
 from yt_audio_filter.cartoon_catalog import CatalogVideo
 from yt_audio_filter.exceptions import OverlayError
 from yt_audio_filter.logger import get_logger
@@ -434,6 +434,20 @@ def handle_music_removal(
         label, overall = moved
         # ctx.report raises JobCancelled, which unwinds process_video for us.
         ctx.report(label, overall)
+
+    # Imported here, not at module scope: this is the only handler that needs
+    # Demucs, and the import chain pulls in PyTorch (~5 GB installed). Keeping
+    # it lazy lets a machine that only does overlay renders and search skip
+    # that dependency entirely. See yt_audio_filter/__init__.py.
+    try:
+        from yt_audio_filter import pipeline
+    except ImportError as exc:
+        raise OverlayError(
+            "This worker cannot remove background music.",
+            f"Demucs and PyTorch are not installed on {cfg.worker_id}. "
+            f'Install them with: pip install -e ".[music]"  (~5 GB), or target '
+            f"a machine that already has them. Underlying error: {exc}",
+        ) from exc
 
     with ctx.stage("Removing background music"):
         pipeline.process_video(

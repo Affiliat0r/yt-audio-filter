@@ -26,16 +26,27 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Analysis",
     "Topic :: Multimedia :: Video :: Conversion",
 ]
+# Kept deliberately light. Everything here is needed to download, render an
+# overlay, and upload — which is all most workers ever do. Demucs and PyTorch
+# add ~5 GB and are only needed for music removal, so they live in the
+# "music" extra below. `yt_audio_filter/__init__.py` imports process_video
+# lazily so the package works without them.
 dependencies = [
-    "demucs>=4.0.0",
-    "torch>=2.0.0",
-    "torchaudio>=2.0.0",
     "yt-dlp>=2025.05.22",  # Required for POT provider bot detection bypass
     "pytubefix>=10.0.0",   # Application-less primary downloader (no Deno/Node needed)
-    "soundfile>=0.12.0",
 ]
 
 [project.optional-dependencies]
+# Music removal only. ~5 GB installed, and on a machine without an NVIDIA GPU
+# Demucs falls back to CPU at roughly 10-20x slower than real time — so a
+# second laptop is usually better off skipping this and targeting the GPU box
+# for music-removal jobs.
+music = [
+    "demucs>=4.0.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "soundfile>=0.12.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

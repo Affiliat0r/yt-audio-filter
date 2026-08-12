@@ -130,19 +130,27 @@ that worker shares a machine with the browser. Jobs are then tagged with its
 falls back to "any available machine". The sidebar's **Run the work on**
 selector overrides it either way.
 
-On the new machine:
+On the new machine, one command in PowerShell:
 
-```bash
-git clone <repo> && cd yt-audio-filter
-python -m venv .venv && .venv/Scripts/pip install -e .
-# FFmpeg must be on PATH
-cp worker/.env.example worker/.env      # fill in STUDIO_BASE_URL + WORKER_TOKEN
-worker\run_worker.bat
+```powershell
+irm https://raw.githubusercontent.com/Affiliat0r/yt-audio-filter/main/scripts/install_worker.ps1 | iex
 ```
 
-It derives a stable id from the hostname and machine GUID, writes it to
-`worker/state/worker_id.txt`, and registers itself within a minute. Set
-`WORKER_ID` explicitly if you would rather name it.
+It checks prerequisites, clones the repo, builds a venv, installs the worker,
+prompts for the Studio URL and `WORKER_TOKEN`, registers a hidden auto-start
+task, and confirms the worker answered on `127.0.0.1:7717`.
+
+**It installs the light worker by default — about 150 MB.** That covers
+downloads, overlay renders, search, and YouTube upload: everything except
+music removal. Demucs and PyTorch add roughly 5 GB and are only worth
+installing on a machine with an NVIDIA GPU:
+
+```powershell
+.\scripts\install_worker.ps1 -WithMusicRemoval
+```
+
+Ask a light worker for a music-removal job and it fails with a message saying
+so, rather than crashing — target the GPU machine for those instead.
 
 **Without a GPU it still works, with caveats:**
 
