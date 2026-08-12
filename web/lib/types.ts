@@ -116,6 +116,15 @@ export interface Job {
   id: string;
   kind: JobKind;
   status: JobStatus;
+  /**
+   * Restricts this job to one worker. Set when the browser detects a worker
+   * running on the same machine, so work stays on the laptop you are sitting
+   * at instead of being grabbed by whichever worker polls first. `null` means
+   * any worker may claim it.
+   */
+  targetWorkerId: string | null;
+  /** Worker that actually claimed it, once claimed. */
+  claimedBy: string | null;
   input: JobInput;
   progress: JobProgress;
   result: JobResult | null;
@@ -131,12 +140,23 @@ export interface Job {
 
 export interface WorkerHeartbeat {
   at: number;
+  /** Stable per-machine id. The browser matches this against what the local
+   *  discovery endpoint reports to decide which worker is "this machine". */
+  workerId: string;
   hostname: string;
   gpu: string | null;
   version: string;
   /** Job id the worker is currently executing, if any. */
   currentJobId: string | null;
 }
+
+/** What `/api/workers` returns for the target picker. */
+export interface WorkerSummary extends WorkerHeartbeat {
+  online: boolean;
+}
+
+/** Port the worker's local discovery endpoint listens on. */
+export const DISCOVERY_PORT = 7717;
 
 /** A short-lived label for a job, used in listings. */
 export function jobLabel(job: Job): string {

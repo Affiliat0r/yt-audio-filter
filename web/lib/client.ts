@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isTerminal, type CatalogVideo, type Job, type JobInput } from "./types";
+import {
+  DISCOVERY_PORT,
+  isTerminal,
+  type CatalogVideo,
+  type Job,
+  type JobInput,
+  type WorkerSummary,
+} from "./types";
 
 export class ApiError extends Error {}
 
@@ -19,10 +26,12 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export const createJob = (input: JobInput) =>
+export const createJob = (input: JobInput, targetWorkerId?: string | null) =>
   api<{ job: Job }>("/api/jobs", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify(
+      targetWorkerId ? { ...input, targetWorkerId } : input
+    ),
   }).then((r) => r.job);
 
 export const fetchJob = (id: string) =>
@@ -51,6 +60,42 @@ export const fetchWorkerStatus = () =>
   api<{ online: boolean; queueDepth: number; heartbeat: unknown }>(
     "/api/worker/status"
   );
+
+export const fetchWorkers = () =>
+  api<{ workers: WorkerSummary[] }>("/api/workers").then((r) => r.workers);
+
+/**
+ * Ask the worker on THIS machine who it is.
+ *
+ * The browser cannot see local processes, so the worker runs a tiny loopback
+ * endpoint and we probe it. A hit means that worker shares a machine with this
+ * browser, which is what lets us pin jobs to the laptop you are sitting at.
+ *
+ * Expected to fail often and harmlessly — no local worker, a phone, a
+ * different port — so failure just means "no local worker", never an error.
+ */
+export async function probeLocalWorker(
+  timeoutMs = 1500
+): Promise<{ workerId: string; hostname: string; gpu: string | null } | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`http://127.0.0.1:${DISCOVERY_PORT}/whoami`, {
+      signal: ctrl.signal,
+      // No cookies to a local origin, and never a cached answer: the worker
+      // may have restarted with a different identity.
+      credentials: "omit",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return typeof body?.workerId === "string" ? body : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Poll a job until it reaches a terminal state. Polling (rather than SSE) is

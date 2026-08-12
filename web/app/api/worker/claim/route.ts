@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { checkWorkerToken } from "@/lib/auth";
-import { claimNextJob } from "@/lib/jobs";
-import { KEYS, redis } from "@/lib/redis";
+import { claimNextJob, recordHeartbeat } from "@/lib/jobs";
 import type { WorkerHeartbeat } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * The worker long-polls this. Each call also records a heartbeat so the UI can
- * show whether the render box is online.
+ * The worker long-polls this. Each call also records a heartbeat, which is how
+ * the UI knows which machines are online and can offer them as render targets.
  */
 export async function POST(req: Request) {
   if (!checkWorkerToken(req)) {
@@ -23,16 +22,19 @@ export async function POST(req: Request) {
     // Heartbeat body is optional.
   }
 
-  const job = await claimNextJob();
+  // Untagged workers (an un-upgraded install) can still claim untargeted jobs.
+  const workerId = typeof beat.workerId === "string" ? beat.workerId : undefined;
 
-  const heartbeat: WorkerHeartbeat = {
+  const job = await claimNextJob(workerId);
+
+  await recordHeartbeat({
     at: Date.now(),
+    workerId: workerId ?? "legacy",
     hostname: beat.hostname ?? "unknown",
     gpu: beat.gpu ?? null,
     version: beat.version ?? "unknown",
     currentJobId: job?.id ?? null,
-  };
-  await redis().set(KEYS.heartbeat, heartbeat, { ex: 300 });
+  });
 
   return NextResponse.json({ job });
 }

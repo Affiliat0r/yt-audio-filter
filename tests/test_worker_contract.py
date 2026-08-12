@@ -21,6 +21,7 @@ from worker.config import (
     load_config,
     parse_env_file,
 )
+from worker.discovery import DEFAULT_DISCOVERY_PORT
 from worker.contract import (
     DEFAULT_METADATA_PATH,
     AyahJobInput,
@@ -375,6 +376,55 @@ def test_job_to_json_round_trips_the_input():
     assert job.to_json()["input"] == raw_input
 
 
+# --------------------------------------------------------------- job targeting
+
+
+def _targeting_job(**extra) -> dict:
+    return {
+        "id": "job-t",
+        "kind": "search",
+        "status": "claimed",
+        "input": {"kind": "search", "query": "abc", "maxResults": 25},
+        **extra,
+    }
+
+
+def test_job_parses_target_worker_id_and_claimed_by():
+    job = Job.from_json(
+        _targeting_job(targetWorkerId="laptop-a1b2c3d4", claimedBy="laptop-a1b2c3d4")
+    )
+
+    assert job.target_worker_id == "laptop-a1b2c3d4"
+    assert job.claimed_by == "laptop-a1b2c3d4"
+
+
+def test_job_targeting_round_trips_back_to_camel_case():
+    payload = Job.from_json(
+        _targeting_job(targetWorkerId="studio-box", claimedBy="studio-box")
+    ).to_json()
+
+    assert payload["targetWorkerId"] == "studio-box"
+    assert payload["claimedBy"] == "studio-box"
+
+
+def test_job_without_targeting_fields_is_claimable_by_anyone():
+    job = Job.from_json(_targeting_job())
+
+    assert job.target_worker_id is None
+    assert job.claimed_by is None
+    # The keys still have to be present on the way out: the frontend types them
+    # as `string | null`, not optional.
+    assert job.to_json()["targetWorkerId"] is None
+    assert job.to_json()["claimedBy"] is None
+
+
+def test_job_normalises_blank_targeting_fields_to_none():
+    job = Job.from_json(_targeting_job(targetWorkerId="", claimedBy="   "))
+
+    assert job.target_worker_id is None
+    assert job.claimed_by is None
+
+
 def test_job_progress_defaults():
     progress = JobProgress.from_json(None)
 
@@ -415,10 +465,13 @@ def test_job_result_merge_keeps_the_preview_url_when_adding_a_youtube_id():
     assert merged.youtube_video_id == "yt42"
 
 
-def test_worker_heartbeat_serialises_current_job_id():
-    beat = WorkerHeartbeat(hostname="box", gpu="RTX", version="1.0.0")
+def test_worker_heartbeat_serialises_identity_and_current_job_id():
+    beat = WorkerHeartbeat(
+        hostname="box", gpu="RTX", version="1.0.0", worker_id="box-a1b2c3d4"
+    )
 
     assert beat.to_json() == {
+        "workerId": "box-a1b2c3d4",
         "hostname": "box",
         "gpu": "RTX",
         "version": "1.0.0",
@@ -466,12 +519,18 @@ def test_load_config_reads_the_env_file_and_applies_defaults(tmp_path: Path):
         "STUDIO_BASE_URL=https://studio.vercel.app/\nWORKER_TOKEN=tok\n", encoding="utf-8"
     )
 
-    cfg = load_config(env={}, env_file=env_file)
+    cfg = load_config(
+        env={}, env_file=env_file, worker_id_path=tmp_path / "worker_id.txt"
+    )
     assert cfg.base_url == "https://studio.vercel.app"  # trailing slash stripped
     assert cfg.token == "tok"
     assert cfg.poll_seconds == DEFAULT_POLL_SECONDS
     assert cfg.cache_dir == Path("cache")
     assert cfg.blob_enabled is False
+    assert cfg.discovery_port == DEFAULT_DISCOVERY_PORT
+    # Nothing configured, so an id was derived and remembered for next time.
+    assert cfg.worker_id
+    assert (tmp_path / "worker_id.txt").read_text(encoding="utf-8").strip() == cfg.worker_id
 
 
 def test_load_config_prefers_the_process_environment(tmp_path: Path):
@@ -487,6 +546,7 @@ def test_load_config_prefers_the_process_environment(tmp_path: Path):
             "WORKER_CACHE_DIR": "D:/cache",
         },
         env_file=env_file,
+        worker_id_path=tmp_path / "worker_id.txt",
     )
 
     assert cfg.base_url == "https://env"
@@ -494,6 +554,43 @@ def test_load_config_prefers_the_process_environment(tmp_path: Path):
     assert cfg.poll_seconds == 2.5
     assert cfg.cache_dir == Path("D:/cache")
     assert cfg.blob_enabled is True
+
+
+def test_load_config_takes_an_explicit_worker_id_over_the_derived_one(tmp_path: Path):
+    state = tmp_path / "worker_id.txt"
+
+    cfg = load_config(
+        env={
+            "STUDIO_BASE_URL": "https://x",
+            "WORKER_TOKEN": "t",
+            "WORKER_ID": "hasan-desktop",
+            "WORKER_DISCOVERY_PORT": "7718",
+        },
+        env_file=tmp_path / "absent.env",
+        worker_id_path=state,
+    )
+
+    assert cfg.worker_id == "hasan-desktop"
+    assert cfg.discovery_port == 7718
+    # An explicit id is already stable; nothing needs remembering.
+    assert not state.exists()
+
+
+@pytest.mark.parametrize("port", ["seven", "0", "70000"])
+def test_load_config_rejects_an_unusable_discovery_port(tmp_path: Path, port):
+    env = {
+        "STUDIO_BASE_URL": "https://x",
+        "WORKER_TOKEN": "t",
+        "WORKER_ID": "fixed",
+        "WORKER_DISCOVERY_PORT": port,
+    }
+
+    with pytest.raises(WorkerConfigError, match="WORKER_DISCOVERY_PORT"):
+        load_config(
+            env=env,
+            env_file=tmp_path / "absent.env",
+            worker_id_path=tmp_path / "worker_id.txt",
+        )
 
 
 @pytest.mark.parametrize(

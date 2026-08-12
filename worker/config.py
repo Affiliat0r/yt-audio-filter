@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Mapping, Optional
 
+from .discovery import DEFAULT_DISCOVERY_PORT
+from .identity import DEFAULT_WORKER_ID_PATH, resolve_worker_id
+
 #: Location of the optional key=value file, next to this module.
 ENV_FILE = Path(__file__).resolve().parent / ".env"
 
@@ -35,6 +38,11 @@ class WorkerConfig:
     #: Vercel automation-bypass secret. Only needed when the target deployment
     #: has Deployment Protection enabled; ignored otherwise.
     bypass_secret: Optional[str] = None
+    #: Stable identity of this machine. Sent on every claim so the Studio can
+    #: route a job to one specific laptop; see ``worker/identity.py``.
+    worker_id: str = ""
+    #: Port of the loopback ``/whoami`` endpoint the browser probes.
+    discovery_port: int = DEFAULT_DISCOVERY_PORT
 
     @property
     def blob_enabled(self) -> bool:
@@ -85,16 +93,20 @@ def _lookup(
 def load_config(
     env: Optional[Mapping[str, str]] = None,
     env_file: Optional[Path] = None,
+    worker_id_path: Optional[Path] = None,
 ) -> WorkerConfig:
     """Build a :class:`WorkerConfig`, raising when a required value is absent.
 
     Args:
         env: Environment mapping to read (defaults to ``os.environ``).
         env_file: Override for the ``.env`` path (defaults to ``worker/.env``).
+        worker_id_path: Override for the persisted worker-id file (defaults to
+            ``worker/state/worker_id.txt``).
 
     Raises:
         WorkerConfigError: When ``STUDIO_BASE_URL`` or ``WORKER_TOKEN`` is
-            missing, or ``WORKER_POLL_SECONDS`` is not a positive number.
+            missing, ``WORKER_POLL_SECONDS`` is not a positive number, or
+            ``WORKER_DISCOVERY_PORT`` is not a valid port.
     """
     env = os.environ if env is None else env
     file_values = parse_env_file(ENV_FILE if env_file is None else Path(env_file))
@@ -129,6 +141,20 @@ def load_config(
 
     cache_dir = _lookup("WORKER_CACHE_DIR", env, file_values) or DEFAULT_CACHE_DIR
 
+    port_raw = _lookup("WORKER_DISCOVERY_PORT", env, file_values)
+    discovery_port = DEFAULT_DISCOVERY_PORT
+    if port_raw is not None:
+        try:
+            discovery_port = int(port_raw)
+        except ValueError as exc:
+            raise WorkerConfigError(
+                f"WORKER_DISCOVERY_PORT must be an integer, got {port_raw!r}"
+            ) from exc
+        if not 1 <= discovery_port <= 65535:
+            raise WorkerConfigError(
+                f"WORKER_DISCOVERY_PORT must be 1-65535, got {discovery_port}"
+            )
+
     return WorkerConfig(
         base_url=base_url.rstrip("/"),
         token=token,
@@ -136,6 +162,11 @@ def load_config(
         poll_seconds=poll_seconds,
         cache_dir=Path(cache_dir),
         bypass_secret=_lookup("VERCEL_AUTOMATION_BYPASS_SECRET", env, file_values),
+        worker_id=resolve_worker_id(
+            _lookup("WORKER_ID", env, file_values),
+            path=DEFAULT_WORKER_ID_PATH if worker_id_path is None else Path(worker_id_path),
+        ),
+        discovery_port=discovery_port,
     )
 
 

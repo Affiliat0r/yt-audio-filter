@@ -37,6 +37,7 @@ from .catalog_sync import DEFAULT_INTERVAL_SECONDS, start_catalog_sync
 from .client import StudioClient
 from .config import WorkerConfig, WorkerConfigError, load_blob_token, load_config
 from .contract import Job, JobResult, WorkerHeartbeat
+from .discovery import WorkerIdentity, start_discovery
 from .handlers import JobCancelled, JobContext, run_job
 from .state import RenderedJobStore
 
@@ -68,12 +69,18 @@ def detect_gpu() -> Optional[str]:
     return lines[0] if lines else None
 
 
-def build_heartbeat(current_job_id: Optional[str] = None) -> WorkerHeartbeat:
-    """The body of every ``/api/worker/claim`` call."""
+def build_heartbeat(
+    worker_id: str = "", current_job_id: Optional[str] = None
+) -> WorkerHeartbeat:
+    """The body of every ``/api/worker/claim`` call.
+
+    ``worker_id`` is what lets the Studio hold a job back for one machine.
+    """
     return WorkerHeartbeat(
         hostname=socket.gethostname(),
         gpu=detect_gpu(),
         version=WORKER_VERSION,
+        worker_id=worker_id,
         current_job_id=current_job_id,
     )
 
@@ -113,10 +120,36 @@ def _safe_complete(
     logger.error("Giving up on reporting completion of %s", job_id)
 
 
+def wrong_worker_error(job: Job, worker_id: str) -> Optional[tuple[str, str]]:
+    """``(error, details)`` when this job was routed to a different machine.
+
+    The Studio is the one that filters on ``targetWorkerId``; this is a
+    backstop. Running the job anyway would render on the wrong laptop —
+    possibly one without a GPU — and nobody would ever notice, so a routing bug
+    is turned into a visible job failure instead.
+    """
+    target = job.target_worker_id
+    if not target or target == worker_id:
+        return None
+    return (
+        f"Job is targeted at worker {target!r}, but this worker is {worker_id!r}",
+        "The Studio handed out a job pinned to another machine. Nothing was "
+        "rendered. Re-queue it from the Studio while that machine's worker is "
+        "online, or clear the target.",
+    )
+
+
 def execute_job(
     job: Job, cfg: WorkerConfig, client: StudioClient, store: RenderedJobStore
 ) -> None:
     """Run one job to a terminal state. Never raises for job-level failures."""
+    mismatch = wrong_worker_error(job, cfg.worker_id)
+    if mismatch is not None:
+        message, details = mismatch
+        logger.warning("Refusing job %s: %s", job.id, message)
+        _safe_complete(client, job.id, False, error=message, error_details=details)
+        return
+
     logger.info(
         "Job %s claimed: kind=%s upload_requested=%s", job.id, job.kind, job.upload_requested
     )
@@ -154,7 +187,7 @@ def run_forever(
 
     while not stop.is_set():
         try:
-            job = client.claim(build_heartbeat())
+            job = client.claim(build_heartbeat(cfg.worker_id))
         except Exception as exc:  # noqa: BLE001 - transport hiccups are normal
             logger.warning("Claim failed (%s); retrying in %.0fs", exc, backoff)
             if stop.wait(backoff):
@@ -209,6 +242,14 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=DEFAULT_INTERVAL_SECONDS,
         help="Seconds between catalog syncs (default: %(default)s).",
     )
+    parser.add_argument(
+        "--no-discovery",
+        action="store_true",
+        help=(
+            "Do not serve the loopback /whoami endpoint. The Studio can then no "
+            "longer detect that this machine's worker is the local one."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug logging.")
     return parser.parse_args(argv)
 
@@ -240,13 +281,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         logger.error("%s", exc)
         return 2
 
+    identity = WorkerIdentity(
+        worker_id=cfg.worker_id,
+        hostname=socket.gethostname(),
+        gpu=detect_gpu(),
+        version=WORKER_VERSION,
+    )
+
+    discovery = None if args.no_discovery else start_discovery(identity, cfg.discovery_port)
+    if discovery is not None:
+        discovery_status = f"listening on {discovery.host}:{discovery.port}"
+    elif args.no_discovery:
+        discovery_status = "off (--no-discovery)"
+    else:
+        discovery_status = f"unavailable (port {cfg.discovery_port} busy)"
+
     logger.info(
-        "Worker %s starting: studio=%s cache=%s gpu=%s blob=%s",
+        "Worker %s starting: id=%s studio=%s cache=%s gpu=%s blob=%s discovery=%s",
         WORKER_VERSION,
+        cfg.worker_id,
         cfg.base_url,
         cfg.cache_dir,
-        detect_gpu() or "none detected",
+        identity.gpu or "none detected",
         "enabled" if cfg.blob_enabled else "disabled (no token)",
+        discovery_status,
     )
 
     client = StudioClient(cfg.base_url, cfg.token, bypass_secret=cfg.bypass_secret)
@@ -264,6 +322,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         logger.info("Interrupted; shutting down.")
     finally:
         stop.set()
+        if discovery is not None:
+            discovery.stop()
     return 0
 
 

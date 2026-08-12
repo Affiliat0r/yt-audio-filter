@@ -144,3 +144,11 @@ worker/worker.log
 /QUICK_START_GUI.md
 /test_complete_pipeline.bat
 /youtube_replacement.txt
+
+# three.js visuals workspace (source lives on feat/threejs-visuals).
+# Keep these here too so the build leftovers cannot be staged from main.
+/visuals/assets/
+/visuals/out/
+
+# Node dependencies anywhere in the tree.
+node_modules/

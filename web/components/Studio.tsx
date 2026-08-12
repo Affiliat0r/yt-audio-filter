@@ -7,6 +7,7 @@ import AyahPanel from "./AyahPanel";
 import MusicPanel from "./MusicPanel";
 import JobMonitor from "./JobMonitor";
 import RecentJobs from "./RecentJobs";
+import WorkerTarget, { type TargetState } from "./WorkerTarget";
 import { createJob, useJobPolling, useWorkerStatus } from "@/lib/client";
 import type { Reciter, Surah } from "@/lib/surah";
 import type { AyahRangeSpec, CatalogVideo, RenderSettings } from "@/lib/types";
@@ -54,6 +55,12 @@ export default function Studio({
 
   const worker = useWorkerStatus();
   const { job, setJob } = useJobPolling(jobId);
+  const [target, setTarget] = useState<TargetState>({
+    targetWorkerId: null,
+    localWorkerId: null,
+    workers: [],
+    probing: true,
+  });
 
   // Reset the monitor when the user starts composing a different kind of render.
   useEffect(() => setSubmitError(null), [mode]);
@@ -70,7 +77,7 @@ export default function Studio({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const created = await createJob(build());
+      const created = await createJob(build(), target.targetWorkerId);
       setJobId(created.id);
       setJob(created);
     } catch (e) {
@@ -216,6 +223,8 @@ export default function Studio({
               disabled={mode === "music_removal"}
             />
           </div>
+
+          <WorkerTarget onChange={setTarget} />
 
           <div>
             <label className="label">YouTube playlist id (optional)</label>

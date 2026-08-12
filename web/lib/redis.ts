@@ -35,7 +35,12 @@ export const KEYS = {
   jobIndex: "jobs:index",
   catalog: "catalog:videos",
   catalogUpdatedAt: "catalog:updatedAt",
+  /** Legacy single-worker heartbeat; kept so an un-upgraded worker still shows. */
   heartbeat: "worker:heartbeat",
+  /** Per-worker heartbeat, now that several machines can run one each. */
+  workerHeartbeat: (id: string) => `worker:hb:${id}`,
+  /** Set of known worker ids, so they can be listed without a KEYS scan. */
+  workerIndex: "worker:index",
 } as const;
 
 /** Jobs older than this are pruned from the index on write. */

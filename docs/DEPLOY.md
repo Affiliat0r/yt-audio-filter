@@ -118,6 +118,46 @@ schtasks /create /tn "QuranStudioWorker" /tr "C:\Users\hasan\yt-audio-filter\wor
 
 ---
 
+## Running a worker on a second machine
+
+Every machine you want to render on runs its own worker, and jobs follow you:
+open the Studio on a laptop and the work runs *there*.
+
+How the Studio knows which machine you are on: the worker serves
+`http://127.0.0.1:7717/whoami`, the page probes it on load, and a hit means
+that worker shares a machine with the browser. Jobs are then tagged with its
+`workerId` and only that worker may claim them. No local worker (a phone, say)
+falls back to "any available machine". The sidebar's **Run the work on**
+selector overrides it either way.
+
+On the new machine:
+
+```bash
+git clone <repo> && cd yt-audio-filter
+python -m venv .venv && .venv/Scripts/pip install -e .
+# FFmpeg must be on PATH
+cp worker/.env.example worker/.env      # fill in STUDIO_BASE_URL + WORKER_TOKEN
+worker\run_worker.bat
+```
+
+It derives a stable id from the hostname and machine GUID, writes it to
+`worker/state/worker_id.txt`, and registers itself within a minute. Set
+`WORKER_ID` explicitly if you would rather name it.
+
+**Without a GPU it still works, with caveats:**
+
+| | |
+|---|---|
+| Music removal (Demucs) | Falls back to CPU — roughly 10-20x slower. A 5-minute video can exceed an hour. |
+| Overlay renders | libx264 instead of NVENC; 2-3x slower, same output. |
+| `--upscale` (Real-ESRGAN) | Needs Vulkan. Fails rather than degrades on machines without it. |
+| YouTube upload | Needs its own OAuth consent on that machine — credentials are deliberately machine-local. |
+
+The discovery endpoint binds `127.0.0.1` only and is unreachable from the
+network. It serves one path and returns nothing but id, hostname, GPU, and
+version. Disable it with `--no-discovery` (the target selector then falls back
+to a manual choice); move it with `WORKER_DISCOVERY_PORT`.
+
 ## Local development
 
 You do not need a real Redis to work on the UI. `web/scripts/dev-redis.mjs` is

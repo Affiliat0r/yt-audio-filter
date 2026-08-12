@@ -6,6 +6,8 @@ import type {
   JobProgress,
   JobResult,
   JobStatus,
+  WorkerHeartbeat,
+  WorkerSummary,
 } from "./types";
 
 const LOG_TAIL_MAX = 60;
@@ -21,13 +23,18 @@ function emptyProgress(): JobProgress {
   return { stage: "Queued", percent: null, log: [], updatedAt: Date.now() };
 }
 
-export async function createJob(input: JobInput): Promise<Job> {
+export async function createJob(
+  input: JobInput,
+  targetWorkerId: string | null = null
+): Promise<Job> {
   const r = redis();
   const now = Date.now();
   const job: Job = {
     id: newId(),
     kind: input.kind,
     status: "queued",
+    targetWorkerId,
+    claimedBy: null,
     input,
     progress: emptyProgress(),
     result: null,
@@ -61,33 +68,63 @@ async function putJob(job: Job): Promise<void> {
 }
 
 /**
- * Pop the next queued job and mark it claimed. Returns null when the queue is
- * empty. `rpop` gives FIFO for render jobs (pushed with `lpush`) while search
- * jobs pushed with `rpush` come off first.
+ * Pop the next job this worker is allowed to run, and mark it claimed.
+ *
+ * With several machines polling one queue, a job queued from laptop B could
+ * otherwise be grabbed by laptop A. Jobs carrying a `targetWorkerId` are only
+ * handed to that worker; anything another worker pops is pushed back so its
+ * owner can take it. Untargeted jobs go to whoever asks first.
  */
-export async function claimNextJob(): Promise<Job | null> {
+export async function claimNextJob(workerId?: string): Promise<Job | null> {
   const r = redis();
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const id = await r.rpop<string>(KEYS.queue);
-    if (!id) return null;
+  // Jobs belonging to other workers, put back after we stop looking. Requeuing
+  // inline would just hand us the same job again on the next iteration.
+  const notMine: string[] = [];
+  let claimed: Job | null = null;
 
-    const job = await getJob(id);
-    // Job expired or was cancelled while queued — skip it.
-    if (!job) continue;
-    if (job.status === "cancelled") continue;
+  try {
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const id = await r.rpop<string>(KEYS.queue);
+      if (!id) break;
 
-    job.status = "claimed";
-    job.startedAt = Date.now();
-    job.progress = {
-      stage: "Claimed by worker",
-      percent: null,
-      log: [],
-      updatedAt: Date.now(),
-    };
-    await putJob(job);
-    return job;
+      const job = await getJob(id);
+      // Job expired or was cancelled while queued — drop it.
+      if (!job) continue;
+      if (job.status === "cancelled") continue;
+
+      if (job.targetWorkerId && job.targetWorkerId !== workerId) {
+        notMine.push(id);
+        continue;
+      }
+
+      job.status = "claimed";
+      job.claimedBy = workerId ?? null;
+      job.startedAt = Date.now();
+      job.progress = {
+        stage: "Claimed by worker",
+        percent: null,
+        log: [],
+        updatedAt: Date.now(),
+      };
+      await putJob(job);
+      claimed = job;
+      break;
+    }
+  } finally {
+    // Put them back where they were, not at the back of the line.
+    //
+    // `rpop` takes from the tail, so the tail is the front of the queue.
+    // Restoring with `lpush` would bury another worker's job behind every
+    // pending render. Pushing the skipped ids back with `rpush` in reverse pop
+    // order leaves the one we popped first sitting at the tail again — first
+    // out when its own worker asks. Safe to do after the loop: we have already
+    // stopped popping, so we cannot immediately re-take them.
+    for (let i = notMine.length - 1; i >= 0; i--) {
+      await r.rpush(KEYS.queue, notMine[i]);
+    }
   }
-  return null;
+
+  return claimed;
 }
 
 export interface ProgressPatch {
@@ -208,4 +245,33 @@ export async function putCatalog(videos: CatalogVideo[]): Promise<void> {
   const r = redis();
   await r.set(KEYS.catalog, videos);
   await r.set(KEYS.catalogUpdatedAt, Date.now());
+}
+
+// ---------------------------------------------------------------- workers
+
+/** A worker counts as online if it polled within this window. */
+export const WORKER_ONLINE_WINDOW_MS = 90_000;
+
+export async function recordHeartbeat(beat: WorkerHeartbeat): Promise<void> {
+  const r = redis();
+  // The per-worker key expires on its own, so a machine that is shut down
+  // drops out of the list without anything having to reap it.
+  await r.set(KEYS.workerHeartbeat(beat.workerId), beat, { ex: 300 });
+  await r.zadd(KEYS.workerIndex, { score: Date.now(), member: beat.workerId });
+  // Keep the legacy key fresh too, so the old status endpoint still works.
+  await r.set(KEYS.heartbeat, beat, { ex: 300 });
+}
+
+export async function listWorkers(): Promise<WorkerSummary[]> {
+  const r = redis();
+  const ids = await r.zrange<string[]>(KEYS.workerIndex, 0, 49, { rev: true });
+  if (!ids.length) return [];
+
+  const beats = await Promise.all(
+    ids.map((id) => r.get<WorkerHeartbeat>(KEYS.workerHeartbeat(id)))
+  );
+  const now = Date.now();
+  return beats
+    .filter((b): b is WorkerHeartbeat => !!b)
+    .map((b) => ({ ...b, online: now - b.at < WORKER_ONLINE_WINDOW_MS }));
 }

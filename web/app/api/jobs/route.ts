@@ -50,17 +50,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let input: JobInput;
+  let body: JobInput & { targetWorkerId?: unknown };
   try {
-    input = (await req.json()) as JobInput;
+    body = (await req.json()) as JobInput & { targetWorkerId?: unknown };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const problem = validate(input);
+  const { targetWorkerId: rawTarget, ...input } = body;
+  const problem = validate(input as JobInput);
   if (problem) return NextResponse.json({ error: problem }, { status: 400 });
 
-  const job = await createJob(input);
+  // Pins the job to one machine — normally the laptop the browser is on, so
+  // rendering happens where you are sitting rather than wherever a worker
+  // happens to poll first.
+  const targetWorkerId = typeof rawTarget === "string" && rawTarget ? rawTarget : null;
+
+  const job = await createJob(input as JobInput, targetWorkerId);
   return NextResponse.json({ job }, { status: 201 });
 }
 

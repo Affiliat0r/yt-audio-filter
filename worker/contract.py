@@ -470,6 +470,12 @@ class Job:
     started_at: Optional[int] = None
     finished_at: Optional[int] = None
     upload_requested: bool = False
+    #: Restricts the job to one machine. ``None`` means "any worker". The
+    #: Studio does the filtering at claim time; the worker only double-checks
+    #: so a routing bug fails loudly instead of rendering on the wrong laptop.
+    target_worker_id: Optional[str] = None
+    #: Worker that actually claimed the job, echoed back by the Studio.
+    claimed_by: Optional[str] = None
 
     @classmethod
     def from_json(cls, raw: Dict[str, Any]) -> "Job":
@@ -490,6 +496,8 @@ class Job:
             started_at=raw.get("startedAt"),
             finished_at=raw.get("finishedAt"),
             upload_requested=_as_bool(raw.get("uploadRequested")),
+            target_worker_id=_optional_str(raw.get("targetWorkerId")),
+            claimed_by=_optional_str(raw.get("claimedBy")),
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -497,6 +505,8 @@ class Job:
             "id": self.id,
             "kind": self.kind,
             "status": self.status,
+            "targetWorkerId": self.target_worker_id,
+            "claimedBy": self.claimed_by,
             "input": self.input.to_json(),
             "progress": self.progress.to_json(),
             "result": self.result.to_json() if self.result is not None else None,
@@ -511,15 +521,22 @@ class Job:
 
 @dataclass(frozen=True)
 class WorkerHeartbeat:
-    """Mirrors ``WorkerHeartbeat`` (the body of ``POST /api/worker/claim``)."""
+    """Mirrors ``WorkerHeartbeat`` (the body of ``POST /api/worker/claim``).
+
+    ``worker_id`` is what makes targeted jobs possible: the Studio matches it
+    against a job's ``targetWorkerId`` and only hands over work meant for this
+    machine.
+    """
 
     hostname: str
     gpu: Optional[str]
     version: str
+    worker_id: str = ""
     current_job_id: Optional[str] = None
 
     def to_json(self) -> Dict[str, Any]:
         return {
+            "workerId": self.worker_id,
             "hostname": self.hostname,
             "gpu": self.gpu,
             "version": self.version,

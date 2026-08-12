@@ -92,7 +92,12 @@ class StudioClient:
     # --------------------------------------------------------------- actions
 
     def claim(self, heartbeat: WorkerHeartbeat) -> Optional[Job]:
-        """Claim the next queued job, or return ``None`` when idle."""
+        """Claim the next queued job, or return ``None`` when idle.
+
+        The heartbeat body carries this machine's ``workerId``; the Studio uses
+        it to skip jobs pinned to a *different* worker, so a laptop only ever
+        gets handed the work meant for it (plus untargeted work).
+        """
         data = self._post("/api/worker/claim", heartbeat.to_json())
         raw_job = data.get("job")
         if not raw_job:

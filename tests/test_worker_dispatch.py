@@ -864,6 +864,79 @@ def test_cancellation_detected_by_the_heartbeat_raises_at_the_stage_boundary(
                 run_job(_surah_job(metadata_file), ctx, cfg, store)
 
 
+# ---------------------------------------------------------------------------
+# Worker targeting (several machines, one queue)
+# ---------------------------------------------------------------------------
+
+
+def _targeted_cfg(cfg: WorkerConfig, worker_id: str) -> WorkerConfig:
+    return WorkerConfig(
+        base_url=cfg.base_url,
+        token=cfg.token,
+        blob_token=cfg.blob_token,
+        poll_seconds=cfg.poll_seconds,
+        cache_dir=cfg.cache_dir,
+        worker_id=worker_id,
+    )
+
+
+def _with_target(job: Job, target: Optional[str]) -> Job:
+    return Job.from_json({**job.to_json(), "targetWorkerId": target})
+
+
+def test_a_job_targeted_at_another_worker_fails_instead_of_running(
+    cfg, store, metadata_file
+):
+    """Server-side routing does the filtering; this backstop makes a routing bug
+    a visible failure rather than a render on the wrong (possibly GPU-less)
+    machine."""
+    client = FakeClient()
+    job = _with_target(_surah_job(metadata_file), "desktop-b0b0b0b0")
+
+    with patch(
+        "yt_audio_filter.overlay_pipeline.run_overlay_from_surah_numbers"
+    ) as mock_render:
+        execute_job(job, _targeted_cfg(cfg, "laptop-a1a1a1a1"), client, store)
+
+    mock_render.assert_not_called()
+    assert len(client.complete_calls) == 1
+    call = client.complete_calls[0]
+    assert call["ok"] is False
+    assert "desktop-b0b0b0b0" in call["error"]
+    assert "laptop-a1a1a1a1" in call["error"]
+    assert call["result"] is None
+
+
+def test_a_job_targeted_at_this_worker_runs(cfg, store, metadata_file, rendered):
+    client = FakeClient()
+    job = _with_target(_surah_job(metadata_file), "laptop-a1a1a1a1")
+
+    with patch(
+        "yt_audio_filter.overlay_pipeline.run_overlay_from_surah_numbers",
+        return_value=OverlayResult(output_path=rendered),
+    ) as mock_render:
+        execute_job(job, _targeted_cfg(cfg, "laptop-a1a1a1a1"), client, store)
+
+    mock_render.assert_called_once()
+    assert client.complete_calls[0]["ok"] is True
+
+
+def test_an_untargeted_job_runs_on_whichever_worker_claimed_it(
+    cfg, store, metadata_file, rendered
+):
+    client = FakeClient()
+    job = _with_target(_surah_job(metadata_file), None)
+
+    with patch(
+        "yt_audio_filter.overlay_pipeline.run_overlay_from_surah_numbers",
+        return_value=OverlayResult(output_path=rendered),
+    ) as mock_render:
+        execute_job(job, _targeted_cfg(cfg, "laptop-a1a1a1a1"), client, store)
+
+    mock_render.assert_called_once()
+    assert client.complete_calls[0]["ok"] is True
+
+
 def test_unknown_job_kind_is_rejected(cfg, store):
     client = FakeClient()
     job = _job("search", {"kind": "search", "query": "x"})

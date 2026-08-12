@@ -259,6 +259,8 @@ real render.
 | `web/scripts/dev-redis.mjs` | In-memory Upstash-REST stand-in for local dev. Test fixture only. |
 | `worker/handlers.py` | Dispatches each job kind to the existing pipeline functions. Always passes `upload=False` — uploads are a separate, explicitly user-triggered step. |
 | `worker/blob.py` | Direct REST upload to Vercel Blob. Degrades gracefully: a failed/absent token still completes the job, just without an in-browser preview. |
+| `worker/identity.py` | Stable per-machine `workerId`, derived from hostname + machine GUID and persisted to `worker/state/worker_id.txt` so a restart keeps it. |
+| `worker/discovery.py` | Loopback-only `GET /whoami` on port 7717. Lets the browser work out which worker shares its machine. |
 
 ### Invocation
 
@@ -286,6 +288,17 @@ Setup, secrets, and deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
 - **YouTube OAuth stays machine-local** (`~/.yt-audio-filter/`). The hosted UI
   never sees those credentials.
 - **`metadataPath` is a path on the worker's filesystem**, not an upload.
+- **Work runs where you opened the page.** Several machines can each run a
+  worker. The Studio probes `http://127.0.0.1:7717/whoami`; a hit means that
+  worker is on the same machine, and jobs are tagged with its `workerId` so
+  only it can claim them. A worker that pops someone else's targeted job
+  pushes it back with `rpush`, not `lpush` — `rpop` takes from the tail, so
+  `lpush` would bury it behind every pending render.
+- **Chrome blocks the discovery probe without a preflight header.** Private
+  Network Access rules stop a public HTTPS page reaching loopback unless the
+  `OPTIONS` response carries `Access-Control-Allow-Private-Network: true`.
+  Miss it and the probe fails silently and everything falls back to "any
+  machine".
 
 ### Legacy Streamlit UI (superseded)
 
