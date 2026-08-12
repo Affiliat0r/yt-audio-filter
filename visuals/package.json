@@ -1,0 +1,15 @@
+{
+  "name": "quran-studio-visuals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Procedural three.js visuals rendered headlessly to MP4, as an alternative to downloading YouTube footage.",
+  "scripts": {
+    "movie": "node cli.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.10.0",
+    "three": "^0.181.0"
+  }
+}
