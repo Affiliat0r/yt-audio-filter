@@ -45,8 +45,10 @@ export const requestUpload = (id: string) =>
     (r) => r.job
   );
 
-export const fetchCatalog = () =>
-  api<{ videos: CatalogVideo[]; updatedAt: number | null }>("/api/catalog");
+export const fetchCatalog = (workerId?: string | null) =>
+  api<{ videos: CatalogVideo[]; updatedAt: number | null }>(
+    workerId ? `/api/catalog?workerId=${encodeURIComponent(workerId)}` : "/api/catalog"
+  );
 
 /**
  * Server-side job history. This is what makes a render survive a reload or

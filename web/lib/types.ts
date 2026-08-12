@@ -148,6 +148,12 @@ export interface WorkerHeartbeat {
   version: string;
   /** Job id the worker is currently executing, if any. */
   currentJobId: string | null;
+  /**
+   * False on a light install with no Demucs/PyTorch. The UI uses this to grey
+   * out music removal rather than letting a job be queued that can only fail.
+   * Optional so an older worker (which never sends it) is assumed capable.
+   */
+  canRemoveMusic?: boolean;
 }
 
 /** What `/api/workers` returns for the target picker. */

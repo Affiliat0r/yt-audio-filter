@@ -9,6 +9,8 @@ const ANY = "__any__";
 export interface TargetState {
   /** Worker id jobs should be pinned to, or null for "any available". */
   targetWorkerId: string | null;
+  /** The worker actually selected, when one is (not "any available"). */
+  chosen: WorkerSummary | null;
   /** Worker sharing a machine with this browser, if one is running. */
   localWorkerId: string | null;
   workers: WorkerSummary[];
@@ -56,6 +58,7 @@ export default function WorkerTarget({
   useEffect(() => {
     onChange({
       targetWorkerId: selected === ANY ? null : selected,
+      chosen: workers.find((w) => w.workerId === selected) ?? null,
       localWorkerId,
       workers,
       probing,
@@ -98,7 +101,14 @@ export default function WorkerTarget({
               : "No workers online. Jobs will queue until one starts."}
       </p>
 
-      {chosen && !chosen.gpu && chosen.online && (
+      {chosen?.online && chosen.canRemoveMusic === false && (
+        <p className="mt-1 text-xs text-amber-300">
+          {chosen.hostname} has no Demucs installed, so it cannot strip
+          background music. Overlay renders and search work normally.
+        </p>
+      )}
+
+      {chosen?.online && !chosen.gpu && chosen.canRemoveMusic !== false && (
         <p className="mt-1 text-xs text-amber-300">
           {chosen.hostname} has no GPU. Renders fall back to CPU encoding and
           music removal will be much slower.

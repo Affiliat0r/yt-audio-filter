@@ -16,7 +16,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as { videos?: CatalogVideo[] };
+  const body = (await req.json()) as {
+    videos?: CatalogVideo[];
+    workerId?: string;
+  };
   if (!Array.isArray(body.videos)) {
     return NextResponse.json(
       { error: "videos must be an array" },
@@ -24,6 +27,8 @@ export async function POST(req: Request) {
     );
   }
 
-  await putCatalog(body.videos);
+  // Cache badges are stored against the reporting worker; the video list
+  // itself is shared.
+  await putCatalog(body.videos, body.workerId ?? null);
   return NextResponse.json({ ok: true, count: body.videos.length });
 }

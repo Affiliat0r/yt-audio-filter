@@ -122,10 +122,13 @@ export default function Gallery({
   channels,
   selected,
   onSelect,
+  targetWorkerId,
 }: {
   channels: Channel[];
   selected: CatalogVideo | null;
   onSelect: (v: CatalogVideo | null) => void;
+  /** Whose disk the cache badges should describe. */
+  targetWorkerId: string | null;
 }) {
   const [mode, setMode] = useState<SourceMode>("curated");
 
@@ -154,7 +157,7 @@ export default function Gallery({
     setLoadingCatalog(true);
     setCatalogError(null);
     try {
-      const { videos, updatedAt } = await fetchCatalog();
+      const { videos, updatedAt } = await fetchCatalog(targetWorkerId);
       setCatalog(videos);
       setCatalogUpdatedAt(updatedAt);
     } catch (e) {
@@ -167,7 +170,7 @@ export default function Gallery({
   useEffect(() => {
     void loadCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [targetWorkerId]);
 
   const curatedPool = useMemo(
     () => catalog.filter((v) => v.channelSlug !== "__search__"),
@@ -344,7 +347,7 @@ export default function Gallery({
           ) : (
             <p className="text-xs text-ink-400">
               Showing {pageItems.length} of {filtered.length} curated videos ·{" "}
-              {readyCount} already cached on the worker
+              {readyCount} already cached on the target machine
               {catalogUpdatedAt
                 ? ` · catalog synced ${new Date(catalogUpdatedAt).toLocaleString()}`
                 : ""}

@@ -34,6 +34,8 @@ export async function POST(req: Request) {
     gpu: beat.gpu ?? null,
     version: beat.version ?? "unknown",
     currentJobId: job?.id ?? null,
+    // Absent on older workers; assume capable rather than hiding the feature.
+    canRemoveMusic: beat.canRemoveMusic ?? true,
   });
 
   return NextResponse.json({ job });

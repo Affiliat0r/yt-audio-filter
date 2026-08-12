@@ -229,22 +229,64 @@ export async function listJobs(limit = 20): Promise<Job[]> {
 
 // ---------------------------------------------------------------- catalog
 
-export async function getCatalog(): Promise<{
+/**
+ * The catalog, with cache badges as seen by one worker.
+ *
+ * `workerId` decides whose disk the 🟢/⚪ badges describe. Without it the
+ * badges are meaningless once more than one machine syncs, because "already
+ * downloaded" is per machine even though the video list is not.
+ */
+export async function getCatalog(workerId?: string | null): Promise<{
   videos: CatalogVideo[];
   updatedAt: number | null;
 }> {
   const r = redis();
-  const [videos, updatedAt] = await Promise.all([
+  const [videos, updatedAt, states] = await Promise.all([
     r.get<CatalogVideo[]>(KEYS.catalog),
     r.get<number>(KEYS.catalogUpdatedAt),
+    workerId
+      ? r.get<Record<string, CatalogVideo["cacheState"]>>(
+          KEYS.catalogCache(workerId)
+        )
+      : Promise.resolve(null),
   ]);
-  return { videos: videos ?? [], updatedAt: updatedAt ?? null };
+
+  const list = videos ?? [];
+  if (!states) {
+    // No per-worker map (unknown worker, or one that has not synced yet).
+    // Claiming everything is cached would be worse than admitting we do not
+    // know, so fall back to "will download".
+    return {
+      videos: workerId ? list.map((v) => ({ ...v, cacheState: "new" })) : list,
+      updatedAt: updatedAt ?? null,
+    };
+  }
+
+  return {
+    videos: list.map((v) => ({ ...v, cacheState: states[v.videoId] ?? "new" })),
+    updatedAt: updatedAt ?? null,
+  };
 }
 
-export async function putCatalog(videos: CatalogVideo[]): Promise<void> {
+export async function putCatalog(
+  videos: CatalogVideo[],
+  workerId?: string | null
+): Promise<void> {
   const r = redis();
-  await r.set(KEYS.catalog, videos);
+  // The shared list carries no cache state — it is not a property of the video.
+  await r.set(
+    KEYS.catalog,
+    videos.map(({ cacheState: _drop, ...rest }) => rest)
+  );
   await r.set(KEYS.catalogUpdatedAt, Date.now());
+
+  if (workerId) {
+    const states: Record<string, CatalogVideo["cacheState"]> = {};
+    for (const v of videos) {
+      if (v.cacheState && v.cacheState !== "new") states[v.videoId] = v.cacheState;
+    }
+    await r.set(KEYS.catalogCache(workerId), states);
+  }
 }
 
 // ---------------------------------------------------------------- workers

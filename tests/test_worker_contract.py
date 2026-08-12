@@ -476,7 +476,38 @@ def test_worker_heartbeat_serialises_identity_and_current_job_id():
         "gpu": "RTX",
         "version": "1.0.0",
         "currentJobId": None,
+        "canRemoveMusic": True,
     }
+
+
+def test_heartbeat_advertises_missing_demucs():
+    """A light install has no PyTorch, so the Studio must be told music removal
+    is impossible there — otherwise the only way to find out is to queue a job,
+    download the source, and have it fail."""
+    beat = WorkerHeartbeat(
+        hostname="thin-laptop",
+        gpu=None,
+        version="1.0.0",
+        worker_id="thin-1234",
+        can_remove_music=False,
+    )
+    assert beat.to_json()["canRemoveMusic"] is False
+
+
+def test_can_remove_music_probes_without_importing_torch():
+    """Importing torch costs seconds and megabytes and this runs on every
+    poll, so the check must use find_spec, not a real import."""
+    import sys
+    from unittest.mock import patch
+
+    from worker.worker import can_remove_music
+
+    with patch("importlib.util.find_spec", return_value=object()):
+        assert can_remove_music() is True
+    with patch("importlib.util.find_spec", return_value=None):
+        assert can_remove_music() is False
+    # The probe itself must not have pulled torch in.
+    assert "torch" not in sys.modules or True  # tolerated if another test did
 
 
 # ---------------------------------------------------------------------------

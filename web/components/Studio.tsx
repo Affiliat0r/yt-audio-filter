@@ -57,10 +57,16 @@ export default function Studio({
   const { job, setJob } = useJobPolling(jobId);
   const [target, setTarget] = useState<TargetState>({
     targetWorkerId: null,
+    chosen: null,
     localWorkerId: null,
     workers: [],
     probing: true,
   });
+
+  // A light worker has no Demucs. Blocking here beats letting the job queue,
+  // download the source, and only then fail.
+  const targetCannotRemoveMusic =
+    target.chosen?.online === true && target.chosen.canRemoveMusic === false;
 
   // Reset the monitor when the user starts composing a different kind of render.
   useEffect(() => setSubmitError(null), [mode]);
@@ -242,6 +248,7 @@ export default function Studio({
             channels={channels}
             selected={visual}
             onSelect={setVisual}
+            targetWorkerId={target.targetWorkerId ?? target.localWorkerId}
           />
 
           <section className="card space-y-4">
@@ -293,11 +300,22 @@ export default function Studio({
               />
             )}
             {mode === "music_removal" && (
-              <MusicPanel
-                visual={visual}
-                disabled={busy}
-                onProcess={runMusicRemoval}
-              />
+              <>
+                {targetCannotRemoveMusic && (
+                  <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                    <strong>{target.chosen?.hostname}</strong> cannot strip
+                    background music — it has no Demucs installed. Pick a
+                    machine that does under <em>Run the work on</em>, or install
+                    it there with{" "}
+                    <code>pip install -e &quot;.[music]&quot;</code> (~5 GB).
+                  </p>
+                )}
+                <MusicPanel
+                  visual={visual}
+                  disabled={busy || targetCannotRemoveMusic}
+                  onProcess={runMusicRemoval}
+                />
+              </>
             )}
           </section>
 

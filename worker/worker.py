@@ -69,6 +69,23 @@ def detect_gpu() -> Optional[str]:
     return lines[0] if lines else None
 
 
+def can_remove_music() -> bool:
+    """Whether Demucs is installed here.
+
+    A light worker (`pip install -e .`) has no PyTorch, so music removal is
+    impossible on it. Advertising that in the heartbeat lets the Studio grey
+    the option out instead of letting someone queue a job that can only fail.
+    Checked with find_spec rather than a real import — importing torch costs
+    seconds and megabytes, and this runs on every poll.
+    """
+    from importlib.util import find_spec
+
+    try:
+        return find_spec("torch") is not None and find_spec("demucs") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def build_heartbeat(
     worker_id: str = "", current_job_id: Optional[str] = None
 ) -> WorkerHeartbeat:
@@ -82,6 +99,7 @@ def build_heartbeat(
         version=WORKER_VERSION,
         worker_id=worker_id,
         current_job_id=current_job_id,
+        can_remove_music=can_remove_music(),
     )
 
 
@@ -313,7 +331,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if not args.no_catalog_sync:
         start_catalog_sync(
-            client, cfg.cache_dir, interval_seconds=args.catalog_interval, stop=stop
+            client,
+            cfg.cache_dir,
+            interval_seconds=args.catalog_interval,
+            stop=stop,
+            worker_id=cfg.worker_id,
         )
 
     try:

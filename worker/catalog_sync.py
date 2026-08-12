@@ -70,6 +70,7 @@ def sync_catalog_once(
     client: StudioClient,
     cache_dir: Path,
     channels_path: Path = DEFAULT_CHANNELS_PATH,
+    worker_id: Optional[str] = None,
 ) -> int:
     """Scrape (or read the cached) catalog and POST it to the Studio.
 
@@ -82,7 +83,7 @@ def sync_catalog_once(
         catalog_video_to_json(video, cache_state_for(video.video_id, states))
         for video in videos
     ]
-    count = client.push_catalog(payload)
+    count = client.push_catalog(payload, worker_id=worker_id)
     logger.info(
         "Catalog sync: pushed %d video(s) across %d channel(s)", count, len(channels)
     )
@@ -96,6 +97,7 @@ def start_catalog_sync(
     interval_seconds: float = DEFAULT_INTERVAL_SECONDS,
     channels_path: Path = DEFAULT_CHANNELS_PATH,
     stop: Optional[threading.Event] = None,
+    worker_id: Optional[str] = None,
 ) -> threading.Thread:
     """Start the background sync loop and return its (daemon) thread."""
     stop_event = stop or threading.Event()
@@ -103,7 +105,7 @@ def start_catalog_sync(
     def _loop() -> None:
         while True:
             try:
-                sync_catalog_once(client, cache_dir, channels_path)
+                sync_catalog_once(client, cache_dir, channels_path, worker_id=worker_id)
             except Exception as exc:  # noqa: BLE001 - sync must never crash us
                 logger.warning("Catalog sync failed: %s", exc)
             if stop_event.wait(interval_seconds):

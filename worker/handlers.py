@@ -410,6 +410,21 @@ def handle_music_removal(
     visual = job_input.visual
     url = visual.url or f"https://www.youtube.com/watch?v={visual.video_id}"
 
+    # Checked FIRST. This import chain pulls in PyTorch, which a light worker
+    # does not have — and discovering that after downloading a 300 MB video
+    # wastes the download and the user's time for a failure we could see
+    # immediately. See yt_audio_filter/__init__.py for why it is lazy at all.
+    try:
+        from yt_audio_filter import pipeline
+    except ImportError as exc:
+        raise OverlayError(
+            "This worker cannot remove background music.",
+            f"Demucs and PyTorch are not installed on {cfg.worker_id}. "
+            f'Install them with: pip install -e ".[music]" (~5 GB), or pick a '
+            f"machine that already has them under 'Run the work on'. "
+            f"Underlying error: {exc}",
+        ) from exc
+
     # No percentage until the pipeline starts reporting: the blended bar below
     # begins at 0, and a bar that jumps backwards reads as a bug.
     ctx.report("Preparing download", None, [f"Source: {url}"])
@@ -434,20 +449,6 @@ def handle_music_removal(
         label, overall = moved
         # ctx.report raises JobCancelled, which unwinds process_video for us.
         ctx.report(label, overall)
-
-    # Imported here, not at module scope: this is the only handler that needs
-    # Demucs, and the import chain pulls in PyTorch (~5 GB installed). Keeping
-    # it lazy lets a machine that only does overlay renders and search skip
-    # that dependency entirely. See yt_audio_filter/__init__.py.
-    try:
-        from yt_audio_filter import pipeline
-    except ImportError as exc:
-        raise OverlayError(
-            "This worker cannot remove background music.",
-            f"Demucs and PyTorch are not installed on {cfg.worker_id}. "
-            f'Install them with: pip install -e ".[music]"  (~5 GB), or target '
-            f"a machine that already has them. Underlying error: {exc}",
-        ) from exc
 
     with ctx.stage("Removing background music"):
         pipeline.process_video(

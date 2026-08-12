@@ -35,6 +35,13 @@ export const KEYS = {
   jobIndex: "jobs:index",
   catalog: "catalog:videos",
   catalogUpdatedAt: "catalog:updatedAt",
+  /**
+   * Which visuals a given worker already has on disk. Kept per worker: the
+   * catalog itself is identical everywhere, but "already downloaded" is a fact
+   * about one machine. Sharing one map let a second worker with an empty cache
+   * mark all 247 videos as uncached for everyone.
+   */
+  catalogCache: (workerId: string) => `catalog:cache:${workerId}`,
   /** Legacy single-worker heartbeat; kept so an un-upgraded worker still shows. */
   heartbeat: "worker:heartbeat",
   /** Per-worker heartbeat, now that several machines can run one each. */

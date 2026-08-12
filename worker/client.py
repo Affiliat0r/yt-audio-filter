@@ -136,8 +136,19 @@ class StudioClient:
             payload["errorDetails"] = error_details
         self._post("/api/worker/complete", payload)
 
-    def push_catalog(self, videos: List[Dict[str, Any]]) -> int:
-        """Replace the Studio's cached cartoon catalog. Returns the count."""
-        data = self._post("/api/worker/catalog", {"videos": videos})
+    def push_catalog(
+        self, videos: List[Dict[str, Any]], worker_id: Optional[str] = None
+    ) -> int:
+        """Replace the Studio's cached cartoon catalog. Returns the count.
+
+        ``worker_id`` scopes the per-video ``cacheState`` to this machine. The
+        video list is identical everywhere, but "already downloaded" is a fact
+        about one disk — without this, a second worker with an empty cache
+        marked every video as uncached for every machine.
+        """
+        payload: Dict[str, Any] = {"videos": videos}
+        if worker_id:
+            payload["workerId"] = worker_id
+        data = self._post("/api/worker/catalog", payload)
         count = data.get("count")
         return int(count) if isinstance(count, int) else len(videos)

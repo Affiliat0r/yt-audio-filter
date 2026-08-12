@@ -533,6 +533,8 @@ class WorkerHeartbeat:
     version: str
     worker_id: str = ""
     current_job_id: Optional[str] = None
+    #: False on a light install with no Demucs/PyTorch.
+    can_remove_music: bool = True
 
     def to_json(self) -> Dict[str, Any]:
         return {
@@ -541,4 +543,5 @@ class WorkerHeartbeat:
             "gpu": self.gpu,
             "version": self.version,
             "currentJobId": self.current_job_id,
+            "canRemoveMusic": self.can_remove_music,
         }
