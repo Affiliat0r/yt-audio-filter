@@ -8,18 +8,20 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
+# NOTE: the build-artifact dirs above are anchored to the repo root on purpose.
+# Unanchored `lib/` would also swallow `web/lib/`, which is application source.
 *.egg-info/
 .installed.cfg
 *.egg
@@ -103,3 +105,36 @@ pot-provider/
 
 # External binary tool, downloaded via docs/plans/...-design.md setup steps
 tools/realesrgan/
+
+# Worker secrets + local job/render bookkeeping
+worker/.env
+worker/state/
+
+# Next.js Studio (web/) — build output and deps
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel/
+web/next-env.d.ts
+web/tsconfig.tsbuildinfo
+# web/.env.local holds APP_PASSWORD / WORKER_TOKEN / Redis creds
+web/.env*.local
+
+# Worker daemon local config + job->file sidecar state
+worker/.env
+worker/state/
+
+# Hidden-worker log (Task Scheduler)
+worker/worker.log
+
+# Pipeline working directory: downloaded sources, per-surah audio, concat
+# output, Real-ESRGAN upscales, thumbnails, catalog + search caches.
+# Regenerates itself on demand and runs to several GB.
+/cache/
+
+# Runtime bookkeeping (processed_pairs.json) — machine-local, not source.
+/state/
+
+# Claude Code local settings
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

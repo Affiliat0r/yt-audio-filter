@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-ink-950 text-ink-100 antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04";
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-ink-800 bg-ink-900/70 p-5;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm
+           text-ink-100 outline-none transition
+           focus:border-accent focus:ring-1 focus:ring-accent
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+           text-sm font-medium transition disabled:cursor-not-allowed
+           disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent text-white hover:bg-accent/85;
+  }
+
+  .btn-ghost {
+    @apply btn border border-ink-700 bg-ink-850 text-ink-100 hover:border-ink-600
+           hover:bg-ink-800;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-700
+           bg-ink-850 px-2.5 py-1 text-xs text-ink-300;
+  }
+}
+
+/* Keep long worker logs scrollable rather than pushing the page around. */
+.log-tail {
+  @apply max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg
+         bg-ink-950 p-3 font-mono text-[11px] leading-relaxed text-ink-300;
+}

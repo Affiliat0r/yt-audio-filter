@@ -1,0 +1,12 @@
+.vercel
+.env*
+# ...but the template documenting which vars are required belongs in git.
+!.env.example
+
+.env*
+
+# Vendored docs auto-installed by the Vercel<->Upstash marketplace integration.
+# Third-party reference material, regenerated on `vercel integration add`.
+.agents/
+.claude/
+skills-lock.json

@@ -12,30 +12,8 @@ stack:
 
 ## Development Commands
 
-```bash
-# Install in development mode (from yt-audio-filter directory)
-pip install -e .
-
-# Install dev dependencies
-pip install -r requirements-dev.txt
-
-# Run the tool (local file)
-yt-audio-filter video.mp4
-python -m yt_audio_filter video.mp4
-
-# Run the tool (YouTube URL)
-yt-audio-filter "https://youtube.com/watch?v=VIDEO_ID"
-yt-audio-filter "https://youtu.be/VIDEO_ID"
-
-# Code formatting (line length: 100)
-black src/
-
-# Type checking
-mypy src/
-
-# Run tests
-pytest
-```
+Standard for the toolchain: `pip install -e .`, `black src/`, `mypy src/`,
+`pytest`. Config lives in `pyproject.toml`. The non-obvious ones:
 
 ### yt-quran-overlay invocation
 
@@ -82,8 +60,13 @@ The new `yt-quran-overlay` tool uses an application-less chain in
 1. **pytubefix client cascade** (ANDROID_VR → IOS → ANDROID → MWEB → TV → WEB) — pure Python, no external runtimes
 2. **yt-dlp** with `tv_embedded`/`ios`/`web_embedded`/`android` client cascade and a `bestvideo / bestaudio / 18 / b` format fallback. Combined formats are post-stripped with FFmpeg `-c copy` to yield a clean stream-only file.
 
-The legacy `yt-audio-filter` tool still uses `download_youtube_video()` which
-keeps the old Invidious/Piped/Cobalt/YTDownloader.exe fallback chain.
+**Both** tools now use this chain. `cli.py` calls
+`youtube.download_video_with_metadata()`, a thin wrapper that runs
+`download_stream(mode="video+audio")` and adds a `VideoMetadata` shape on top
+for the auto-SEO upload path. The old Invidious/Piped/Cobalt/YTDownloader.exe
+chain in `download_youtube_video()` is no longer reached from either CLI;
+`--cookies-from-browser` / `--proxy` / `--gui-downloader-path` are still
+accepted for backwards compatibility but ignored.
 
 ### Optional: bgutil PO Token provider (advanced)
 
@@ -141,62 +124,6 @@ CLI arguments for bot detection bypass:
 
 See [GUI_AUTOMATION.md](GUI_AUTOMATION.md) for detailed documentation.
 
-### Processing Pipeline
-
-Three stages orchestrated by [pipeline.py](src/yt_audio_filter/pipeline.py):
-
-1. **Extract Audio** - FFmpeg extracts audio from video as WAV ([ffmpeg.py](src/yt_audio_filter/ffmpeg.py))
-2. **Isolate Vocals** - Demucs AI separates vocals from background music ([demucs_processor.py](src/yt_audio_filter/demucs_processor.py))
-3. **Remux Video** - FFmpeg combines original video stream (lossless copy) with processed vocals
-
-### Key Modules
-
-Shared infrastructure (both tools):
-| Module | Responsibility |
-|--------|----------------|
-| `youtube.py` | YouTube URL validation. `download_stream()` is the application-less chain for `yt-quran-overlay`. `download_youtube_video()` is the legacy GUI-automation chain for `yt-audio-filter`. |
-| `yt_metadata.py` | Fetch YouTube title/channel/description/tags without downloading the media. Powers auto-surah/reciter detection. |
-| `ffmpeg.py` | Subprocess wrappers over `ffmpeg` / `ffprobe`. Includes `check_nvenc_available()` used by both tools. |
-| `ffmpeg_path.py` | Auto-detects bundled or system FFmpeg and sets PATH. |
-| `uploader.py` | YouTube upload via Google API (OAuth2). `upload_to_youtube()` auto-generates SEO metadata for the music-removal flow; `upload_with_explicit_metadata()` takes caller-supplied title/description/tags for the overlay flow. |
-| `exceptions.py` | Custom exception hierarchy rooted at `YTAudioFilterError`. |
-
-Legacy `yt-audio-filter` (music removal):
-| Module | Responsibility |
-|--------|----------------|
-| `cli.py` | Argparse CLI, URL/file detection, entry point. |
-| `pipeline.py` | `process_video()` orchestrates the 3-stage pipeline (extract → Demucs → remux). |
-| `demucs_processor.py` | PyTorch/Demucs model loading and inference with caching. |
-| `gui_downloader.py` | GUI automation for YoutubeDownloader.exe (final fallback in the legacy chain). |
-| `invidious_downloader.py` | Fallback downloader using Invidious API (most public instances dead as of April 2026). |
-
-`yt-quran-overlay` (Quran recitation overlay):
-| Module | Responsibility |
-|--------|----------------|
-| `overlay_cli.py` | Argparse entry for `yt-quran-overlay`. Three modes: manual / discovery / surah. |
-| `overlay_pipeline.py` | `run_overlay()` (manual), `run_overlay_batch()` (discovery), `run_overlay_surahs()` (surah-input). Orchestrates download → (optional upscale) → render → upload. |
-| `ffmpeg_overlay.py` | Render command builder: two-pass EBU R128 loudnorm, video loop, logo overlay, NVENC GPU encoding with libx264 fallback. |
-| `pytube_downloader.py` | Primary downloader using pytubefix; client cascade (ANDROID_VR → IOS → ANDROID → MWEB → TV → WEB). |
-| `audio_concat.py` | Concatenate multiple audio files. Prefers concat-demuxer `-c copy` on matching signatures, falls through to `filter_complex` AAC re-encode when copy fails (webm/opus from YouTube often matches on signature but rejects `-c copy` at container level). |
-| `channel_discovery.py` | Scrape a YouTube channel for candidate videos; dropped shorts / unknown-duration entries. |
-| `pair_selector.py` | Duration-based pairing for discovery mode. Ranks visuals (duration≥audio first, least slack; else longest-short). Selects N non-overlapping pairs. |
-| `pair_state.py` | JSON state at `state/processed_pairs.json` to avoid re-producing pairs across discovery runs. |
-| `surah_detector.py` | Regex-based recognizer for 114 surahs + Ayatul Kursi + ~18 well-known qaris. `detect_surah()` returns first match; `detect_all_surahs()` returns all for compilation-avoidance scoring. |
-| `surah_resolver.py` | Resolve user-supplied surah names against an audio channel. Each request can also be a direct YouTube URL (bypasses channel scrape). Scoring: `(n_surahs_in_title ASC, duration ASC, channel_order ASC)` → standalone titles beat compilations; shorter edits beat longer. |
-| `upscale.py` | Real-ESRGAN (`realesrgan-ncnn-vulkan`) upscale of the visual source. Per-visual cache at `cache/upscaled_<video_id>.mp4`. Default `realesr-animevideov3-x2` (720p) because x2 is 2-3× faster than x3 on the GPU and the render matches 720p output when `--upscale` is set. |
-| `metadata.py` | Load YouTube metadata JSON (title, description_template, tags, logo_path). Title and description are `string.Template` that get rendered late with auto-extracted vars (`$detected_surah`, `$surah_tag`, `$reciter`, `$reciter_tag`, `$surah_count`, etc.). |
-
-### Exception Hierarchy
-
-All errors inherit from `YTAudioFilterError`:
-- `ValidationError` - Input file/URL validation failures
-- `FFmpegError` - FFmpeg processing errors (includes returncode and stderr)
-- `DemucsError` - AI model errors
-- `PrerequisiteError` - Missing dependencies (FFmpeg, CUDA, Demucs, yt-dlp, Real-ESRGAN binary)
-- `YouTubeDownloadError` - YouTube download failures
-- `YouTubeUploadError` - YouTube upload failures (defined in uploader.py)
-- `OverlayError` - yt-quran-overlay errors: metadata JSON issues, missing surah matches, pair exhaustion, logo-missing-on-upload, etc.
-- `ChannelDiscoveryError` - Raised by `channel_discovery.fetch_candidates` when a channel yields no usable videos.
 
 ## yt-quran-overlay tool
 
@@ -253,7 +180,7 @@ When a surah isn't on the channel at all (e.g. Al-Ikhlas/Al-Falaq on
 The resolver detects URL-vs-name per item and mixes them in the user's
 order.
 
-### Download chain (yt-quran-overlay only)
+### Download chain (shared by both tools)
 
 `youtube.download_stream()` is the application-less path:
 
@@ -262,8 +189,8 @@ order.
 
 No YTDownloader.exe, no Docker, no Node.js server required in the default path.
 
-The legacy `yt-audio-filter` still uses `download_youtube_video()` which
-keeps the old Invidious/Piped/Cobalt/YTDownloader.exe fallback chain.
+The music-removal CLI reaches the same chain via
+`download_video_with_metadata()` — see "YouTube Download Fallback Chain" above.
 
 ### Upscale (optional, `--upscale`)
 
@@ -296,46 +223,77 @@ Otherwise: libx264 `medium/crf=18`. Same detection is reused in
 - **Surah detector short-name boundaries.** Short surah names (Qaf, Sad, Hud, Yunus, Saba, Fatir, Nuh, Abasa) use `(?<![a-z])X(?![a-z])` instead of `\b` because `_` (underscore) is a word character in regex — titles like `"Surah Al Qaf__Salim Bahanan"` broke `\b` boundaries.
 - **bgutil script-mode cold start.** The `bgutil-ytdlp-pot-provider` plugin, if installed, auto-runs a Deno script per PO-token request. First invocation downloads npm deps and times out at 15 s. `download_stream()` and `yt_metadata.fetch_yt_metadata()` neutralize this by passing `youtubepot-bgutilscript: script_path: __disabled__` in `extractor_args`.
 
-## Streamlit UI
+## Quran Studio (Vercel + local worker) — the current UI
 
-Local single-page web app around `yt-quran-overlay`'s surah-numbers mode.
-Lets you pick surahs, reciter (with an inline audio sample), and a
-cartoon visual from a thumbnail grid, then render / preview / upload
-without touching a shell.
+The hosted replacement for the Streamlit app. Same three modes, but the UI
+lives on Vercel (always up, reachable from anywhere) and the compute stays on
+the user's PC.
+
+```
+Vercel (web/)                      Local PC (worker/)
+Next.js Studio UI                  worker.py polls for jobs
+/api/jobs        create      ◄──── claims via /api/worker/claim
+/api/jobs/:id    poll status ◄──── posts /api/worker/progress
+/api/worker/*    worker API  ◄──── posts /api/worker/complete
+Upstash Redis    job records        runs the EXISTING pipeline unchanged
+Vercel Blob      result MP4         uploads result for preview
+```
+
+The worker only makes **outbound** HTTPS calls — no inbound ports, no tunnel,
+works behind NAT, and keeps the residential IP that stops YouTube bot
+detection from blocking downloads.
+
+**Why not run it all on Vercel:** no GPU (NVENC / Real-ESRGAN / Demucs CUDA),
+250 MB function bundle limit (PyTorch alone is ~800 MB), no persistent
+filesystem for the multi-GB `cache/`, and an execution ceiling far below a
+real render.
+
+### Layout
+
+| Path | Role |
+|------|------|
+| `web/lib/types.ts` | **Authoritative job contract.** Mirrored in `worker/contract.py` — change both together. JSON is camelCase, Python is snake_case; convert at the boundary. |
+| `web/lib/jobs.ts` | Redis job store: create / claim / progress / complete / cancel / upload-requeue. Search jobs are `rpush`ed so they jump ahead of renders. |
+| `web/lib/auth.ts` | Password → HMAC-signed session cookie for users; static `x-worker-token` header for the worker. |
+| `web/data/*.json` | Surahs, reciters, presets, channels baked in at build time. **Generated — never hand-edit.** Run `python scripts/sync_web_data.py`. |
+| `web/scripts/dev-redis.mjs` | In-memory Upstash-REST stand-in for local dev. Test fixture only. |
+| `worker/handlers.py` | Dispatches each job kind to the existing pipeline functions. Always passes `upload=False` — uploads are a separate, explicitly user-triggered step. |
+| `worker/blob.py` | Direct REST upload to Vercel Blob. Degrades gracefully: a failed/absent token still completes the job, just without an in-browser preview. |
 
 ### Invocation
 
 ```bash
-pip install -e ".[app]"
-streamlit run src/yt_audio_filter/streamlit_app.py
+# frontend (see docs/DEPLOY.md for the full setup)
+cd web && npm run dev
+
+# worker
+worker\run_worker.bat
 ```
 
-Opens on `http://localhost:8501`. Single-session, no auth — assumes it's
-behind the OS.
+Setup, secrets, and deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
 
-### UI surface
+### Gotchas
 
-- **Surah picker** — multiselect over all 114 surahs. Selection order is
-  preserved and drives concat order.
-- **Reciter picker** — selectbox over the ~20 reciters in
-  `src/yt_audio_filter/data/reciters.json`; an inline `st.audio` widget
-  plays the Al-Fatiha sample before you commit.
-- **Thumbnail gallery** — grouped by channel from
-  `config/channels.json` (5 seeded: Toy Factory, Tidi Kids, KidsTV123,
-  Little Baby Bum, Billion Surprise Toys). Single-select via per-tile
-  checkbox. "Refresh catalog" toggle invalidates the on-disk
-  `cache/cartoon_catalog.json` + the `st.cache_data` layer.
+- **Nothing uploads to YouTube automatically.** Renders always land as a
+  preview; publishing requires the explicit "Upload to YouTube" button, which
+  re-queues the job with `uploadRequested=true` and reuses the rendered file.
+- **Search runs on the worker**, not Vercel — yt-dlp cannot run in a
+  serverless function. The UI polls a `kind: "search"` job.
+- **Search picks must reach the catalog.** The frontend sends the whole
+  `CatalogVideo`; the worker calls `cartoon_search.add_pick_to_catalog` before
+  rendering, because `overlay_pipeline._resolve_visual_video` only resolves ids
+  present in `list_videos()`.
+- **YouTube OAuth stays machine-local** (`~/.yt-audio-filter/`). The hosted UI
+  never sees those credentials.
+- **`metadataPath` is a path on the worker's filesystem**, not an upload.
 
-### Data sources
+### Legacy Streamlit UI (superseded)
 
-- **`quran_audio_source.py`** — resolves `(surah_number, reciter)` →
-  MP3 URL via `data/reciters.json` (20 verified reciters on
-  quranicaudio.com: Mishary, Sudais, Maher, Shuraim, Al-Juhani,
-  Ath-Thubaity, etc.). Caches to `cache/audio_surah_<num>_<slug>.mp3`.
-- **`cartoon_catalog.py`** — reads `config/channels.json`, scrapes each
-  via the existing pytubefix channel path, caches the merged list at
-  `cache/cartoon_catalog.json` (24 h TTL). `ensure_thumbnail()` pulls
-  `i.ytimg.com/vi/<id>/hqdefault.jpg` to `cache/thumbs/`.
+`src/yt_audio_filter/streamlit_app.py` still runs
+(`streamlit run src/yt_audio_filter/streamlit_app.py`) but is no longer the
+intended entry point. It is single-session, localhost-only, and unauthenticated.
+The sections below document it; they describe the same three modes the Studio
+now exposes.
 
 ### Audio source caveat — Salim Bahanan
 
@@ -346,41 +304,3 @@ Bahanan specifically, stay on the CLI and use surah-name mode with
 direct `--surah https://...` URL overrides (see the
 `yt-quran-overlay` section above).
 
-### Backend entrypoints
-
-- `overlay_pipeline.run_overlay_from_surah_numbers(surah_numbers,
-  reciter_slug, visual_video_id, metadata, *, output_path=None,
-  cache_dir=Path("cache"), resolution=None, upscale=False,
-  cookies_from_browser=None, proxy=None, upload=False) -> OverlayResult`
-  — downloads each surah audio, concats, downloads + optionally upscales
-  the visual, renders via `ffmpeg_overlay.render_overlay`.
-  `output_path=None` → `tempfile.gettempdir()` MP4, so the UI doesn't
-  pollute `output/`.
-- `overlay_pipeline.upload_rendered(rendered_path, metadata, *,
-  surah_numbers, reciter_slug, visual_title=None) -> str` — uploads an
-  already-rendered file; rebuilds the same `$detected_surah / $surah_tag
-  / $reciter` auto-vars so title/description match what a `upload=True`
-  render would have produced. Drives the separate "Upload to YouTube"
-  button — render first, preview, then publish.
-
-### CLI equivalent
-
-Same backend is reachable without the UI via
-`yt-quran-overlay --surah-number 1 --surah-number 112 --reciter alafasy
---video-id <yt_id> --metadata meta.json [--upload] [--upscale]`. Useful
-for scripted / cron jobs where the UI isn't wanted.
-
-### Output + upload flow (UI path)
-
-- Output: `tempfile.NamedTemporaryFile`-style temp MP4 (persists until
-  the Streamlit process exits). UI shows it via `st.video` and serves
-  the bytes via `st.download_button`. No `output/` directory is touched.
-- Upload: separate button, render-first / upload-later. Uses the same
-  `metadata.json` template; title / description render from auto-vars
-  at upload time, not render time.
-
-## Code Style
-
-- Python 3.10+ with type hints
-- Black formatter with 100-char line length
-- mypy for type checking (ignore_missing_imports=true for external libs)

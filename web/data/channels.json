@@ -1,0 +1,34 @@
+{
+  "channels": [
+    {
+      "slug": "toyfactorycartoon",
+      "handle": "@toyfactorycartoon",
+      "url": "https://www.youtube.com/@toyfactorycartoon",
+      "display_name": "Toy Factory Cartoon"
+    },
+    {
+      "slug": "tidikids",
+      "handle": "@TidiKids",
+      "url": "https://www.youtube.com/@TidiKids",
+      "display_name": "Tidi Kids"
+    },
+    {
+      "slug": "kidstv123",
+      "handle": "@KidsTV123",
+      "url": "https://www.youtube.com/@KidsTV123",
+      "display_name": "KidsTV123"
+    },
+    {
+      "slug": "littlebabybum",
+      "handle": "@LittleBabyBum",
+      "url": "https://www.youtube.com/@LittleBabyBum",
+      "display_name": "Little Baby Bum"
+    },
+    {
+      "slug": "billionsurprisetoys",
+      "handle": "@BillionSurpriseToys",
+      "url": "https://www.youtube.com/@BillionSurpriseToys",
+      "display_name": "Billion Surprise Toys"
+    }
+  ]
+}
