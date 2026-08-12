@@ -138,3 +138,9 @@ worker/worker.log
 # Claude Code local settings
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Scratch notes and one-off helpers kept at the repo root
+/IMPLEMENTATION_SUMMARY.md
+/QUICK_START_GUI.md
+/test_complete_pipeline.bat
+/youtube_replacement.txt
