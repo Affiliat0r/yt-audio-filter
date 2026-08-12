@@ -478,7 +478,29 @@ def authenticate_youtube():
         except Exception as e:
             logger.debug(f"Failed to load saved credentials: {e}")
 
-    # If no valid credentials, authenticate
+    # An expired access token is the normal case, not a re-auth case: Google's
+    # access tokens last about an hour while the refresh token lasts months.
+    # Refreshing is silent and headless, which matters because the worker runs
+    # unattended — falling straight through to run_local_server() pops a
+    # browser consent window on the worker's machine, which may be nowhere
+    # near whoever pressed Upload.
+    if credentials and not credentials.valid and getattr(credentials, "refresh_token", None):
+        try:
+            from google.auth.transport.requests import Request
+
+            credentials.refresh(Request())
+            CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
+            with open(OAUTH_TOKEN_FILE, "wb") as token:
+                pickle.dump(credentials, token)
+            logger.info("YouTube credentials refreshed silently")
+        except Exception as e:
+            # Refresh tokens do die — revoked access, password change, or an
+            # OAuth app still in Testing mode (those expire after 7 days).
+            # Interactive consent is the only way back from that.
+            logger.info(f"Could not refresh YouTube credentials ({e}); re-authenticating")
+            credentials = None
+
+    # If still no valid credentials, authenticate interactively
     if not credentials or not credentials.valid:
         if not check_credentials_configured():
             raise YouTubeUploadError(
