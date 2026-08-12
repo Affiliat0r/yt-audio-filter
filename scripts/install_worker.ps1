@@ -7,7 +7,7 @@
   writes worker/.env, registers a hidden auto-start task, and starts polling.
 
   By default it installs the LIGHT worker: downloads, overlay renders, search,
-  and YouTube upload. That is a ~150 MB install. Pass -WithMusicRemoval to add
+  and YouTube upload. That is a ~300 MB install. Pass -WithMusicRemoval to add
   Demucs and PyTorch (~5 GB) — only worth it on a machine with an NVIDIA GPU,
   since Demucs on CPU runs 10-20x slower than real time.
 
@@ -102,7 +102,7 @@ if ($WithMusicRemoval) {
   Info "Installing worker WITH Demucs + PyTorch (~5 GB, this takes a while)"
   Invoke-Native $venvPy @('-m','pip','install','-e','.[music]','--disable-pip-version-check') 'pip install'
 } else {
-  Info "Installing light worker (~150 MB): downloads, overlay renders, search, upload"
+  Info "Installing light worker (~300 MB): downloads, overlay renders, search, upload"
   Invoke-Native $venvPy @('-m','pip','install','-e','.','--disable-pip-version-check') 'pip install'
 }
 

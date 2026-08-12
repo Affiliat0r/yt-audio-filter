@@ -140,7 +140,7 @@ It checks prerequisites, clones the repo, builds a venv, installs the worker,
 prompts for the Studio URL and `WORKER_TOKEN`, registers a hidden auto-start
 task, and confirms the worker answered on `127.0.0.1:7717`.
 
-**It installs the light worker by default — about 150 MB.** That covers
+**It installs the light worker by default — about 300 MB.** That covers
 downloads, overlay renders, search, and YouTube upload: everything except
 music removal. Demucs and PyTorch add roughly 5 GB and are only worth
 installing on a machine with an NVIDIA GPU:

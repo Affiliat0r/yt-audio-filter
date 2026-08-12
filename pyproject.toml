@@ -34,6 +34,13 @@ classifiers = [
 dependencies = [
     "yt-dlp>=2025.05.22",  # Required for POT provider bot detection bypass
     "pytubefix>=10.0.0",   # Application-less primary downloader (no Deno/Node needed)
+    "requests>=2.31.0",    # worker/client.py + worker/blob.py; previously only
+                           # present transitively via torch, so a light install
+                           # crashed on import once torch moved to an extra.
+    # Small (~20 MB) and the worker's whole point is publishing, so these are
+    # core rather than an extra — a worker that cannot upload is half a worker.
+    "google-api-python-client>=2.100.0",
+    "google-auth-oauthlib>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +60,8 @@ dev = [
     "black>=23.0.0",
     "mypy>=1.0.0",
 ]
+# Retained so `pip install -e ".[upload]"` in older docs keeps working; the
+# packages themselves are core dependencies now.
 upload = [
     "google-api-python-client>=2.100.0",
     "google-auth-oauthlib>=1.0.0",
