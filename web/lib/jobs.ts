@@ -47,9 +47,9 @@ export async function createJob(
   };
 
   await r.set(KEYS.job(job.id), job, { ex: JOB_TTL_SECONDS });
-  // Search jobs jump the queue — they are seconds, not minutes, and the user
-  // is staring at a spinner waiting for them.
-  if (input.kind === "search") {
+  // Search and probe jobs jump the queue — they are seconds, not minutes, and
+  // the user is staring at a spinner waiting for them.
+  if (input.kind === "search" || input.kind === "probe") {
     await r.rpush(KEYS.queue, job.id);
   } else {
     await r.lpush(KEYS.queue, job.id);

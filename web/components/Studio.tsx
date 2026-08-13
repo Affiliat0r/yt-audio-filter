@@ -1,16 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Gallery, { type Channel } from "./Gallery";
 import SurahPanel from "./SurahPanel";
 import AyahPanel from "./AyahPanel";
 import MusicPanel from "./MusicPanel";
 import JobMonitor from "./JobMonitor";
+import QualityCard from "./QualityCard";
 import RecentJobs from "./RecentJobs";
 import WorkerTarget, { type TargetState } from "./WorkerTarget";
-import { createJob, useJobPolling, useWorkerStatus } from "@/lib/client";
+import {
+  createJob,
+  probeSourceQuality,
+  useJobPolling,
+  useWorkerStatus,
+} from "@/lib/client";
 import type { Reciter, Surah } from "@/lib/surah";
-import type { AyahRangeSpec, CatalogVideo, RenderSettings } from "@/lib/types";
+import type {
+  AyahRangeSpec,
+  CatalogVideo,
+  RenderSettings,
+  SourceQuality,
+} from "@/lib/types";
 // Generated from `render_presets.list_presets()` so slugs cannot drift away
 // from what the worker accepts. Regenerate with scripts/sync_web_data.py.
 import PRESETS from "@/data/presets.json";
@@ -41,7 +52,8 @@ export default function Studio({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Sidebar settings
+  // Render settings. `presetSlug`/`upscale` are edited in the quality card
+  // rather than the aside, but they still travel in `RenderSettings` unchanged.
   const [presetSlug, setPresetSlug] = useState(PRESETS[0].slug);
   const [burnSubtitles, setBurnSubtitles] = useState(false);
   const [upscale, setUpscale] = useState(false);
@@ -67,6 +79,49 @@ export default function Studio({
   // download the source, and only then fail.
   const targetCannotRemoveMusic =
     target.chosen?.online === true && target.chosen.canRemoveMusic === false;
+
+  // Source quality, keyed by machine AND video: whether the file is already on
+  // disk — and so measurable instead of guessed from YouTube's format list — is
+  // a property of one PC's cache, not of the video.
+  const [quality, setQuality] = useState<Map<string, SourceQuality | "failed">>(
+    () => new Map()
+  );
+  const [probing, setProbing] = useState<Set<string>>(() => new Set());
+  // Read through refs so the effect below can depend on the key alone. Keyed on
+  // the previous commit's values, which is exactly what "have we already asked
+  // about this one?" needs.
+  const qualityRef = useRef(quality);
+  const probingRef = useRef(probing);
+  useEffect(() => {
+    qualityRef.current = quality;
+    probingRef.current = probing;
+  });
+
+  const probeWorkerId = target.targetWorkerId ?? target.localWorkerId;
+  const qualityKey = visual
+    ? `${probeWorkerId ?? "any"}:${visual.videoId}`
+    : null;
+
+  useEffect(() => {
+    if (!visual || !qualityKey) return;
+    if (qualityRef.current.has(qualityKey) || probingRef.current.has(qualityKey))
+      return;
+    setProbing((prev) => new Set(prev).add(qualityKey));
+    // A probe whose video the user has moved on from is left to finish rather
+    // than cancelled: it already cost a worker job, and caching the answer
+    // makes coming back to that video instant.
+    void probeSourceQuality(visual, probeWorkerId).then((result) => {
+      setQuality((prev) => new Map(prev).set(qualityKey, result ?? "failed"));
+      setProbing((prev) => {
+        const next = new Set(prev);
+        next.delete(qualityKey);
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qualityKey]);
+
+  const cachedQuality = qualityKey ? quality.get(qualityKey) : undefined;
 
   // Reset the monitor when the user starts composing a different kind of render.
   useEffect(() => setSubmitError(null), [mode]);
@@ -174,38 +229,6 @@ export default function Studio({
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-300">
             Settings
           </h2>
-
-          <div>
-            <label className="label">Output preset</label>
-            <select
-              className="field"
-              value={presetSlug}
-              onChange={(e) => setPresetSlug(e.target.value)}
-              disabled={mode === "music_removal"}
-            >
-              {PRESETS.map((p) => (
-                <option key={p.slug} value={p.slug}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-            {upscale && presetSlug === "youtube_landscape" && (
-              <p className="mt-1 text-xs text-amber-300">
-                Real-ESRGAN upscales to 720p; rendering at 1080p scales that
-                back up. Pick the 720p preset to keep the detail.
-              </p>
-            )}
-          </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={upscale}
-              onChange={(e) => setUpscale(e.target.checked)}
-              disabled={mode === "music_removal"}
-            />
-            Upscale visual (Real-ESRGAN)
-          </label>
 
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -318,6 +341,19 @@ export default function Studio({
               </>
             )}
           </section>
+
+          <QualityCard
+            visual={visual}
+            quality={
+              cachedQuality ??
+              (qualityKey !== null && probing.has(qualityKey) ? "loading" : null)
+            }
+            presetSlug={presetSlug}
+            onPresetChange={setPresetSlug}
+            upscale={upscale}
+            onUpscaleChange={setUpscale}
+            disabled={mode === "music_removal"}
+          />
 
           {job && job.kind !== "search" && (
             <JobMonitor

@@ -76,12 +76,18 @@ def sync_reciters() -> None:
 def sync_presets() -> None:
     from yt_audio_filter import render_presets
 
+    # scaleMode matters to the Studio's quality card: a "fill" preset crops
+    # before scaling, so its height cannot be compared to the source's as an
+    # equality the way a letterboxed "fit" preset's can.
     presets = [
         {
             "slug": p.slug,
             "label": p.display_name,
             "width": p.resolution[0],
             "height": p.resolution[1],
+            "scaleMode": p.scale_mode,
+            "aspectRatio": p.aspect_ratio,
+            "description": p.description,
         }
         for p in render_presets.list_presets()
     ]

@@ -33,6 +33,7 @@ from worker.worker import execute_job
 from yt_audio_filter.cartoon_catalog import CatalogVideo
 from yt_audio_filter.exceptions import OverlayError
 from yt_audio_filter.overlay_pipeline import OverlayResult
+from yt_audio_filter.source_probe import SourceQualityInfo
 from yt_audio_filter.youtube import VideoMetadata
 
 
@@ -572,6 +573,63 @@ def test_search_job_reports_the_cache_state_of_known_visuals(cfg, store):
 
     states = {v["videoId"]: v["cacheState"] for v in result.search_results or []}
     assert states == {"vid1": "upscaled", "vid2": "downloaded", "vid3": "new"}
+
+
+# ---------------------------------------------------------------------------
+# probe dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_probe_job_returns_the_measured_quality_of_the_cached_visual(cfg, store):
+    client = FakeClient()
+    job = _job("probe", {"kind": "probe", "visual": _visual()})
+
+    with patch(
+        "yt_audio_filter.source_probe.probe_source_quality",
+        return_value=SourceQualityInfo(
+            kind="measured", width=640, height=360, fps=25.0, codec="h264"
+        ),
+    ) as mock_probe:
+        result = run_job(job, _ctx(client), cfg, store)
+
+    kwargs = mock_probe.call_args.kwargs
+    assert kwargs["video_id"] == "abc123"
+    assert kwargs["url"] == "https://www.youtube.com/watch?v=abc123"
+    assert kwargs["cache_dir"] == cfg.cache_dir
+
+    assert result.source_quality is not None
+    payload = result.to_json()["sourceQuality"]
+    assert payload["kind"] == "measured"
+    assert payload["height"] == 360
+    assert payload["codec"] == "h264"
+    assert payload["probedAt"] > 0
+
+
+def test_probe_job_reports_an_undeterminable_quality_instead_of_failing(cfg, store):
+    """The card degrades to "unknown"; a quality hint must never fail a job."""
+    client = FakeClient()
+    job = _job("probe", {"kind": "probe", "visual": _visual()})
+
+    with patch(
+        "yt_audio_filter.source_probe.probe_source_quality",
+        return_value=SourceQualityInfo(kind="listed"),
+    ):
+        result = run_job(job, _ctx(client), cfg, store)
+
+    assert result.source_quality is not None
+    assert result.source_quality.height is None
+    assert result.to_json()["sourceQuality"]["height"] is None
+
+
+def test_probe_job_produces_nothing_to_upload(cfg, store, rendered):
+    """A probe never renders a file, so an upload request against one has to
+    fail loudly rather than publish some other job's leftover render."""
+    client = FakeClient()
+    store.record("job-1", rendered, "probe")
+    job = _job("probe", {"kind": "probe", "visual": _visual()}, upload_requested=True)
+
+    with pytest.raises(OverlayError, match="nothing to upload"):
+        run_job(job, _ctx(client), cfg, store)
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
  * these types.
  */
 
-export type JobKind = "surah" | "ayah" | "music_removal" | "search";
+export type JobKind = "surah" | "ayah" | "music_removal" | "search" | "probe";
 
 export type JobStatus =
   | "queued"
@@ -78,11 +78,42 @@ export interface SearchJobInput {
   maxResults: number;
 }
 
+/**
+ * How good the source visual actually is.
+ * kind "measured": ffprobe on the file already in the worker's cache — ground truth.
+ * kind "listed": yt-dlp format listing for a not-yet-downloaded video. YouTube
+ *   lists formats SABR may never deliver (protected videos usually deliver
+ *   format 18 = 360p), so listed numbers are an optimistic upper bound.
+ * "We don't know yet" = the field is absent (no probe has completed), OR
+ * kind "listed" with height === null (probe ran but extraction failed).
+ */
+export interface SourceQuality {
+  kind: "measured" | "listed";
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  codec: string | null;
+  probedAt: number;
+}
+
+export interface ProbeJobInput {
+  kind: "probe";
+  visual: CatalogVideo;
+}
+
 export type JobInput =
   | SurahJobInput
   | AyahJobInput
   | MusicRemovalJobInput
-  | SearchJobInput;
+  | SearchJobInput
+  | ProbeJobInput;
+
+/**
+ * Real-ESRGAN scale factor. Fixed at 2 because the worker always runs
+ * `realesr-animevideov3-x2` (`upscale.DEFAULT_MODEL`), so a 360p source tops
+ * out at 720p of genuine detail no matter what the render preset asks for.
+ */
+export const UPSCALE_FACTOR = 2;
 
 export interface JobProgress {
   /** Human-readable current stage, e.g. "Rendering overlay". */
@@ -110,6 +141,8 @@ export interface JobResult {
   youtubeVideoId?: string;
   /** Populated for `kind: "search"` jobs. */
   searchResults?: CatalogVideo[];
+  /** Populated for `kind: "probe"` jobs. */
+  sourceQuality?: SourceQuality;
 }
 
 export interface Job {
@@ -175,6 +208,8 @@ export function jobLabel(job: Job): string {
       return `Music removal — ${job.input.visual.title}`;
     case "search":
       return `Search "${job.input.query}"`;
+    case "probe":
+      return `Quality probe — ${job.input.visual.title}`;
   }
 }
 
