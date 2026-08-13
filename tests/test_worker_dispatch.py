@@ -982,3 +982,48 @@ def test_blob_pathname_comes_from_url_not_echoed_field() -> None:
     # And the private-store access header must be present.
     sent_headers = session.put.call_args.kwargs["headers"]
     assert sent_headers["x-vercel-blob-access"] == "private"
+
+
+# ------------------------------------------------- blob cleanup after upload
+
+
+def test_blob_deleted_after_successful_youtube_upload() -> None:
+    """Once a render is on YouTube the preview copy is redundant, and Vercel
+    Blob's free tier meters API operations — every later read of it costs one.
+    """
+    from unittest.mock import MagicMock
+
+    from worker import blob as blob_mod
+
+    session = MagicMock()
+    session.post.return_value = MagicMock(status_code=200)
+
+    ok = blob_mod.delete_blob("https://s.blob.vercel-storage.com/x.mp4", "tok", session=session)
+
+    assert ok is True
+    url, kwargs = session.post.call_args[0][0], session.post.call_args.kwargs
+    assert url.endswith("/delete")
+    assert kwargs["json"] == {"urls": ["https://s.blob.vercel-storage.com/x.mp4"]}
+    assert kwargs["headers"]["authorization"] == "Bearer tok"
+
+
+def test_blob_delete_never_raises() -> None:
+    """It runs after an upload that already succeeded. Failing the job over
+    leftover storage would be absurd, so every failure path returns False."""
+    from unittest.mock import MagicMock
+
+    import requests as _requests
+
+    from worker import blob as blob_mod
+
+    transport_err = MagicMock()
+    transport_err.post.side_effect = _requests.RequestException("boom")
+    assert blob_mod.delete_blob("https://x/y.mp4", "tok", session=transport_err) is False
+
+    http_err = MagicMock()
+    http_err.post.return_value = MagicMock(status_code=500)
+    assert blob_mod.delete_blob("https://x/y.mp4", "tok", session=http_err) is False
+
+    # Missing url or token is a no-op, not a crash.
+    assert blob_mod.delete_blob("", "tok") is False
+    assert blob_mod.delete_blob("https://x/y.mp4", "") is False

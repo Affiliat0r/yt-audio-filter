@@ -158,6 +158,43 @@ def _pathname_from_url(blob_url: str) -> str:
     return unquote(path)
 
 
+def delete_blob(
+    url: str,
+    token: str,
+    *,
+    timeout: Any = (10, 30),
+    session: Optional[requests.Session] = None,
+) -> bool:
+    """Delete one blob. Returns True on success, False on any failure.
+
+    Never raises: this runs after a YouTube upload has already succeeded, and
+    failing the job over a bit of leftover storage would be absurd. A blob that
+    survives is tidied by the next prune.
+    """
+    if not url or not token:
+        return False
+    deleter = session.post if session is not None else requests.post
+    try:
+        response = deleter(
+            f"{BLOB_API_BASE}/delete",
+            json={"urls": [url]},
+            headers={
+                "authorization": f"Bearer {token}",
+                "x-api-version": BLOB_API_VERSION,
+            },
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Blob delete transport error: %s", exc)
+        return False
+
+    status = getattr(response, "status_code", 0)
+    if not 200 <= status < 300:
+        logger.warning("Blob delete failed (HTTP %s)", status)
+        return False
+    return True
+
+
 def selftest(token: str, *, session: Optional[requests.Session] = None) -> str:
     """Upload a tiny text file and return its URL.
 

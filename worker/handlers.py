@@ -546,7 +546,22 @@ def handle_upload(
         99,
         [f"https://www.youtube.com/watch?v={video_id}"],
     )
-    return existing.merged_with(JobResult(youtube_video_id=video_id))
+
+    # The preview blob existed so the video could be watched before publishing.
+    # It is now on YouTube, so the copy is redundant — and Vercel Blob's free
+    # tier meters API operations, which every subsequent read of it spends.
+    # Best-effort: a failure here must not fail an upload that already worked.
+    result = existing.merged_with(JobResult(youtube_video_id=video_id))
+    if existing.blob_url and cfg.blob_token:
+        if blob.delete_blob(existing.blob_url, cfg.blob_token):
+            ctx.report("Uploaded", 100, ["Preview copy removed from Blob storage"])
+            result = JobResult(
+                youtube_video_id=video_id,
+                file_name=existing.file_name,
+                size_bytes=existing.size_bytes,
+                search_results=existing.search_results,
+            )
+    return result
 
 
 # ---------------------------------------------------------------------------

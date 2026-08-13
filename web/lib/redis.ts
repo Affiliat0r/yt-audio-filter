@@ -48,6 +48,11 @@ export const KEYS = {
   workerHeartbeat: (id: string) => `worker:hb:${id}`,
   /** Set of known worker ids, so they can be listed without a KEYS scan. */
   workerIndex: "worker:index",
+  /**
+   * Cached presigned preview URL per blob pathname. Exists purely to stop the
+   * preview route burning a Blob API operation on every single request.
+   */
+  blobPresign: (pathname: string) => `blob:presign:${pathname}`,
 } as const;
 
 /** Jobs older than this are pruned from the index on write. */
