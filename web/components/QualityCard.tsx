@@ -129,6 +129,7 @@ export default function QualityCard({
   onPresetChange,
   upscale,
   onUpscaleChange,
+  onRecheck,
   disabled,
 }: {
   visual: CatalogVideo | null;
@@ -138,6 +139,8 @@ export default function QualityCard({
   onPresetChange: (slug: string) => void;
   upscale: boolean;
   onUpscaleChange: (on: boolean) => void;
+  /** Discard a cached answer and probe again. */
+  onRecheck: () => void;
   /** Music removal remuxes the original streams, so none of this applies. */
   disabled: boolean;
 }) {
@@ -261,11 +264,16 @@ export default function QualityCard({
       {/* The worker runs one job at a time, so a probe queued behind a render
           waits it out and gives up at 45s. Saying so beats a silent "unknown". */}
       {!probing && visual && sourceHeight === null && (
-        <p className="text-xs leading-relaxed text-ink-400">
-          The check runs on your PC and waits its turn — if a render is already
-          going, or the worker is offline, the quality stays unknown until then.
-          Rendering still works.
-        </p>
+        <div className="space-y-2">
+          <p className="text-xs leading-relaxed text-ink-400">
+            The check runs on your PC and waits its turn — if a render is
+            already going, or the worker is offline, it gives up after 45s.
+            Rendering still works either way.
+          </p>
+          <button className="btn-ghost w-full" onClick={onRecheck}>
+            Check again
+          </button>
+        </div>
       )}
     </section>
   );

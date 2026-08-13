@@ -97,6 +97,10 @@ export default function Studio({
     probingRef.current = probing;
   });
 
+  // Bumped to re-ask about a video we already have an answer for. The effect
+  // keys on the video, so without this a cleared cache entry would not re-fire.
+  const [recheckNonce, setRecheckNonce] = useState(0);
+
   const probeWorkerId = target.targetWorkerId ?? target.localWorkerId;
   const qualityKey = visual
     ? `${probeWorkerId ?? "any"}:${visual.videoId}`
@@ -104,6 +108,11 @@ export default function Studio({
 
   useEffect(() => {
     if (!visual || !qualityKey) return;
+    // Wait for worker discovery to settle. Probing before it does would ask
+    // "any machine" about a cache that belongs to one specific disk, and the
+    // answer — measured off a file only that machine has — would describe a PC
+    // the render is not going to run on.
+    if (target.probing) return;
     if (qualityRef.current.has(qualityKey) || probingRef.current.has(qualityKey))
       return;
     setProbing((prev) => new Set(prev).add(qualityKey));
@@ -119,9 +128,22 @@ export default function Studio({
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qualityKey]);
+  }, [qualityKey, recheckNonce, target.probing]);
 
   const cachedQuality = qualityKey ? quality.get(qualityKey) : undefined;
+
+  // A probe that timed out because a render was hogging the worker is not a
+  // permanent answer, but it is cached like one. Without a way to ask again the
+  // card stays "unknown" until the page is reloaded.
+  const recheckQuality = () => {
+    if (!qualityKey) return;
+    setQuality((prev) => {
+      const next = new Map(prev);
+      next.delete(qualityKey);
+      return next;
+    });
+    setRecheckNonce((n) => n + 1);
+  };
 
   // Reset the monitor when the user starts composing a different kind of render.
   useEffect(() => setSubmitError(null), [mode]);
@@ -346,12 +368,18 @@ export default function Studio({
             visual={visual}
             quality={
               cachedQuality ??
-              (qualityKey !== null && probing.has(qualityKey) ? "loading" : null)
+              // Discovery still running counts as in-flight: the probe is about
+              // to fire, so "checking…" is truer than "unknown".
+              (qualityKey !== null &&
+              (probing.has(qualityKey) || target.probing)
+                ? "loading"
+                : null)
             }
             presetSlug={presetSlug}
             onPresetChange={setPresetSlug}
             upscale={upscale}
             onUpscaleChange={setUpscale}
+            onRecheck={recheckQuality}
             disabled={mode === "music_removal"}
           />
 
