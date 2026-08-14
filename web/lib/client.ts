@@ -80,7 +80,14 @@ export async function probeSourceQuality(
       const cur = await fetchJob(job.id);
       if (cur.status === "done") return cur.result?.sourceQuality ?? null;
       if (cur.status === "error" || cur.status === "cancelled") return null;
-      if (Date.now() > deadline) return null;
+      if (Date.now() > deadline) {
+        // Give up waiting AND withdraw the job. Probes jump the queue, so a
+        // stale one left behind still runs a full yt-dlp format listing ahead
+        // of a render the user is actually waiting for. Cancelling is
+        // best-effort: if the worker already claimed it the DELETE is a no-op.
+        void cancelJob(job.id).catch(() => {});
+        return null;
+      }
     }
   } catch {
     return null;

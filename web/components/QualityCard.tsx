@@ -33,10 +33,26 @@ const TONE_STYLE: Record<Tone, string> = {
   warn: "border-amber-500/40 bg-amber-500/10 text-amber-200",
 };
 
-/** Biggest preset whose height still fits inside `ceiling` pixels, if any. */
-function largestPresetWithin(ceiling: number): Preset | null {
+/**
+ * The tallest preset that fits within `ceiling` — restricted to the shape the
+ * user is already targeting.
+ *
+ * Aspect ratio is a destination choice, not a quality one. Someone rendering
+ * for WhatsApp status wants 9:16; suggesting a landscape preset because it
+ * happens to be shorter answers a question they did not ask. Comparing heights
+ * across shapes is apples-to-oranges anyway — a 1080-tall vertical frame and a
+ * 1080-tall landscape frame carry very different pixel counts.
+ *
+ * Returns null when nothing in the same shape fits, which the caller renders as
+ * a plain warning with no recommendation.
+ */
+function largestPresetWithin(
+  ceiling: number,
+  aspectRatio: string | undefined
+): Preset | null {
   return (
     [...PRESETS]
+      .filter((p) => !aspectRatio || p.aspectRatio === aspectRatio)
       .sort((a, b) => b.height - a.height)
       .find((p) => p.height <= ceiling) ?? null
   );
@@ -98,14 +114,21 @@ function deriveVerdict(
     };
   }
 
-  const better = largestPresetWithin(ceiling);
+  // Same shape only — see largestPresetWithin. A "fill" preset crops before
+  // scaling, so its height is not comparable to the source's; say "closer to"
+  // rather than promising every pixel is real.
+  const better = largestPresetWithin(ceiling, preset.aspectRatio);
+  const betterClaim =
+    better && better.scaleMode === "fill"
+      ? ` Pick ${better.label} to get closer to the source's real detail.`
+      : better
+        ? ` Pick ${better.label} to keep the detail without wasted pixels.`
+        : "";
   return {
     tone: "warn",
     text:
       `Real detail tops out at ${ceiling}p even after upscale; the ${target}p render stretches beyond that.` +
-      (better
-        ? ` Pick ${better.label} to keep the detail without wasted pixels.`
-        : ""),
+      betterClaim,
   };
 }
 

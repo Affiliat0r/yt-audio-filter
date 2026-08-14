@@ -108,6 +108,10 @@ export default function Studio({
 
   useEffect(() => {
     if (!visual || !qualityKey) return;
+    // Music removal remuxes the original streams untouched, so the quality card
+    // is disabled and nothing would ever display the answer. Probing anyway
+    // spends a queue-jumping worker job per gallery click for nothing.
+    if (mode === "music_removal") return;
     // Wait for worker discovery to settle. Probing before it does would ask
     // "any machine" about a cache that belongs to one specific disk, and the
     // answer — measured off a file only that machine has — would describe a PC
@@ -128,7 +132,7 @@ export default function Studio({
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qualityKey, recheckNonce, target.probing]);
+  }, [qualityKey, recheckNonce, target.probing, mode]);
 
   const cachedQuality = qualityKey ? quality.get(qualityKey) : undefined;
 

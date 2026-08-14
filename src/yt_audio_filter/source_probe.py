@@ -31,6 +31,14 @@ logger = get_logger()
 #: ``worker.catalog_sync._VIDEO_PREFIX``.
 _VIDEO_PREFIX = "video_"
 
+#: ``download_stream`` names its output ``<prefix>_<id>.<ext>`` where the prefix
+#: comes from the download mode: overlay renders fetch "video-only" (``video_``)
+#: while music removal fetches "video+audio" (``full_``). Both hold a real video
+#: stream ffprobe can measure, so both count as cached — checking only ``video_``
+#: made every music-removal probe fall through to a slow yt-dlp format listing
+#: for a file that was already sitting on disk.
+_FULL_PREFIX = "full_"
+
 #: The extensions a download may land on, in ``download_stream``'s own order.
 _CACHE_EXTENSIONS = ("mp4", "m4a", "webm", "mkv", "opus")
 
@@ -63,12 +71,13 @@ def find_cached_video(video_id: str, cache_dir: Path) -> Optional[Path]:
     """
     cache_dir = Path(cache_dir)
     for ext in _CACHE_EXTENSIONS:
-        candidate = cache_dir / f"{_VIDEO_PREFIX}{video_id}.{ext}"
-        try:
-            if candidate.is_file() and candidate.stat().st_size > 0:
-                return candidate
-        except OSError as e:
-            logger.debug(f"Could not stat {candidate}: {e}")
+        for prefix in (_VIDEO_PREFIX, _FULL_PREFIX):
+            candidate = cache_dir / f"{prefix}{video_id}.{ext}"
+            try:
+                if candidate.is_file() and candidate.stat().st_size > 0:
+                    return candidate
+            except OSError:
+                continue
     return None
 
 

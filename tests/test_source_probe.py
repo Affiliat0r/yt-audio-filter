@@ -231,3 +231,45 @@ def test_get_video_info_is_fail_soft_like_get_audio_info():
 
     with patch("subprocess.run", side_effect=FileNotFoundError("ffprobe")):
         assert get_video_info(Path("missing.mp4")) == {}
+
+
+# ------------------------------------------- combined downloads are cached too
+
+
+def test_find_cached_video_matches_the_combined_download(tmp_path) -> None:
+    """Music removal downloads with ``mode="video+audio"``, which
+    ``download_stream`` names ``full_<id>.<ext>``; overlay renders fetch
+    video-only and get ``video_<id>.<ext>``.
+
+    Both hold a real video stream ffprobe can measure. Checking only the
+    ``video_`` prefix made every music-removal probe fall through to a slow
+    yt-dlp format listing for a file already sitting on disk.
+    """
+    from yt_audio_filter.source_probe import find_cached_video
+
+    combined = tmp_path / "full_abc12345xyz.mp4"
+    combined.write_bytes(b"\x00" * 64)
+
+    assert find_cached_video("abc12345xyz", tmp_path) == combined
+
+
+def test_video_only_still_wins_when_both_exist(tmp_path) -> None:
+    """Overlay renders use the video-only file, so it is the one whose
+    properties describe what the render will actually consume."""
+    from yt_audio_filter.source_probe import find_cached_video
+
+    (tmp_path / "full_abc12345xyz.mp4").write_bytes(b"\x00" * 64)
+    video_only = tmp_path / "video_abc12345xyz.mp4"
+    video_only.write_bytes(b"\x00" * 64)
+
+    assert find_cached_video("abc12345xyz", tmp_path) == video_only
+
+
+def test_zero_byte_combined_file_is_skipped(tmp_path) -> None:
+    """download_stream leaves zero-byte files behind when a download dies
+    mid-flight; ffprobe would learn nothing from one."""
+    from yt_audio_filter.source_probe import find_cached_video
+
+    (tmp_path / "full_abc12345xyz.mp4").write_bytes(b"")
+
+    assert find_cached_video("abc12345xyz", tmp_path) is None
