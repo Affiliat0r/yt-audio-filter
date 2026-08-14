@@ -1,20 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CatalogVideo } from "@/lib/types";
 
 export default function MusicPanel({
   visual,
-  disabled,
-  onProcess,
+  onPrivacyChange,
 }: {
   visual: CatalogVideo | null;
-  disabled: boolean;
-  onProcess: (privacy: "private" | "unlisted" | "public") => void;
+  /** Reports the chosen privacy upward; the button is elsewhere. */
+  onPrivacyChange: (privacy: "private" | "unlisted" | "public") => void;
 }) {
   const [privacy, setPrivacy] = useState<"private" | "unlisted" | "public">(
     "private"
   );
+
+  // The process button lives after the output-quality step.
+  useEffect(() => onPrivacyChange(privacy), [privacy, onPrivacyChange]);
 
   return (
     <div className="space-y-5">
@@ -51,13 +53,6 @@ export default function MusicPanel({
         </p>
       </div>
 
-      <button
-        className="btn-primary w-full"
-        disabled={disabled}
-        onClick={() => onProcess(privacy)}
-      >
-        Process
-      </button>
     </div>
   );
 }

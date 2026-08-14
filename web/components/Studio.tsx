@@ -60,6 +60,16 @@ export default function Studio({
   const [metadataPath, setMetadataPath] = useState(DEFAULT_METADATA_PATH);
   const [playlistId, setPlaylistId] = useState("");
 
+  // What each panel has composed. The panels report upward instead of holding
+  // their own submit button, so the action can sit after the quality step —
+  // choosing an output resolution below a button that already rendered is no
+  // choice at all.
+  const [surahNumbers, setSurahNumbers] = useState<number[]>([]);
+  const [ayahRanges, setAyahRanges] = useState<AyahRangeSpec[]>([]);
+  const [musicPrivacy, setMusicPrivacy] = useState<
+    "private" | "unlisted" | "public"
+  >("private");
+
   const [surahReciter, setSurahReciter] = useState(reciters[0]?.slug ?? "");
   const [ayahReciter, setAyahReciter] = useState(
     reciters.find((r) => r.supportsAyah)?.slug ?? ""
@@ -174,33 +184,51 @@ export default function Studio({
     }
   };
 
-  const renderSurah = (surahNumbers: number[]) =>
-    submit(() => ({
-      kind: "surah",
-      surahNumbers,
-      reciterSlug: surahReciter,
-      visual: visual!,
-      settings: settings(),
-    }));
-
-  const renderAyah = (ranges: AyahRangeSpec[]) =>
-    submit(() => ({
-      kind: "ayah",
-      ranges,
-      reciterSlug: ayahReciter,
-      visual: visual!,
-      settings: settings(),
-    }));
-
-  const runMusicRemoval = (privacy: "private" | "unlisted" | "public") =>
-    submit(() => ({
+  const start = () => {
+    if (mode === "surah")
+      return submit(() => ({
+        kind: "surah",
+        surahNumbers,
+        reciterSlug: surahReciter,
+        visual: visual!,
+        settings: settings(),
+      }));
+    if (mode === "ayah")
+      return submit(() => ({
+        kind: "ayah",
+        ranges: ayahRanges,
+        reciterSlug: ayahReciter,
+        visual: visual!,
+        settings: settings(),
+      }));
+    return submit(() => ({
       kind: "music_removal",
       visual: visual!,
-      privacy,
+      privacy: musicPrivacy,
       playlistId: playlistId.trim() || null,
     }));
+  };
 
   const busy = submitting || !visual;
+
+  // The action moved below the quality step, so its label and enablement have
+  // to be derived here from what the panels reported rather than owned by them.
+  const totalAyat = ayahRanges.reduce(
+    (sum, r) => sum + (r.end - r.start + 1) * r.repeats,
+    0
+  );
+  const action =
+    mode === "surah"
+      ? {
+          label: `Render${surahNumbers.length > 0 ? ` (${surahNumbers.length} segments)` : ""}`,
+          ready: surahNumbers.length > 0,
+        }
+      : mode === "ayah"
+        ? {
+            label: `Render ayah-range video (${totalAyat} recitations)`,
+            ready: ayahRanges.length > 0,
+          }
+        : { label: "Process", ready: !targetCannotRemoveMusic };
 
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5">
@@ -322,20 +350,13 @@ export default function Studio({
               </p>
             )}
 
-            {submitError && (
-              <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                {submitError}
-              </p>
-            )}
-
             {mode === "surah" && (
               <SurahPanel
                 surahs={surahs}
                 reciters={reciters}
                 reciterSlug={surahReciter}
                 onReciterChange={setSurahReciter}
-                disabled={busy}
-                onRender={renderSurah}
+                onPayloadChange={setSurahNumbers}
               />
             )}
             {mode === "ayah" && (
@@ -344,8 +365,7 @@ export default function Studio({
                 reciters={reciters}
                 reciterSlug={ayahReciter}
                 onReciterChange={setAyahReciter}
-                disabled={busy}
-                onRender={renderAyah}
+                onPayloadChange={setAyahRanges}
               />
             )}
             {mode === "music_removal" && (
@@ -361,8 +381,7 @@ export default function Studio({
                 )}
                 <MusicPanel
                   visual={visual}
-                  disabled={busy || targetCannotRemoveMusic}
-                  onProcess={runMusicRemoval}
+                  onPrivacyChange={setMusicPrivacy}
                 />
               </>
             )}
@@ -386,6 +405,34 @@ export default function Studio({
             onRecheck={recheckQuality}
             disabled={mode === "music_removal"}
           />
+
+          <section className="card space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-300">
+              4 · Start it
+            </h2>
+
+            {submitError && (
+              <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {submitError}
+              </p>
+            )}
+
+            <button
+              className="btn-primary w-full"
+              disabled={busy || !action.ready}
+              onClick={start}
+            >
+              {action.label}
+            </button>
+
+            <p className="text-xs leading-relaxed text-ink-400">
+              {!visual
+                ? "Pick a video in step 1 first."
+                : !action.ready && mode !== "music_removal"
+                  ? "Choose what to recite in step 2 first."
+                  : "Renders land as a preview on this page. Publishing to YouTube is a separate button afterwards."}
+            </p>
+          </section>
 
           {job && job.kind !== "search" && (
             <JobMonitor

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Reciter, Surah } from "@/lib/surah";
 import type { AyahRangeSpec } from "@/lib/types";
 
@@ -24,15 +24,14 @@ export default function AyahPanel({
   reciters,
   reciterSlug,
   onReciterChange,
-  disabled,
-  onRender,
+  onPayloadChange,
 }: {
   surahs: Surah[];
   reciters: Reciter[];
   reciterSlug: string;
   onReciterChange: (slug: string) => void;
-  disabled: boolean;
-  onRender: (ranges: AyahRangeSpec[]) => void;
+  /** Reports the configured ranges upward; the button is elsewhere. */
+  onPayloadChange: (ranges: AyahRangeSpec[]) => void;
 }) {
   const [rows, setRows] = useState<Row[]>(() => [newRow()]);
 
@@ -56,10 +55,14 @@ export default function AyahPanel({
       })
     );
 
-  const totalAyat = rows.reduce(
-    (sum, r) => sum + (r.end - r.start + 1) * r.repeats,
-    0
+  // The render button lives after the output-quality step, so the payload has
+  // to travel up rather than being submitted from in here. Memoised so the
+  // effect fires on a real change rather than on every render.
+  const specs = useMemo(
+    () => rows.map(({ id: _id, ...spec }) => spec),
+    [rows]
   );
+  useEffect(() => onPayloadChange(specs), [specs, onPayloadChange]);
 
   return (
     <div className="space-y-5">
@@ -199,17 +202,6 @@ export default function AyahPanel({
         </p>
       </div>
 
-      <button
-        className="btn-primary w-full"
-        disabled={disabled || rows.length === 0}
-        onClick={() =>
-          onRender(
-            rows.map(({ id: _id, ...spec }) => spec)
-          )
-        }
-      >
-        Render ayah-range video ({totalAyat} recitations)
-      </button>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Reciter, Surah } from "@/lib/surah";
 import { expandSurahSelection } from "@/lib/surah";
 
@@ -9,15 +9,14 @@ export default function SurahPanel({
   reciters,
   reciterSlug,
   onReciterChange,
-  disabled,
-  onRender,
+  onPayloadChange,
 }: {
   surahs: Surah[];
   reciters: Reciter[];
   reciterSlug: string;
   onReciterChange: (slug: string) => void;
-  disabled: boolean;
-  onRender: (surahNumbers: number[]) => void;
+  /** Reports the repeat-expanded play order upward; the button is elsewhere. */
+  onPayloadChange: (surahNumbers: number[]) => void;
 }) {
   const [selected, setSelected] = useState<number[]>([]);
   const [repeats, setRepeats] = useState<Record<number, number>>({});
@@ -40,7 +39,16 @@ export default function SurahPanel({
     );
   }, [surahs, selected, filter]);
 
-  const expanded = expandSurahSelection(selected, repeats, setLoops);
+  // Memoised so the report-upward effect fires on a real change rather than on
+  // every render.
+  const expanded = useMemo(
+    () => expandSurahSelection(selected, repeats, setLoops),
+    [selected, repeats, setLoops]
+  );
+
+  // The render button lives after the output-quality step, so the payload has
+  // to travel up rather than being submitted from in here.
+  useEffect(() => onPayloadChange(expanded), [expanded, onPayloadChange]);
   const reciter = reciters.find((r) => r.slug === reciterSlug) ?? reciters[0];
 
   const add = (n: number) => {
@@ -189,13 +197,6 @@ export default function SurahPanel({
         </p>
       </div>
 
-      <button
-        className="btn-primary w-full"
-        disabled={disabled || selected.length === 0}
-        onClick={() => onRender(expanded)}
-      >
-        Render {expanded.length > 0 ? `(${expanded.length} segments)` : ""}
-      </button>
     </div>
   );
 }
