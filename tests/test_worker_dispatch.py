@@ -1085,3 +1085,62 @@ def test_blob_delete_never_raises() -> None:
     # Missing url or token is a no-op, not a crash.
     assert blob_mod.delete_blob("", "tok") is False
     assert blob_mod.delete_blob("https://x/y.mp4", "") is False
+
+
+# ------------------------------------------- unknown job kinds must not stall
+
+
+def test_unparseable_job_fails_that_job_not_the_poll_loop() -> None:
+    """The Studio deploys on push while the worker is updated by hand, so it
+    WILL be handed job kinds it does not know.
+
+    That must fail the job, not the claim call. If the parse error escapes
+    ``claim()``, ``run_forever`` reads it as a transport failure, backs off to
+    a minute, and the job — already marked ``claimed`` server-side — is
+    stranded forever with real work queued behind it.
+    """
+    from unittest.mock import MagicMock
+
+    from worker.client import StudioClient
+
+    client = StudioClient("https://studio.example", "tok")
+    posted: list = []
+
+    def fake_post(path, payload):
+        posted.append((path, payload))
+        if path == "/api/worker/claim":
+            return {"job": {"id": "job-1", "kind": "teleport", "input": {"kind": "teleport"}}}
+        return {}
+
+    client._post = fake_post  # type: ignore[method-assign]
+
+    job = client.claim(MagicMock(to_json=lambda: {}))
+
+    # Idle, not an exception — the loop keeps its normal cadence.
+    assert job is None
+    # And the job was reported as failed rather than left hanging.
+    completes = [p for p in posted if p[0] == "/api/worker/complete"]
+    assert len(completes) == 1
+    body = completes[0][1]
+    assert body["jobId"] == "job-1"
+    assert body["ok"] is False
+    assert "teleport" in body["error"]
+
+
+def test_claim_survives_being_unable_to_report_the_bad_job() -> None:
+    """Reporting is best effort — if that POST also fails, the loop still must
+    not take the exception."""
+    from unittest.mock import MagicMock
+
+    from worker.client import StudioClient
+
+    client = StudioClient("https://studio.example", "tok")
+
+    def fake_post(path, payload):
+        if path == "/api/worker/claim":
+            return {"job": {"id": "job-2", "kind": "teleport"}}
+        raise RuntimeError("studio unreachable")
+
+    client._post = fake_post  # type: ignore[method-assign]
+
+    assert client.claim(MagicMock(to_json=lambda: {})) is None

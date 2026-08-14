@@ -102,7 +102,32 @@ class StudioClient:
         raw_job = data.get("job")
         if not raw_job:
             return None
-        return Job.from_json(raw_job)
+        try:
+            return Job.from_json(raw_job)
+        except Exception as exc:  # noqa: BLE001 - malformed or too-new job
+            # The Studio deploys on push while this worker is updated by hand,
+            # so it WILL be handed job kinds it does not know. That must fail
+            # the job, not the poll loop: letting this escape looks like a
+            # transport error to run_forever, which backs off to a minute while
+            # the server has already marked the job `claimed` — stranding it
+            # forever and starving whatever was queued behind it.
+            job_id = raw_job.get("id") if isinstance(raw_job, dict) else None
+            kind = raw_job.get("kind") if isinstance(raw_job, dict) else None
+            logger.warning("Rejecting unparseable job %s (%s): %s", job_id, kind, exc)
+            if job_id:
+                try:
+                    self.complete(
+                        job_id,
+                        ok=False,
+                        error=f"This worker cannot run job kind {kind!r}",
+                        error_details=(
+                            "The Studio is newer than this worker. Update it with "
+                            "`git pull` and restart, or target a different machine."
+                        ),
+                    )
+                except Exception:  # noqa: BLE001 - best effort; never stall the loop
+                    logger.warning("Could not report the unparseable job as failed")
+            return None
 
     def progress(
         self,

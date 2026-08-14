@@ -54,7 +54,15 @@ export async function createJob(
   } else {
     await r.lpush(KEYS.queue, job.id);
   }
-  await r.zadd(KEYS.jobIndex, { score: now, member: job.id });
+  // `jobs:index` backs the "Recent jobs" panel, which is how a render is
+  // recovered after a reload or from another device. Search and probe jobs are
+  // UI plumbing, not work the user asked for: a probe fires on every gallery
+  // click, so indexing them would push real renders out of the newest-20
+  // window after ~20 clicks and blank the panel entirely. Skipping the index
+  // also saves a Redis write per click.
+  if (input.kind !== "search" && input.kind !== "probe") {
+    await r.zadd(KEYS.jobIndex, { score: now, member: job.id });
+  }
   return job;
 }
 
