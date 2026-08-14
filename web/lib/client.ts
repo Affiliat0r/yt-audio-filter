@@ -7,6 +7,7 @@ import {
   type CatalogVideo,
   type Job,
   type JobInput,
+  type SourceQuality,
   type WorkerSummary,
 } from "./types";
 
@@ -49,6 +50,42 @@ export const fetchCatalog = (workerId?: string | null) =>
   api<{ videos: CatalogVideo[]; updatedAt: number | null }>(
     workerId ? `/api/catalog?workerId=${encodeURIComponent(workerId)}` : "/api/catalog"
   );
+
+/**
+ * Ask the worker how good a visual's source really is.
+ *
+ * ffprobe and yt-dlp only exist on the worker, so this is a job — a fast,
+ * queue-jumping one, polled here rather than through `useJobPolling` so it
+ * never surfaces in the job monitor.
+ *
+ * `targetWorkerId` matters: whether the file is already downloaded (measured)
+ * or has to be guessed from YouTube's format list (listed) is a property of
+ * one machine's disk, so an untargeted probe could be answered by the wrong PC.
+ *
+ * Never throws for "we could not find out": a worker that is busy with a
+ * 40-minute render will not answer inside the deadline, and an older worker
+ * rejects the unknown job kind outright. Both come back as `null`, which the
+ * UI shows as "quality unknown" instead of blocking the render.
+ */
+export async function probeSourceQuality(
+  visual: CatalogVideo,
+  targetWorkerId: string | null,
+  deadlineMs = 45_000
+): Promise<SourceQuality | null> {
+  try {
+    const job = await createJob({ kind: "probe", visual }, targetWorkerId);
+    const deadline = Date.now() + deadlineMs;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1200));
+      const cur = await fetchJob(job.id);
+      if (cur.status === "done") return cur.result?.sourceQuality ?? null;
+      if (cur.status === "error" || cur.status === "cancelled") return null;
+      if (Date.now() > deadline) return null;
+    }
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Server-side job history. This is what makes a render survive a reload or

@@ -10,11 +10,18 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
-from yt_audio_filter import cartoon_search, overlay_pipeline, uploader, youtube
+from yt_audio_filter import (
+    cartoon_search,
+    overlay_pipeline,
+    source_probe,
+    uploader,
+    youtube,
+)
 from yt_audio_filter.cartoon_catalog import CatalogVideo
 from yt_audio_filter.exceptions import OverlayError
 from yt_audio_filter.logger import get_logger
@@ -32,8 +39,10 @@ from .contract import (
     Job,
     JobResult,
     MusicRemovalJobInput,
+    ProbeJobInput,
     RenderSettings,
     SearchJobInput,
+    SourceQuality,
     SurahJobInput,
     catalog_video_to_json,
 )
@@ -485,6 +494,36 @@ def handle_search(
     return JobResult(search_results=payload)
 
 
+def handle_probe(
+    job: Job, ctx: JobContext, cfg: WorkerConfig, store: RenderedJobStore
+) -> JobResult:
+    """``kind: "probe"`` — measure or estimate the source visual's quality.
+
+    Cache state is per machine, so this only answers for the disk it runs on;
+    the Studio targets probes at the worker whose cache the user is looking at.
+    """
+    job_input = job.input
+    assert isinstance(job_input, ProbeJobInput)
+    visual = job_input.visual
+    url = visual.url or f"https://www.youtube.com/watch?v={visual.video_id}"
+
+    ctx.report(f"Probing source quality for {visual.video_id}", 20)
+    info = source_probe.probe_source_quality(
+        video_id=visual.video_id, url=url, cache_dir=Path(cfg.cache_dir)
+    )
+    ctx.report("Probe complete", 100, [f"{info.kind}: {info.width}x{info.height}"])
+    return JobResult(
+        source_quality=SourceQuality(
+            kind=info.kind,
+            width=info.width,
+            height=info.height,
+            fps=info.fps,
+            codec=info.codec,
+            probed_at=int(time.time() * 1000),
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Upload handler (explicit, user-initiated, never automatic)
 # ---------------------------------------------------------------------------
@@ -575,6 +614,7 @@ HANDLERS: Dict[str, Handler] = {
     "ayah": handle_ayah,
     "music_removal": handle_music_removal,
     "search": handle_search,
+    "probe": handle_probe,
 }
 
 

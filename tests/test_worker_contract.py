@@ -31,8 +31,10 @@ from worker.contract import (
     JobProgress,
     JobResult,
     MusicRemovalJobInput,
+    ProbeJobInput,
     RenderSettings,
     SearchJobInput,
+    SourceQuality,
     SurahJobInput,
     WorkerHeartbeat,
     catalog_video_from_json,
@@ -283,6 +285,19 @@ def test_search_job_input_rejects_blank_query():
         SearchJobInput.from_json({"kind": "search", "query": "   "})
 
 
+def test_probe_job_input_round_trip():
+    raw = {"kind": "probe", "visual": _visual_json()}
+
+    parsed = ProbeJobInput.from_json(raw)
+    assert parsed.visual.video_id == "abc123"
+    assert parsed.to_json() == raw
+
+
+def test_probe_job_input_requires_a_visual():
+    with pytest.raises(ContractError, match="visual"):
+        ProbeJobInput.from_json({"kind": "probe"})
+
+
 @pytest.mark.parametrize(
     "raw,expected",
     [
@@ -306,6 +321,7 @@ def test_search_job_input_rejects_blank_query():
         ),
         ({"kind": "music_removal", "visual": _visual_json()}, MusicRemovalJobInput),
         ({"kind": "search", "query": "nasheed"}, SearchJobInput),
+        ({"kind": "probe", "visual": _visual_json()}, ProbeJobInput),
     ],
 )
 def test_parse_job_input_dispatches_on_kind(raw, expected):
@@ -456,6 +472,69 @@ def test_job_result_to_json_uses_camel_case():
     }
 
 
+def test_source_quality_round_trips_including_probed_at():
+    raw = {
+        "kind": "measured",
+        "width": 640,
+        "height": 360,
+        "fps": 23.976,
+        "codec": "h264",
+        "probedAt": 1770000000000,
+    }
+
+    quality = SourceQuality.from_json(raw)
+    assert quality.height == 360
+    assert quality.fps == pytest.approx(23.976)
+    assert quality.codec == "h264"
+    assert quality.probed_at == 1770000000000
+    assert quality.to_json() == raw
+
+
+def test_source_quality_keeps_unknown_numbers_as_null():
+    """A probe that ran but learned nothing is not the same as no probe: the
+    object is present, its numbers are null, and both survive the round trip."""
+    raw = {
+        "kind": "listed",
+        "width": None,
+        "height": None,
+        "fps": None,
+        "codec": None,
+        "probedAt": 5,
+    }
+
+    quality = SourceQuality.from_json(raw)
+    assert (quality.width, quality.height, quality.fps, quality.codec) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert quality.to_json() == raw
+
+
+def test_source_quality_requires_a_kind():
+    with pytest.raises(ContractError, match="kind"):
+        SourceQuality.from_json({"height": 720})
+
+
+def test_job_result_omits_source_quality_until_a_probe_ran():
+    assert "sourceQuality" not in JobResult(file_name="x.mp4").to_json()
+
+    payload = JobResult(source_quality=SourceQuality(kind="listed", height=1080)).to_json()
+    assert payload["sourceQuality"]["height"] == 1080
+    assert payload["sourceQuality"]["codec"] is None
+
+
+def test_job_result_parses_source_quality_back_from_the_wire():
+    result = JobResult.from_json(
+        {"sourceQuality": {"kind": "measured", "height": 360, "codec": "vp9"}}
+    )
+
+    assert result.source_quality is not None
+    assert result.source_quality.kind == "measured"
+    assert result.source_quality.codec == "vp9"
+
+
 def test_job_result_merge_keeps_the_preview_url_when_adding_a_youtube_id():
     rendered = JobResult(blob_url="https://blob/x.mp4", file_name="x.mp4", size_bytes=7)
 
@@ -463,6 +542,17 @@ def test_job_result_merge_keeps_the_preview_url_when_adding_a_youtube_id():
     assert merged.blob_url == "https://blob/x.mp4"
     assert merged.file_name == "x.mp4"
     assert merged.youtube_video_id == "yt42"
+
+
+def test_job_result_merge_carries_source_quality_like_every_other_field():
+    probed = JobResult(source_quality=SourceQuality(kind="measured", height=360))
+
+    assert probed.merged_with(JobResult(file_name="x.mp4")).source_quality is not None
+    replaced = probed.merged_with(
+        JobResult(source_quality=SourceQuality(kind="listed", height=1080))
+    )
+    assert replaced.source_quality is not None
+    assert replaced.source_quality.height == 1080
 
 
 def test_worker_heartbeat_serialises_identity_and_current_job_id():

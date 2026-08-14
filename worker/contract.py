@@ -22,9 +22,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from yt_audio_filter.ayah_repeater import AyahRange
 
 
-JobKind = Literal["surah", "ayah", "music_removal", "search"]
+JobKind = Literal["surah", "ayah", "music_removal", "search", "probe"]
 JobStatus = Literal["queued", "claimed", "running", "done", "error", "cancelled"]
 CacheState = Literal["new", "downloaded", "upscaled"]
+SourceQualityKind = Literal["measured", "listed"]
 Privacy = Literal["private", "unlisted", "public"]
 
 #: Fallback used when a job's ``settings.metadataPath`` is blank.
@@ -324,13 +325,34 @@ class SearchJobInput:
         }
 
 
-JobInput = Union[SurahJobInput, AyahJobInput, MusicRemovalJobInput, SearchJobInput]
+@dataclass(frozen=True)
+class ProbeJobInput:
+    """``kind: "probe"`` — source-quality check for one visual."""
+
+    kind: ClassVar[JobKind] = "probe"
+
+    visual: CatalogVideo
+
+    @classmethod
+    def from_json(cls, raw: Dict[str, Any]) -> "ProbeJobInput":
+        return cls(
+            visual=catalog_video_from_json(_require(raw, "visual", kind="ProbeJobInput"))
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        return {"kind": self.kind, "visual": catalog_video_to_json(self.visual)}
+
+
+JobInput = Union[
+    SurahJobInput, AyahJobInput, MusicRemovalJobInput, SearchJobInput, ProbeJobInput
+]
 
 _INPUT_PARSERS = {
     "surah": SurahJobInput.from_json,
     "ayah": AyahJobInput.from_json,
     "music_removal": MusicRemovalJobInput.from_json,
     "search": SearchJobInput.from_json,
+    "probe": ProbeJobInput.from_json,
 }
 
 
@@ -381,6 +403,51 @@ class JobProgress:
 
 
 @dataclass(frozen=True)
+class SourceQuality:
+    """Mirrors ``SourceQuality`` — the result of a ``probe`` job.
+
+    Unknown numbers stay ``null`` *inside* a present object; it is the object
+    itself that is omitted when no probe has run. The frontend distinguishes
+    the two: "not probed yet" versus "probed, and YouTube would not say".
+    """
+
+    kind: str  # "measured" | "listed"
+    width: Optional[int] = None
+    height: Optional[int] = None
+    fps: Optional[float] = None
+    codec: Optional[str] = None
+    probed_at: int = 0
+
+    @classmethod
+    def from_json(cls, raw: Dict[str, Any]) -> "SourceQuality":
+        if not isinstance(raw, dict):
+            raise ContractError(
+                f"SourceQuality must be an object, got {type(raw).__name__}"
+            )
+        width = raw.get("width")
+        height = raw.get("height")
+        fps = raw.get("fps")
+        return cls(
+            kind=str(_require(raw, "kind", kind="SourceQuality")),
+            width=None if width is None else int(width),
+            height=None if height is None else int(height),
+            fps=None if fps is None else float(fps),
+            codec=_optional_str(raw.get("codec")),
+            probed_at=int(raw.get("probedAt") or 0),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "width": self.width,
+            "height": self.height,
+            "fps": self.fps,
+            "codec": self.codec,
+            "probedAt": self.probed_at,
+        }
+
+
+@dataclass(frozen=True)
 class JobResult:
     """Mirrors ``JobResult``. ``to_json`` omits unset fields entirely, so a
     merge on the frontend never clobbers a previous value with ``null``."""
@@ -393,12 +460,15 @@ class JobResult:
     size_bytes: Optional[int] = None
     youtube_video_id: Optional[str] = None
     search_results: Optional[List[Dict[str, Any]]] = None
+    #: Populated for ``kind: "probe"`` jobs only.
+    source_quality: Optional[SourceQuality] = None
 
     @classmethod
     def from_json(cls, raw: Optional[Dict[str, Any]]) -> "JobResult":
         raw = raw or {}
         size = raw.get("sizeBytes")
         results = raw.get("searchResults")
+        quality = raw.get("sourceQuality")
         return cls(
             blob_url=_optional_str(raw.get("blobUrl")),
             blob_pathname=_optional_str(raw.get("blobPathname")),
@@ -406,6 +476,7 @@ class JobResult:
             size_bytes=None if size is None else int(size),
             youtube_video_id=_optional_str(raw.get("youtubeVideoId")),
             search_results=list(results) if isinstance(results, list) else None,
+            source_quality=SourceQuality.from_json(quality) if quality else None,
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -422,6 +493,8 @@ class JobResult:
             payload["youtubeVideoId"] = self.youtube_video_id
         if self.search_results is not None:
             payload["searchResults"] = list(self.search_results)
+        if self.source_quality is not None:
+            payload["sourceQuality"] = self.source_quality.to_json()
         return payload
 
     def merged_with(self, other: "JobResult") -> "JobResult":
@@ -450,6 +523,11 @@ class JobResult:
                 other.search_results
                 if other.search_results is not None
                 else self.search_results
+            ),
+            source_quality=(
+                other.source_quality
+                if other.source_quality is not None
+                else self.source_quality
             ),
         )
 

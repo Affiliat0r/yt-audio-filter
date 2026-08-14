@@ -33,6 +33,7 @@ from worker.worker import execute_job
 from yt_audio_filter.cartoon_catalog import CatalogVideo
 from yt_audio_filter.exceptions import OverlayError
 from yt_audio_filter.overlay_pipeline import OverlayResult
+from yt_audio_filter.source_probe import SourceQualityInfo
 from yt_audio_filter.youtube import VideoMetadata
 
 
@@ -575,6 +576,63 @@ def test_search_job_reports_the_cache_state_of_known_visuals(cfg, store):
 
 
 # ---------------------------------------------------------------------------
+# probe dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_probe_job_returns_the_measured_quality_of_the_cached_visual(cfg, store):
+    client = FakeClient()
+    job = _job("probe", {"kind": "probe", "visual": _visual()})
+
+    with patch(
+        "yt_audio_filter.source_probe.probe_source_quality",
+        return_value=SourceQualityInfo(
+            kind="measured", width=640, height=360, fps=25.0, codec="h264"
+        ),
+    ) as mock_probe:
+        result = run_job(job, _ctx(client), cfg, store)
+
+    kwargs = mock_probe.call_args.kwargs
+    assert kwargs["video_id"] == "abc123"
+    assert kwargs["url"] == "https://www.youtube.com/watch?v=abc123"
+    assert kwargs["cache_dir"] == cfg.cache_dir
+
+    assert result.source_quality is not None
+    payload = result.to_json()["sourceQuality"]
+    assert payload["kind"] == "measured"
+    assert payload["height"] == 360
+    assert payload["codec"] == "h264"
+    assert payload["probedAt"] > 0
+
+
+def test_probe_job_reports_an_undeterminable_quality_instead_of_failing(cfg, store):
+    """The card degrades to "unknown"; a quality hint must never fail a job."""
+    client = FakeClient()
+    job = _job("probe", {"kind": "probe", "visual": _visual()})
+
+    with patch(
+        "yt_audio_filter.source_probe.probe_source_quality",
+        return_value=SourceQualityInfo(kind="listed"),
+    ):
+        result = run_job(job, _ctx(client), cfg, store)
+
+    assert result.source_quality is not None
+    assert result.source_quality.height is None
+    assert result.to_json()["sourceQuality"]["height"] is None
+
+
+def test_probe_job_produces_nothing_to_upload(cfg, store, rendered):
+    """A probe never renders a file, so an upload request against one has to
+    fail loudly rather than publish some other job's leftover render."""
+    client = FakeClient()
+    store.record("job-1", rendered, "probe")
+    job = _job("probe", {"kind": "probe", "visual": _visual()}, upload_requested=True)
+
+    with pytest.raises(OverlayError, match="nothing to upload"):
+        run_job(job, _ctx(client), cfg, store)
+
+
+# ---------------------------------------------------------------------------
 # upload dispatch (explicit, second pass over an already-rendered job)
 # ---------------------------------------------------------------------------
 
@@ -1027,3 +1085,62 @@ def test_blob_delete_never_raises() -> None:
     # Missing url or token is a no-op, not a crash.
     assert blob_mod.delete_blob("", "tok") is False
     assert blob_mod.delete_blob("https://x/y.mp4", "") is False
+
+
+# ------------------------------------------- unknown job kinds must not stall
+
+
+def test_unparseable_job_fails_that_job_not_the_poll_loop() -> None:
+    """The Studio deploys on push while the worker is updated by hand, so it
+    WILL be handed job kinds it does not know.
+
+    That must fail the job, not the claim call. If the parse error escapes
+    ``claim()``, ``run_forever`` reads it as a transport failure, backs off to
+    a minute, and the job — already marked ``claimed`` server-side — is
+    stranded forever with real work queued behind it.
+    """
+    from unittest.mock import MagicMock
+
+    from worker.client import StudioClient
+
+    client = StudioClient("https://studio.example", "tok")
+    posted: list = []
+
+    def fake_post(path, payload):
+        posted.append((path, payload))
+        if path == "/api/worker/claim":
+            return {"job": {"id": "job-1", "kind": "teleport", "input": {"kind": "teleport"}}}
+        return {}
+
+    client._post = fake_post  # type: ignore[method-assign]
+
+    job = client.claim(MagicMock(to_json=lambda: {}))
+
+    # Idle, not an exception — the loop keeps its normal cadence.
+    assert job is None
+    # And the job was reported as failed rather than left hanging.
+    completes = [p for p in posted if p[0] == "/api/worker/complete"]
+    assert len(completes) == 1
+    body = completes[0][1]
+    assert body["jobId"] == "job-1"
+    assert body["ok"] is False
+    assert "teleport" in body["error"]
+
+
+def test_claim_survives_being_unable_to_report_the_bad_job() -> None:
+    """Reporting is best effort — if that POST also fails, the loop still must
+    not take the exception."""
+    from unittest.mock import MagicMock
+
+    from worker.client import StudioClient
+
+    client = StudioClient("https://studio.example", "tok")
+
+    def fake_post(path, payload):
+        if path == "/api/worker/claim":
+            return {"job": {"id": "job-2", "kind": "teleport"}}
+        raise RuntimeError("studio unreachable")
+
+    client._post = fake_post  # type: ignore[method-assign]
+
+    assert client.claim(MagicMock(to_json=lambda: {})) is None

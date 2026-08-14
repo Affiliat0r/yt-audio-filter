@@ -3,24 +3,36 @@
   "slug": "youtube_landscape",
   "label": "YouTube (1080p landscape)",
   "width": 1920,
-  "height": 1080
+  "height": 1080,
+  "scaleMode": "fit",
+  "aspectRatio": "16:9",
+  "description": "Standard YouTube landscape upload at 1920x1080. Letterboxes non-16:9 sources to keep the full visual visible."
  },
  {
   "slug": "youtube_landscape_720",
   "label": "YouTube (720p landscape)",
   "width": 1280,
-  "height": 720
+  "height": 720,
+  "scaleMode": "fit",
+  "aspectRatio": "16:9",
+  "description": "Smaller YouTube landscape render at 1280x720. Pair with --upscale to recover detail when the cartoon source is lower-resolution."
  },
  {
   "slug": "whatsapp_vertical",
   "label": "WhatsApp (9:16 vertical)",
   "width": 1080,
-  "height": 1920
+  "height": 1920,
+  "scaleMode": "fill",
+  "aspectRatio": "9:16",
+  "description": "Phone-first vertical export at 1080x1920 for WhatsApp status / share. Crops landscape source to fill the frame so the cartoon doesn't appear in a thin band between black bars."
  },
  {
   "slug": "instagram_square",
   "label": "Instagram (1:1 square)",
   "width": 1080,
-  "height": 1080
+  "height": 1080,
+  "scaleMode": "fill",
+  "aspectRatio": "1:1",
+  "description": "Square 1080x1080 render for Instagram feed posts. Crops to fill since most cartoon sources are 16:9 and a letterboxed square looks like a postage stamp."
  }
 ]

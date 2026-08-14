@@ -49,10 +49,13 @@ export default function RecentJobs({
 
   const refresh = useCallback(async () => {
     try {
-      // Search jobs are plumbing for the gallery, not something the user
-      // thinks of as a job. Hide them.
+      // Search and quality-probe jobs are plumbing for the gallery and the
+      // quality card, not something the user thinks of as a job. Hide them —
+      // which also keeps the auto-open below from putting one in the monitor.
       const all = await fetchJobs();
-      const visible = all.filter((j) => j.kind !== "search");
+      const visible = all.filter(
+        (j) => j.kind !== "search" && j.kind !== "probe"
+      );
       setJobs(visible);
       setError(null);
 

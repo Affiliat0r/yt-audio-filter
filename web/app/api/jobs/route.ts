@@ -6,7 +6,7 @@ import type { JobInput } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS = new Set(["surah", "ayah", "music_removal", "search"]);
+const KINDS = new Set(["surah", "ayah", "music_removal", "search", "probe"]);
 
 /** Reject malformed input before it reaches the worker. */
 function validate(input: JobInput): string | null {
@@ -41,6 +41,9 @@ function validate(input: JobInput): string | null {
       return null;
     case "search":
       if (!input.query?.trim()) return "Enter a search term";
+      return null;
+    case "probe":
+      if (!input.visual?.videoId) return "Pick a video";
       return null;
   }
 }

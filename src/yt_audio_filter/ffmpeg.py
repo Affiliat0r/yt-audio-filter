@@ -109,6 +109,85 @@ def get_audio_info(file_path: Path) -> dict:
         return {}
 
 
+def _parse_frame_rate(value: Optional[str]) -> Optional[float]:
+    """Turn ffprobe's ``num/den`` frame-rate string into a float.
+
+    ffprobe reports ``0/0`` for streams it could not time (and ``N/A`` for
+    some containers), so the denominator has to be checked before dividing.
+    """
+    if not value:
+        return None
+    try:
+        numerator, _, denominator = str(value).partition("/")
+        den = float(denominator) if denominator else 1.0
+        if den == 0:
+            return None
+        return float(numerator) / den
+    except (TypeError, ValueError):
+        return None
+
+
+def get_video_info(file_path: Path) -> dict:
+    """
+    Get video stream information from a file using ffprobe.
+
+    Args:
+        file_path: Path to the video file
+
+    Returns:
+        Dictionary with width, height, codec, fps. Keys the probe could not
+        determine are absent, and an unreadable file gives ``{}`` — callers
+        report "quality unknown" rather than failing.
+    """
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,codec_name,avg_frame_rate",
+        "-of", "json",
+        str(file_path)
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=60
+        )
+
+        if result.returncode != 0:
+            logger.debug(f"ffprobe error: {result.stderr}")
+            return {}
+
+        data = json.loads(result.stdout)
+        streams = data.get("streams") or []
+        if not streams:
+            return {}
+
+        stream = streams[0]
+        info: dict = {}
+
+        if stream.get("width"):
+            info["width"] = int(stream["width"])
+        if stream.get("height"):
+            info["height"] = int(stream["height"])
+        if stream.get("codec_name"):
+            info["codec"] = stream["codec_name"]
+
+        fps = _parse_frame_rate(stream.get("avg_frame_rate"))
+        if fps is not None:
+            info["fps"] = fps
+
+        return info
+
+    except (FileNotFoundError, ValueError, subprocess.TimeoutExpired) as e:
+        logger.debug(f"Failed to get video info: {e}")
+        return {}
+
+
 def extract_audio(
     video_path: Path,
     output_path: Path,
