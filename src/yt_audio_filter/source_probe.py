@@ -68,16 +68,25 @@ def find_cached_video(video_id: str, cache_dir: Path) -> Optional[Path]:
 
     ``upscaled_<id>.mp4`` is deliberately ignored: this describes the
     *source*, and what an upscale would add on top is the caller's business.
+
+    Prefix is the OUTER loop, and that ordering is load-bearing. ``video_`` is
+    the video-only stream an overlay render actually consumes — typically the
+    1080p VP9/webm one — while ``full_`` is the combined download that music
+    removal fetches, usually format 18 at 360p. Iterating extensions first lets
+    ``full_<id>.mp4`` win over ``video_<id>.webm`` purely because mp4 is checked
+    before webm, and the probe then reports 360p for a render that will use the
+    1080p file. That is wrong in the worst direction: the quality card would
+    tell the user to drop to a lower preset than their source can support.
     """
     cache_dir = Path(cache_dir)
-    for ext in _CACHE_EXTENSIONS:
-        for prefix in (_VIDEO_PREFIX, _FULL_PREFIX):
+    for prefix in (_VIDEO_PREFIX, _FULL_PREFIX):
+        for ext in _CACHE_EXTENSIONS:
             candidate = cache_dir / f"{prefix}{video_id}.{ext}"
             try:
                 if candidate.is_file() and candidate.stat().st_size > 0:
                     return candidate
-            except OSError:
-                continue
+            except OSError as e:
+                logger.debug(f"Could not stat {candidate}: {e}")
     return None
 
 

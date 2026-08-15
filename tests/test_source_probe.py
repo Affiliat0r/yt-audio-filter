@@ -273,3 +273,22 @@ def test_zero_byte_combined_file_is_skipped(tmp_path) -> None:
     (tmp_path / "full_abc12345xyz.mp4").write_bytes(b"")
 
     assert find_cached_video("abc12345xyz", tmp_path) is None
+
+
+def test_video_only_wins_even_with_a_later_extension(tmp_path) -> None:
+    """Regression: prefix must outrank extension.
+
+    YouTube's high-resolution video-only formats are VP9/webm, while the
+    combined download music removal fetches is usually format 18 — mp4 at 360p.
+    Iterating extensions first let ``full_<id>.mp4`` win over
+    ``video_<id>.webm`` purely because mp4 is checked before webm, so the probe
+    reported 360p for a render that would actually use the 1080p file — telling
+    the user to drop to a lower preset than their source supports.
+    """
+    from yt_audio_filter.source_probe import find_cached_video
+
+    video_only = tmp_path / "video_abc12345xyz.webm"
+    video_only.write_bytes(b"\x00" * 64)
+    (tmp_path / "full_abc12345xyz.mp4").write_bytes(b"\x00" * 64)
+
+    assert find_cached_video("abc12345xyz", tmp_path) == video_only
