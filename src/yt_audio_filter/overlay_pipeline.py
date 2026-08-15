@@ -187,7 +187,7 @@ def run_overlay(
                 f"({audio_meta.channel!r})"
             )
         auto_vars = _build_auto_vars(audio_meta, surah, reciter)
-        title = metadata.render_title(extra_vars=auto_vars)
+        title = fit_title(metadata.render_title(extra_vars=auto_vars))
         description = metadata.render_description(extra_vars=auto_vars)
         logger.info(f"Resolved title: {title}")
 
@@ -478,7 +478,7 @@ def run_overlay_surahs(
                 "Title rendering would produce empty placeholders.",
             )
 
-        title = metadata.render_title(extra_vars=auto_vars)
+        title = fit_title(metadata.render_title(extra_vars=auto_vars))
         description = metadata.render_description(extra_vars=auto_vars)
         logger.info(f"Resolved title: {title}")
 
@@ -577,6 +577,42 @@ def _surah_numbers_output_filename(surah_numbers: List[int], video_id: str) -> s
     return f"{first_tag}_+{extras}more_{video_id}.mp4"
 
 
+#: Spelling out more than this many surahs overflows YouTube's 100-char title
+#: once the reciter and channel suffix are appended. Four names plus separators
+#: is roughly 60 characters, which leaves room for a typical suffix.
+_MAX_SPELLED_OUT_SURAHS = 4
+
+#: YouTube rejects anything longer. Enforced by the uploader too; this is the
+#: value we aim under so it never gets that far.
+YOUTUBE_TITLE_LIMIT = 100
+
+
+def _is_consecutive_run(numbers: List[int]) -> bool:
+    """True for a strictly ascending run of distinct surahs, e.g. 105..114."""
+    if len(numbers) < 2:
+        return False
+    return all(b - a == 1 for a, b in zip(numbers, numbers[1:]))
+
+
+def fit_title(title: str, limit: int = YOUTUBE_TITLE_LIMIT) -> str:
+    """Last-resort trim so a title can never be rejected for length.
+
+    The surah label is compacted before it ever gets here, so this only fires
+    for a metadata template long enough to overflow on its own — something we
+    do not control. Cuts on a word boundary where there is one, because a title
+    ending mid-word looks broken rather than abbreviated.
+    """
+    if len(title) <= limit:
+        return title
+    cut = title[: limit - 1]
+    spaced = cut.rsplit(" ", 1)[0]
+    # Only honour the word boundary if it keeps most of the title; a very long
+    # first word would otherwise leave almost nothing.
+    if len(spaced) >= limit * 0.6:
+        cut = spaced
+    return cut.rstrip() + "…"
+
+
 def _build_surah_numbers_auto_vars(
     surah_numbers: List[int],
     reciter_display_name: str,
@@ -624,8 +660,22 @@ def _build_surah_numbers_auto_vars(
             else:
                 name_parts.append(info.name)
                 tag_parts.append(info.tag)
-        detected_surah = " + ".join(name_parts)
         surah_tag = "".join(tag_parts)
+        # Spelling out every name overflows YouTube's 100-char title: the ten
+        # closing surahs (105-114) came to 148 characters and the upload was
+        # refused *after* the render had already finished. The duplicate
+        # compactor above cannot help — every entry there is a different surah.
+        if len(name_parts) <= _MAX_SPELLED_OUT_SURAHS:
+            detected_surah = " + ".join(name_parts)
+        elif _is_consecutive_run(surah_numbers):
+            # A run reads naturally as a range and stays informative: the user
+            # can see exactly which stretch of the Qur'an this is.
+            first = get_surah_info(surah_numbers[0]).name
+            last = get_surah_info(surah_numbers[-1]).name
+            detected_surah = f"{first} → {last} ({len(surah_numbers)} surahs)"
+        else:
+            # No range to describe, so name the first and count the rest.
+            detected_surah = f"{name_parts[0]} + {len(name_parts) - 1} more"
     surah_number_str = (
         str(surah_numbers[0]) if len(surah_numbers) == 1 else ""
     )
@@ -819,7 +869,7 @@ def run_overlay_from_surah_numbers(
             reciter_display_name=reciter.display_name,
             visual_title=visual.title,
         )
-        title = metadata.render_title(extra_vars=auto_vars)
+        title = fit_title(metadata.render_title(extra_vars=auto_vars))
         description = metadata.render_description(extra_vars=auto_vars)
         logger.info(f"Resolved title: {title}")
 
@@ -1247,7 +1297,7 @@ def run_overlay_from_ayah_ranges(
             reciter_display_name=reciter_display,
             visual_title=visual.title,
         )
-        title = metadata.render_title(extra_vars=auto_vars)
+        title = fit_title(metadata.render_title(extra_vars=auto_vars))
         description = metadata.render_description(extra_vars=auto_vars)
         logger.info(f"Resolved title: {title}")
 
