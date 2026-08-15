@@ -103,7 +103,7 @@ function deriveVerdict(
   if (!upscale && upscaled >= target) {
     return {
       tone: "warn",
-      text: `The source is ${source}p; rendering at ${target}p only stretches pixels. Turn on Real-ESRGAN upscale to get ${upscaled}p of real detail.`,
+      text: `The source is ${source}p; rendering at ${target}p would only stretch pixels, so it is being upscaled to ${upscaled}p first.`,
     };
   }
 
@@ -151,7 +151,6 @@ export default function QualityCard({
   presetSlug,
   onPresetChange,
   upscale,
-  onUpscaleChange,
   onRecheck,
   disabled,
 }: {
@@ -160,8 +159,8 @@ export default function QualityCard({
   quality: SourceQuality | "loading" | "failed" | null;
   presetSlug: string;
   onPresetChange: (slug: string) => void;
+  /** Derived by the caller from the measured source; not user-set. */
   upscale: boolean;
-  onUpscaleChange: (on: boolean) => void;
   /** Discard a cached answer and probe again. */
   onRecheck: () => void;
   /** Music removal remuxes the original streams, so none of this applies. */
@@ -264,25 +263,29 @@ export default function QualityCard({
         )}
       </div>
 
-      <label className="flex items-start gap-3 rounded-lg border border-ink-700 bg-ink-850 p-3 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5 h-4 w-4 shrink-0"
-          checked={upscale}
-          onChange={(e) => onUpscaleChange(e.target.checked)}
-          disabled={disabled}
-        />
-        <span className="min-w-0">
-          <span className="block font-medium text-ink-100">
-            Upscale visual ({UPSCALE_FACTOR}×, Real-ESRGAN)
-          </span>
-          <span className="mt-0.5 block text-xs leading-relaxed text-ink-400">
+      {/* Upscaling is derived, not asked. It is only ever the right answer when
+          the source is smaller than the target, and working that out is exactly
+          the arithmetic the user should not have to do. */}
+      <p className="rounded-lg border border-ink-700 bg-ink-850 p-3 text-xs leading-relaxed text-ink-400">
+        {upscale && sourceHeight !== null ? (
+          <>
+            <span className="font-medium text-ink-100">
+              Upscaling on ({UPSCALE_FACTOR}×, Real-ESRGAN).
+            </span>{" "}
+            {sourceHeight}p source reconstructed to {sourceHeight * UPSCALE_FACTOR}p
+            instead of being stretched.{" "}
             {visual?.cacheState === "upscaled"
-              ? "Already upscaled on this machine — enabling this is free (cached)."
-              : `Reconstructs detail instead of stretching it, up to ${UPSCALE_FACTOR}× the source height. The first run on a video is slow; the result is cached for later renders.`}
-          </span>
-        </span>
-      </label>
+              ? "Already done for this video — it is cached, so it costs nothing."
+              : "The first render of this video will be slower; the result is cached."}
+          </>
+        ) : sourceHeight === null ? (
+          "Upscaling is decided once the source has been measured."
+        ) : sourceHeight >= preset.height ? (
+          `Upscaling off — the ${sourceHeight}p source already covers a ${preset.height}p render.`
+        ) : (
+          "Upscaling off."
+        )}
+      </p>
 
       {/* The worker runs one job at a time, so a probe queued behind a render
           waits it out and gives up at 45s. Saying so beats a silent "unknown". */}

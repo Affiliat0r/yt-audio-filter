@@ -46,7 +46,20 @@ export default function WorkerTarget({
     setProbing(false);
 
     // Only auto-select until the user expresses a preference.
-    setSelected((cur) => (touched ? cur : local?.workerId ?? ANY));
+    //
+    // Falling back to ANY on a machine with no local worker — a phone, say —
+    // looks harmless but is not: "any" sends no workerId, so the catalog comes
+    // back with no cache states and no measured quality, and every video reads
+    // "Source unknown". Picking a concrete worker is also what the user wants
+    // anyway: from a phone the render belongs on the GPU box, not wherever the
+    // queue happens to send it.
+    const fallback =
+      list.find((w) => w.online && w.gpu) ??
+      list.find((w) => w.online) ??
+      null;
+    setSelected((cur) =>
+      touched ? cur : local?.workerId ?? fallback?.workerId ?? ANY
+    );
   }, [touched]);
 
   useEffect(() => {

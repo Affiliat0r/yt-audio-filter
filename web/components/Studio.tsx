@@ -56,7 +56,6 @@ export default function Studio({
   // rather than the aside, but they still travel in `RenderSettings` unchanged.
   const [presetSlug, setPresetSlug] = useState(PRESETS[0].slug);
   const [burnSubtitles, setBurnSubtitles] = useState(false);
-  const [upscale, setUpscale] = useState(false);
   const [metadataPath, setMetadataPath] = useState(DEFAULT_METADATA_PATH);
   const [playlistId, setPlaylistId] = useState("");
 
@@ -155,6 +154,18 @@ export default function Studio({
     : qualityKey
       ? quality.get(qualityKey)
       : undefined;
+
+  // Upscale is derived, never asked. Real-ESRGAN only helps when the source is
+  // smaller than the target — above that it costs a slow first pass for nothing
+  // — and deciding it from the measured height removes a control whose
+  // interaction with the preset nobody should have to reason about.
+  const measuredHeight =
+    typeof cachedQuality === "object" && cachedQuality !== null
+      ? cachedQuality.height ?? null
+      : null;
+  const targetHeight =
+    PRESETS.find((p) => p.slug === presetSlug)?.height ?? PRESETS[0].height;
+  const upscale = measuredHeight !== null && measuredHeight < targetHeight;
 
   // A probe that timed out because a render was hogging the worker is not a
   // permanent answer, but it is cached like one. Without a way to ask again the
@@ -411,7 +422,6 @@ export default function Studio({
             presetSlug={presetSlug}
             onPresetChange={setPresetSlug}
             upscale={upscale}
-            onUpscaleChange={setUpscale}
             onRecheck={recheckQuality}
             disabled={mode === "music_removal"}
           />
