@@ -22,6 +22,8 @@ export default function SurahPanel({
   const [repeats, setRepeats] = useState<Record<number, number>>({});
   const [setLoops, setSetLoops] = useState(1);
   const [filter, setFilter] = useState("");
+  const [rangeFrom, setRangeFrom] = useState(105);
+  const [rangeTo, setRangeTo] = useState(114);
 
   const byNumber = useMemo(
     () => new Map(surahs.map((s) => [s.number, s])),
@@ -55,6 +57,23 @@ export default function SurahPanel({
     setSelected((prev) => [...prev, n]);
     setFilter("");
   };
+  /**
+   * Append every surah between the two ends, inclusive.
+   *
+   * Picking 105 through 114 one at a time is ten clicks for what is really one
+   * decision — and it is the common case, since the short closing surahs are
+   * usually recited as a run. Reversed ends are read as descending rather than
+   * rejected: An-Nas → Al-Fil is a legitimate order to recite in.
+   */
+  const addRange = () => {
+    const step = rangeFrom <= rangeTo ? 1 : -1;
+    const run: number[] = [];
+    for (let n = rangeFrom; step > 0 ? n <= rangeTo : n >= rangeTo; n += step) {
+      run.push(n);
+    }
+    setSelected((prev) => [...prev, ...run]);
+  };
+
   const remove = (idx: number) =>
     setSelected((prev) => prev.filter((_, i) => i !== idx));
   const move = (idx: number, delta: number) =>
@@ -89,11 +108,44 @@ export default function SurahPanel({
             ))}
           </div>
         )}
+
+        <div className="mt-3 rounded-lg border border-ink-700 bg-ink-850 p-3">
+          <p className="mb-2 text-xs text-ink-400">
+            Or add a whole run at once — pick the first and the last.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            <select
+              className="field"
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(Number(e.target.value))}
+            >
+              {surahs.map((s) => (
+                <option key={s.number} value={s.number}>
+                  {s.number}. {s.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="field"
+              value={rangeTo}
+              onChange={(e) => setRangeTo(Number(e.target.value))}
+            >
+              {surahs.map((s) => (
+                <option key={s.number} value={s.number}>
+                  {s.number}. {s.name}
+                </option>
+              ))}
+            </select>
+            <button onClick={addRange} className="btn-ghost whitespace-nowrap">
+              Add {Math.abs(rangeTo - rangeFrom) + 1} surahs
+            </button>
+          </div>
+        </div>
       </div>
 
       {selected.length === 0 ? (
         <p className="rounded-lg border border-dashed border-ink-700 px-3 py-4 text-sm text-ink-400">
-          No surahs selected yet. Search above to add them.
+          No surahs selected yet. Search for one above, or add a range.
         </p>
       ) : (
         <div className="space-y-2">

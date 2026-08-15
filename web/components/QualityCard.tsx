@@ -270,20 +270,22 @@ export default function QualityCard({
         {upscale && sourceHeight !== null ? (
           <>
             <span className="font-medium text-ink-100">
-              Upscaling on ({UPSCALE_FACTOR}×, Real-ESRGAN).
+              Sharpening this video automatically.
             </span>{" "}
-            {sourceHeight}p source reconstructed to {sourceHeight * UPSCALE_FACTOR}p
-            instead of being stretched.{" "}
+            The cartoon is only {sourceHeight}p, but you are making a{" "}
+            {preset.height}p video. Simply blowing it up would look soft, so an
+            AI redraws it at {sourceHeight * UPSCALE_FACTOR}p first — same
+            picture, more actual detail.{" "}
             {visual?.cacheState === "upscaled"
-              ? "Already done for this video — it is cached, so it costs nothing."
-              : "The first render of this video will be slower; the result is cached."}
+              ? "Already done for this cartoon, so it is free this time."
+              : "This adds a few minutes the first time you use this cartoon. After that it is saved and costs nothing."}
           </>
         ) : sourceHeight === null ? (
-          "Upscaling is decided once the source has been measured."
+          "Once the cartoon has been checked, it will be sharpened automatically if that helps."
         ) : sourceHeight >= preset.height ? (
-          `Upscaling off — the ${sourceHeight}p source already covers a ${preset.height}p render.`
+          `No sharpening needed — this cartoon is already ${sourceHeight}p, which covers a ${preset.height}p video.`
         ) : (
-          "Upscaling off."
+          "No sharpening needed."
         )}
       </p>
 
