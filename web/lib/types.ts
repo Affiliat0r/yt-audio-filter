@@ -28,6 +28,12 @@ export interface CatalogVideo {
   channelSlug: string;
   /** "new" | "downloaded" | "upscaled" — worker-reported cache state. */
   cacheState?: "new" | "downloaded" | "upscaled";
+  /**
+   * Measured during catalog sync for videos already on that worker's disk.
+   * Present here means the quality card needs no probe job at all — which is
+   * what stops it reading "unknown" while the worker is busy with a render.
+   */
+  sourceQuality?: SourceQuality;
 }
 
 /** Mirrors `ayah_repeater.AyahRange`. */

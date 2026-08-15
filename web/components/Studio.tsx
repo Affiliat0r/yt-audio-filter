@@ -122,6 +122,10 @@ export default function Studio({
     // is disabled and nothing would ever display the answer. Probing anyway
     // spends a queue-jumping worker job per gallery click for nothing.
     if (mode === "music_removal") return;
+    // Already measured during catalog sync — the worker ffprobed the file it
+    // has on disk. Probing again would queue a job to re-learn what we were
+    // just told, and would sit behind any running render.
+    if (visual.sourceQuality) return;
     // Wait for worker discovery to settle. Probing before it does would ask
     // "any machine" about a cache that belongs to one specific disk, and the
     // answer — measured off a file only that machine has — would describe a PC
@@ -144,7 +148,13 @@ export default function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qualityKey, recheckNonce, target.probing, mode]);
 
-  const cachedQuality = qualityKey ? quality.get(qualityKey) : undefined;
+  // Catalog-supplied measurement wins: it came from ffprobe on the real file,
+  // and it is available instantly even while the worker is mid-render.
+  const cachedQuality = visual?.sourceQuality
+    ? visual.sourceQuality
+    : qualityKey
+      ? quality.get(qualityKey)
+      : undefined;
 
   // A probe that timed out because a render was hogging the worker is not a
   // permanent answer, but it is cached like one. Without a way to ask again the

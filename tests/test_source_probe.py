@@ -292,3 +292,69 @@ def test_video_only_wins_even_with_a_later_extension(tmp_path) -> None:
     (tmp_path / "full_abc12345xyz.mp4").write_bytes(b"\x00" * 64)
 
     assert find_cached_video("abc12345xyz", tmp_path) == video_only
+
+
+# ------------------------------------------- catalog sync measures cached files
+
+
+def test_catalog_sync_measures_a_cached_video(tmp_path, monkeypatch) -> None:
+    """A downloaded video's quality is measured during background sync, so the
+    Studio never has to queue a probe job for it.
+
+    On-demand probing queues behind whatever render is running, and a 45s
+    timeout is easy to hit during a long render — precisely when the answer is
+    most certain, because the file is already on disk.
+    """
+    from worker import catalog_sync
+
+    (tmp_path / "video_abc12345xyz.mp4").write_bytes(b"\x00" * 64)
+    monkeypatch.setattr(
+        catalog_sync,
+        "get_video_info",
+        lambda path: {"width": 1920, "height": 1080, "fps": 30.0, "codec": "h264"},
+    )
+
+    quality = catalog_sync.measure_cached(
+        "abc12345xyz", tmp_path, {"abc12345xyz": "downloaded"}
+    )
+
+    assert quality is not None
+    assert quality.kind == "measured"
+    assert quality.height == 1080
+    assert quality.codec == "h264"
+
+
+def test_catalog_sync_does_not_touch_the_network_for_uncached_videos(
+    tmp_path, monkeypatch
+) -> None:
+    """The whole catalog is ~250 videos. Falling back to a yt-dlp format
+    listing for the uncached ones would mean hundreds of network calls per
+    sync, every 30 minutes."""
+    from worker import catalog_sync
+
+    def explode(*_a, **_k):  # pragma: no cover - must never be reached
+        raise AssertionError("catalog sync must not probe over the network")
+
+    monkeypatch.setattr(catalog_sync, "get_video_info", explode)
+
+    assert catalog_sync.measure_cached("notcached", tmp_path, {}) is None
+    assert catalog_sync.measure_cached("notcached", tmp_path, {"notcached": "new"}) is None
+
+
+def test_measure_cached_survives_an_unreadable_file(tmp_path, monkeypatch) -> None:
+    """A truncated or codec-broken file must not stop the whole catalog sync."""
+    from worker import catalog_sync
+
+    (tmp_path / "video_abc12345xyz.mp4").write_bytes(b"\x00" * 64)
+    monkeypatch.setattr(
+        catalog_sync,
+        "get_video_info",
+        lambda path: (_ for _ in ()).throw(RuntimeError("ffprobe exploded")),
+    )
+
+    assert (
+        catalog_sync.measure_cached(
+            "abc12345xyz", tmp_path, {"abc12345xyz": "downloaded"}
+        )
+        is None
+    )

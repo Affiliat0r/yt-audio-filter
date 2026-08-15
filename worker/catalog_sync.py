@@ -18,7 +18,10 @@ from yt_audio_filter import cartoon_catalog
 from yt_audio_filter.logger import get_logger
 
 from .client import StudioClient
-from .contract import catalog_video_to_json
+from yt_audio_filter.ffmpeg import get_video_info
+from yt_audio_filter.source_probe import find_cached_video
+
+from .contract import SourceQuality, catalog_video_to_json
 
 logger = get_logger()
 
@@ -66,6 +69,43 @@ def cache_state_for(video_id: str, states: Dict[str, str]) -> str:
     return states.get(video_id, "new")
 
 
+def measure_cached(
+    video_id: str, cache_dir: Path, states: Dict[str, str]
+) -> Optional[SourceQuality]:
+    """ffprobe an already-downloaded video, or ``None`` if it is not cached.
+
+    Deliberately disk-only: this calls ``find_cached_video`` + ``get_video_info``
+    rather than ``probe_source_quality``, because that would fall back to a
+    yt-dlp format listing over the network for anything not cached — hundreds of
+    listings per sync.
+
+    Runs on the background sync thread, so a slow ffprobe delays nothing the
+    user is waiting on. The alternative — probing on demand — queues a job
+    behind whatever render is running, and a 45-second timeout is easy to hit
+    during a ten-surah render. That is exactly when the answer is most certain:
+    the file is sitting right there on disk.
+    """
+    if states.get(video_id) not in ("downloaded", "upscaled"):
+        return None
+    try:
+        cached = find_cached_video(video_id, Path(cache_dir))
+        if cached is None:
+            return None
+        info = get_video_info(cached)
+        if not info or not info.get("height"):
+            return None
+        return SourceQuality(
+            kind="measured",
+            width=info.get("width"),
+            height=info.get("height"),
+            fps=info.get("fps"),
+            codec=info.get("codec"),
+        )
+    except Exception as exc:  # noqa: BLE001 - a bad file must not stop the sync
+        logger.debug("Could not measure cached %s: %s", video_id, exc)
+        return None
+
+
 def sync_catalog_once(
     client: StudioClient,
     cache_dir: Path,
@@ -80,7 +120,11 @@ def sync_catalog_once(
     videos = cartoon_catalog.list_videos(channels=channels, cache_dir=Path(cache_dir))
     states = scan_cache_states(Path(cache_dir))
     payload: List[Dict] = [
-        catalog_video_to_json(video, cache_state_for(video.video_id, states))
+        catalog_video_to_json(
+            video,
+            cache_state_for(video.video_id, states),
+            measure_cached(video.video_id, Path(cache_dir), states),
+        )
         for video in videos
     ]
     count = client.push_catalog(payload, worker_id=worker_id)

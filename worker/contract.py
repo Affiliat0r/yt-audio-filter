@@ -92,9 +92,17 @@ def catalog_video_from_json(raw: Dict[str, Any]) -> CatalogVideo:
 
 
 def catalog_video_to_json(
-    video: CatalogVideo, cache_state: Optional[str] = None
+    video: CatalogVideo,
+    cache_state: Optional[str] = None,
+    source_quality: Optional["SourceQuality"] = None,
 ) -> Dict[str, Any]:
-    """Serialise a ``CatalogVideo`` to the camelCase wire shape."""
+    """Serialise a ``CatalogVideo`` to the camelCase wire shape.
+
+    ``source_quality`` is attached for videos already on this worker's disk.
+    Measuring them here — during a background sync — means the Studio never has
+    to queue a probe job for them, which is what left the quality card saying
+    "unknown" whenever the worker was busy with a long render.
+    """
     payload: Dict[str, Any] = {
         "videoId": video.video_id,
         "url": video.url,
@@ -107,6 +115,8 @@ def catalog_video_to_json(
     }
     if cache_state is not None:
         payload["cacheState"] = cache_state
+    if source_quality is not None:
+        payload["sourceQuality"] = source_quality.to_json()
     return payload
 
 
