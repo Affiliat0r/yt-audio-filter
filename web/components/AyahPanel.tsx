@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import NumberField from "./NumberField";
 import type { Reciter, Surah } from "@/lib/surah";
 import type { AyahRangeSpec } from "@/lib/types";
 
@@ -104,67 +105,49 @@ export default function AyahPanel({
                 </div>
                 <div>
                   <label className="label">From ayah</label>
-                  <input
-                    type="number"
+                  <NumberField
+                    value={r.start}
                     min={1}
                     max={max}
+                    ariaLabel="From ayah"
                     className="field"
-                    value={r.start}
-                    onChange={(e) =>
-                      patch(r.id, { start: Number(e.target.value) || 1 })
-                    }
+                    onChange={(v) => patch(r.id, { start: v })}
                   />
                 </div>
                 <div>
                   <label className="label">To ayah</label>
-                  <input
-                    type="number"
+                  <NumberField
+                    value={r.end}
                     min={r.start}
                     max={max}
+                    ariaLabel="To ayah"
                     className="field"
-                    value={r.end}
-                    onChange={(e) =>
-                      patch(r.id, { end: Number(e.target.value) || r.start })
-                    }
+                    onChange={(v) => patch(r.id, { end: v })}
                   />
                 </div>
                 <div>
                   <label className="label">Repeats</label>
-                  <input
-                    type="number"
+                  <NumberField
+                    value={r.repeats}
                     min={1}
                     max={99}
+                    ariaLabel="Repeats"
                     className="field"
-                    value={r.repeats}
-                    onChange={(e) =>
-                      patch(r.id, {
-                        repeats: Math.max(
-                          1,
-                          Math.min(99, Number(e.target.value) || 1)
-                        ),
-                      })
-                    }
+                    onChange={(v) => patch(r.id, { repeats: v })}
                   />
                 </div>
               </div>
               <div className="mt-2 grid gap-2 sm:grid-cols-5">
                 <div>
                   <label className="label">Gap (s)</label>
-                  <input
-                    type="number"
+                  <NumberField
+                    value={r.gapSeconds}
                     min={0}
                     max={5}
                     step={0.5}
+                    ariaLabel="Gap in seconds"
                     className="field"
-                    value={r.gapSeconds}
-                    onChange={(e) =>
-                      patch(r.id, {
-                        gapSeconds: Math.max(
-                          0,
-                          Math.min(5, Number(e.target.value) || 0)
-                        ),
-                      })
-                    }
+                    onChange={(v) => patch(r.id, { gapSeconds: v })}
                   />
                 </div>
                 <p className="self-end pb-2 text-xs text-ink-400 sm:col-span-4">

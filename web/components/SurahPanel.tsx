@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import NumberField from "./NumberField";
 import type { Reciter, Surah } from "@/lib/surah";
 import { expandSurahSelection } from "@/lib/surah";
 
@@ -161,17 +162,12 @@ export default function SurahPanel({
                 </span>
                 <label className="flex items-center gap-1.5 text-xs text-ink-400">
                   repeat ×
-                  <input
-                    type="number"
+                  <NumberField
+                    value={repeats[n] ?? 1}
                     min={1}
                     max={99}
-                    value={repeats[n] ?? 1}
-                    onChange={(e) =>
-                      setRepeats((prev) => ({
-                        ...prev,
-                        [n]: Math.max(1, Math.min(99, Number(e.target.value) || 1)),
-                      }))
-                    }
+                    ariaLabel={`Repeat surah ${n}`}
+                    onChange={(v) => setRepeats((prev) => ({ ...prev, [n]: v }))}
                     className="w-16 rounded border border-ink-700 bg-ink-900 px-2 py-1 text-ink-100"
                   />
                 </label>
@@ -205,14 +201,12 @@ export default function SurahPanel({
           {selected.length >= 2 && (
             <label className="flex items-center gap-2 pt-1 text-sm text-ink-300">
               Loop the whole set ×
-              <input
-                type="number"
+              <NumberField
+                value={setLoops}
                 min={1}
                 max={99}
-                value={setLoops}
-                onChange={(e) =>
-                  setSetLoops(Math.max(1, Math.min(99, Number(e.target.value) || 1)))
-                }
+                ariaLabel="Loop the whole set"
+                onChange={setSetLoops}
                 className="w-20 rounded border border-ink-700 bg-ink-900 px-2 py-1"
               />
               <span className="text-xs text-ink-400">
