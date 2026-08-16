@@ -2,6 +2,7 @@
 
 import json
 import os
+import socket
 import pickle
 import subprocess
 import sys
@@ -439,6 +440,16 @@ After that, uploads work automatically.
 """
 
 
+#: Set by the worker (see worker/worker.py). When true, authentication may
+#: never open a browser — it fails with instructions instead.
+NONINTERACTIVE_ENV = "YT_UPLOAD_NONINTERACTIVE"
+
+
+def _noninteractive() -> bool:
+    """True when no human can answer a sign-in prompt on this machine."""
+    return os.environ.get(NONINTERACTIVE_ENV, "").strip().lower() not in ("", "0", "false")
+
+
 def authenticate_youtube():
     """
     Authenticate with YouTube API using OAuth2.
@@ -505,6 +516,22 @@ def authenticate_youtube():
         if not check_credentials_configured():
             raise YouTubeUploadError(
                 "YouTube API not configured", setup_credentials_guide()
+            )
+
+        # `run_local_server` opens a browser and then blocks forever waiting for
+        # a redirect. On an unattended worker that is the worst possible
+        # outcome: nobody is sitting at that machine to click Allow, the job
+        # never finishes, and because the worker runs one job at a time the
+        # whole queue stops behind it. Failing fast is strictly better — the
+        # user sees why, and the machine keeps working.
+        if _noninteractive():
+            raise YouTubeUploadError(
+                f"{socket.gethostname()} needs to be re-authorised with YouTube",
+                "Its saved credentials could not be refreshed, and this machine "
+                "cannot show a sign-in window. On that machine, run:\n"
+                "    .venv\\Scripts\\python -c \"from yt_audio_filter.uploader "
+                'import authenticate_youtube; authenticate_youtube()"\n'
+                "then queue the upload again. Nothing was uploaded.",
             )
 
         try:

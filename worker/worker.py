@@ -21,6 +21,7 @@ if __package__ in (None, ""):  # pragma: no cover - direct-script bootstrap
     __package__ = "worker"
 
 import argparse
+import os
 import socket
 import subprocess
 import threading
@@ -31,6 +32,7 @@ from typing import Optional, Sequence
 
 from yt_audio_filter.exceptions import YTAudioFilterError
 from yt_audio_filter.logger import get_logger, setup_logger
+from yt_audio_filter.uploader import NONINTERACTIVE_ENV
 
 from . import WORKER_VERSION, blob
 from .catalog_sync import DEFAULT_INTERVAL_SECONDS, start_catalog_sync
@@ -67,6 +69,17 @@ def detect_gpu() -> Optional[str]:
         return None
     lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
     return lines[0] if lines else None
+
+
+def _forbid_interactive_auth() -> None:
+    """Guarantee no upload can pop a sign-in window on this machine.
+
+    The worker runs unattended — often on a PC in another room from whoever
+    pressed Upload. `InstalledAppFlow.run_local_server` would open a browser
+    and block forever, freezing the single-job loop behind a prompt nobody can
+    answer. With this set, authentication fails fast and says what to run here.
+    """
+    os.environ.setdefault(NONINTERACTIVE_ENV, "1")
 
 
 def can_remove_music() -> bool:
@@ -276,6 +289,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """CLI entry point. Returns a process exit code."""
     args = _parse_args(argv)
     setup_logger(verbose=args.verbose)
+    _forbid_interactive_auth()
 
     if args.selftest_blob:
         token = load_blob_token()

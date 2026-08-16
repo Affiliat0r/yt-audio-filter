@@ -1144,3 +1144,65 @@ def test_claim_survives_being_unable_to_report_the_bad_job() -> None:
     client._post = fake_post  # type: ignore[method-assign]
 
     assert client.claim(MagicMock(to_json=lambda: {})) is None
+
+
+# ------------------------------------------- never prompt on an unattended box
+
+
+def test_worker_forbids_interactive_youtube_auth() -> None:
+    """`run_local_server` opens a browser and blocks forever waiting for a
+    redirect. On a worker nobody is sitting at, that freezes the single-job
+    loop behind a prompt that can never be answered."""
+    import os
+
+    from worker.worker import _forbid_interactive_auth
+    from yt_audio_filter.uploader import NONINTERACTIVE_ENV, _noninteractive
+
+    original = os.environ.pop(NONINTERACTIVE_ENV, None)
+    try:
+        assert _noninteractive() is False
+        _forbid_interactive_auth()
+        assert _noninteractive() is True
+    finally:
+        os.environ.pop(NONINTERACTIVE_ENV, None)
+        if original is not None:
+            os.environ[NONINTERACTIVE_ENV] = original
+
+
+def test_noninteractive_auth_fails_with_instructions_instead_of_hanging() -> None:
+    """The failure must name the machine and say exactly what to run on it."""
+    import os
+    from unittest.mock import patch
+
+    from yt_audio_filter.uploader import (
+        NONINTERACTIVE_ENV,
+        YouTubeUploadError,
+        authenticate_youtube,
+    )
+
+    original = os.environ.get(NONINTERACTIVE_ENV)
+    os.environ[NONINTERACTIVE_ENV] = "1"
+    try:
+        with patch(
+            "yt_audio_filter.uploader.check_upload_dependencies", return_value=True
+        ), patch(
+            "yt_audio_filter.uploader.check_credentials_configured", return_value=True
+        ), patch(
+            "yt_audio_filter.uploader.OAUTH_TOKEN_FILE"
+        ) as token_file, patch(
+            "google_auth_oauthlib.flow.InstalledAppFlow.run_local_server"
+        ) as server:
+            token_file.exists.return_value = False
+            with pytest.raises(YouTubeUploadError) as excinfo:
+                authenticate_youtube()
+
+        # The browser flow must never have been reached.
+        server.assert_not_called()
+        message = f"{excinfo.value.message} {excinfo.value.details}"
+        assert "re-authorised" in message
+        assert "authenticate_youtube" in message
+        assert "Nothing was uploaded" in message
+    finally:
+        os.environ.pop(NONINTERACTIVE_ENV, None)
+        if original is not None:
+            os.environ[NONINTERACTIVE_ENV] = original
