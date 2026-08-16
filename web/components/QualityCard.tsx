@@ -154,6 +154,9 @@ export default function QualityCard({
   tooLongToUpscale = false,
   onRecheck,
   disabled,
+  sourceHeightForScale = null,
+  scaleHeight = null,
+  onScaleHeightChange,
 }: {
   visual: CatalogVideo | null;
   /** `"loading"` while a probe is in flight, `"failed"`/`null` when we do not know. */
@@ -166,8 +169,13 @@ export default function QualityCard({
   tooLongToUpscale?: boolean;
   /** Discard a cached answer and probe again. */
   onRecheck: () => void;
-  /** Music removal remuxes the original streams, so none of this applies. */
+  /** Music removal has its own, much smaller, set of choices. */
   disabled: boolean;
+  /** Measured source height, or null when unknown. */
+  sourceHeightForScale?: number | null;
+  /** Music removal only: null = copy the video untouched. */
+  scaleHeight?: number | null;
+  onScaleHeightChange?: (h: number | null) => void;
 }) {
   const preset = PRESETS.find((p) => p.slug === presetSlug) ?? PRESETS[0];
   const probed = typeof quality === "object" && quality !== null ? quality : null;
@@ -227,11 +235,44 @@ export default function QualityCard({
       )}
 
       {disabled ? (
-        <p className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-3 text-sm text-ink-300">
-          Music removal remuxes the original video and audio streams untouched,
-          so there is nothing to re-scale — the preset and upscale choices below
-          do not apply to it.
-        </p>
+        /* Music removal copies the video stream verbatim, so a render preset
+           and detail reconstruction are meaningless here. The one real choice
+           is whether to rebuild the picture larger, so that is all we show —
+           rather than greying out controls that were never relevant. */
+        <div className="space-y-3">
+          <p className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-3 text-sm text-ink-300">
+            Music removal keeps your picture exactly as it is and only rebuilds
+            the sound, so the output stays{" "}
+            {sourceHeightForScale ? `${sourceHeightForScale}p` : "the same size"}
+            {scaleHeight ? ` unless you enlarge it below` : ""}.
+          </p>
+
+          {sourceHeightForScale !== null &&
+            sourceHeightForScale < 720 &&
+            onScaleHeightChange && (
+              <label className="flex items-start gap-3 rounded-lg border border-ink-700 bg-ink-850 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  checked={scaleHeight !== null}
+                  onChange={(e) =>
+                    onScaleHeightChange(e.target.checked ? 720 : null)
+                  }
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium text-ink-100">
+                    Enlarge the picture to 720p
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-ink-400">
+                    This video is {sourceHeightForScale}p. Enlarging adds no new
+                    detail, but YouTube gives 720p uploads a better bitrate than
+                    360p ones, so it often looks sharper on playback. Adds
+                    roughly 10–20 minutes on a long video.
+                  </span>
+                </span>
+              </label>
+            )}
+        </div>
       ) : (
         <p
           className={`rounded-lg border px-3 py-3 text-sm leading-relaxed ${TONE_STYLE[verdict.tone]}`}

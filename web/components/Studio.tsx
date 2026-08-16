@@ -416,9 +416,6 @@ export default function Studio({
                 <MusicPanel
                   visual={visual}
                   onPrivacyChange={setMusicPrivacy}
-                  sourceHeight={measuredHeight}
-                  scaleHeight={scaleHeight}
-                  onScaleHeightChange={setScaleHeight}
                 />
               </>
             )}
@@ -439,6 +436,9 @@ export default function Studio({
             onPresetChange={setPresetSlug}
             upscale={upscale}
             tooLongToUpscale={tooLongToUpscale}
+            sourceHeightForScale={measuredHeight}
+            scaleHeight={scaleHeight}
+            onScaleHeightChange={setScaleHeight}
             onRecheck={recheckQuality}
             disabled={mode === "music_removal"}
           />
