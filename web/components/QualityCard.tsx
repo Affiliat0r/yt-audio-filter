@@ -282,66 +282,75 @@ export default function QualityCard({
         </p>
       )}
 
-      <div>
-        <label className="label" htmlFor="output-preset">
-          Output preset
-        </label>
-        <select
-          id="output-preset"
-          className="field"
-          value={presetSlug}
-          onChange={(e) => onPresetChange(e.target.value)}
-          disabled={disabled}
-        >
-          {PRESETS.map((p) => (
-            <option key={p.slug} value={p.slug}>
-              {p.label}
-              {p.aspectRatio ? ` · ${p.aspectRatio}` : ""}
-            </option>
-          ))}
-        </select>
-        {preset.description && (
-          <p className="mt-1.5 text-xs leading-relaxed text-ink-400">
-            {preset.description}
-          </p>
-        )}
-      </div>
+      {/* Preset and sharpening describe how a frame is rebuilt, which only
+          happens in the overlay modes. Music removal copies the video
+          stream verbatim, so these are absent there rather than disabled —
+          a greyed-out control still invites the question of what it does. */}
+      {!disabled && (
+        <>
+        <div>
+          <label className="label" htmlFor="output-preset">
+            Output preset
+          </label>
+          <select
+            id="output-preset"
+            className="field"
+            value={presetSlug}
+            onChange={(e) => onPresetChange(e.target.value)}
+            disabled={disabled}
+          >
+            {PRESETS.map((p) => (
+              <option key={p.slug} value={p.slug}>
+                {p.label}
+                {p.aspectRatio ? ` · ${p.aspectRatio}` : ""}
+              </option>
+            ))}
+          </select>
+          {preset.description && (
+            <p className="mt-1.5 text-xs leading-relaxed text-ink-400">
+              {preset.description}
+            </p>
+          )}
+        </div>
 
-      {/* Upscaling is derived, not asked. It is only ever the right answer when
-          the source is smaller than the target, and working that out is exactly
-          the arithmetic the user should not have to do. */}
-      <p className="rounded-lg border border-ink-700 bg-ink-850 p-3 text-xs leading-relaxed text-ink-400">
-        {upscale && sourceHeight !== null ? (
-          <>
-            <span className="font-medium text-ink-100">
-              Sharpening this video automatically.
-            </span>{" "}
-            The cartoon is only {sourceHeight}p, but you are making a{" "}
-            {preset.height}p video. Simply blowing it up would look soft, so an
-            AI redraws it at {sourceHeight * UPSCALE_FACTOR}p first — same
-            picture, more actual detail.{" "}
-            {visual?.cacheState === "upscaled"
-              ? "Already done for this cartoon, so it is free this time."
-              : "This adds a few minutes the first time you use this cartoon. After that it is saved and costs nothing."}
-          </>
-        ) : sourceHeight === null ? (
-          "Once the cartoon has been checked, it will be sharpened automatically if that helps."
-        ) : tooLongToUpscale && sourceHeight < preset.height ? (
-          <>
-            <span className="font-medium text-ink-100">
-              This cartoon is too long to sharpen.
-            </span>{" "}
-            Sharpening redraws every frame and would need tens of gigabytes and
-            several hours for a video this length, so it is skipped. The render
-            still works — the picture just stays at {sourceHeight}p. A shorter
-            cartoon can be sharpened.
-          </>
-        ) : sourceHeight >= preset.height ? (
-          `No sharpening needed — this cartoon is already ${sourceHeight}p, which covers a ${preset.height}p video.`
-        ) : (
-          "No sharpening needed."
-        )}
-      </p>
+        {/* Upscaling is derived, not asked. It is only ever the right answer when
+            the source is smaller than the target, and working that out is exactly
+            the arithmetic the user should not have to do. */}
+        <p className="rounded-lg border border-ink-700 bg-ink-850 p-3 text-xs leading-relaxed text-ink-400">
+          {upscale && sourceHeight !== null ? (
+            <>
+              <span className="font-medium text-ink-100">
+                Sharpening this video automatically.
+              </span>{" "}
+              The cartoon is only {sourceHeight}p, but you are making a{" "}
+              {preset.height}p video. Simply blowing it up would look soft, so an
+              AI redraws it at {sourceHeight * UPSCALE_FACTOR}p first — same
+              picture, more actual detail.{" "}
+              {visual?.cacheState === "upscaled"
+                ? "Already done for this cartoon, so it is free this time."
+                : "This adds a few minutes the first time you use this cartoon. After that it is saved and costs nothing."}
+            </>
+          ) : sourceHeight === null ? (
+            "Once the cartoon has been checked, it will be sharpened automatically if that helps."
+          ) : tooLongToUpscale && sourceHeight < preset.height ? (
+            <>
+              <span className="font-medium text-ink-100">
+                This cartoon is too long to sharpen.
+              </span>{" "}
+              Sharpening redraws every frame and would need tens of gigabytes and
+              several hours for a video this length, so it is skipped. The render
+              still works — the picture just stays at {sourceHeight}p. A shorter
+              cartoon can be sharpened.
+            </>
+          ) : sourceHeight >= preset.height ? (
+            `No sharpening needed — this cartoon is already ${sourceHeight}p, which covers a ${preset.height}p video.`
+          ) : (
+            "No sharpening needed."
+          )}
+        </p>
+        </>
+      )}
+
 
       {/* The worker runs one job at a time, so a probe queued behind a render
           waits it out and gives up at 45s. Saying so beats a silent "unknown". */}
