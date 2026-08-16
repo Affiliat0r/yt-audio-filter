@@ -72,6 +72,31 @@ def _encoder_args() -> list:
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "18"]
 
 
+#: Above this, the frame-by-frame pipeline stops being viable: ~10,000 frames
+#: at 360p is already several GB of PNG in and several more out. Roughly seven
+#: minutes at 24 fps, which comfortably covers the short visuals this is for.
+MAX_UPSCALE_FRAMES = 10_000
+
+
+def _expected_frame_count(src: Path, fps: float) -> int:
+    """Frames this video will produce, or 0 when ffprobe will not say."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "format=duration",
+                "-of", "default=nw=1:nk=1",
+                str(src),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        duration = float(result.stdout.strip())
+    except Exception:  # noqa: BLE001 - a missing duration must not block a render
+        return 0
+    return int(duration * fps)
+
+
 def upscale_video(
     src: Path,
     dst: Path,
@@ -94,6 +119,21 @@ def upscale_video(
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     fps = _probe_framerate(src)
+
+    # Refuse jobs that cannot finish in a sane time or fit on disk. This
+    # pipeline writes every frame to disk twice — once at source size, once
+    # upscaled — so a 30-minute 360p cartoon is ~44,000 frames and roughly
+    # 50 GB of PNG. One such render ground for twenty hours before anyone
+    # noticed. Better to say no immediately and explain why.
+    n_expected_frames = _expected_frame_count(src, fps)
+    if n_expected_frames and n_expected_frames > MAX_UPSCALE_FRAMES:
+        raise OverlayError(
+            f"{src.name} is too long to upscale "
+            f"({n_expected_frames:,} frames, limit {MAX_UPSCALE_FRAMES:,})",
+            "Real-ESRGAN works frame by frame and writes every frame to disk "
+            "twice, so a video this long would need tens of gigabytes and many "
+            "hours. Render without sharpening, or use a shorter visual.",
+        )
     logger.info(f"Upscaling {src.name} @ {fps:.3f} fps with model={model} scale={scale}...")
 
     with tempfile.TemporaryDirectory(prefix="upscale_", dir=str(dst.parent)) as workdir:
@@ -109,10 +149,23 @@ def upscale_video(
             "-vsync", "0",
             str(frames_in / "frame_%06d.png"),
         ]
-        r = subprocess.run(
-            extract_cmd, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout_per_stage,
-        )
+        try:
+            r = subprocess.run(
+                extract_cmd, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=timeout_per_stage,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Windows reports TimeoutExpired.timeout as the *remaining* time,
+            # which is negative once the deadline has passed — hence error
+            # messages like "timed out after -73028.98 seconds". Report the
+            # limit that was actually configured instead.
+            raise FFmpegError(
+                f"Frame extraction exceeded {timeout_per_stage}s and was abandoned",
+                stderr=(
+                    f"{src.name} is {n_expected_frames or 'many'} frames. Extracting "
+                    f"them as PNG is only practical for short clips."
+                ),
+            ) from exc
         if r.returncode != 0:
             raise FFmpegError(
                 "Frame extraction failed", returncode=r.returncode, stderr=r.stderr

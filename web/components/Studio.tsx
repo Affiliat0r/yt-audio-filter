@@ -165,7 +165,17 @@ export default function Studio({
       : null;
   const targetHeight =
     PRESETS.find((p) => p.slug === presetSlug)?.height ?? PRESETS[0].height;
-  const upscale = measuredHeight !== null && measuredHeight < targetHeight;
+  // Sharpening is worth it when the source is smaller than the target — but
+  // only when it can actually finish. Real-ESRGAN runs frame by frame and
+  // writes every frame to disk twice, so a 30-minute cartoon is ~44,000 frames
+  // and tens of gigabytes. One auto-enabled render ground for twenty hours.
+  // Mirrors MAX_UPSCALE_FRAMES in upscale.py; the worker enforces it too.
+  const estimatedFrames = visual ? visual.duration * 24 : 0;
+  const tooLongToUpscale = estimatedFrames > 10_000;
+  const upscale =
+    measuredHeight !== null &&
+    measuredHeight < targetHeight &&
+    (!tooLongToUpscale || visual?.cacheState === "upscaled");
 
   // A probe that timed out because a render was hogging the worker is not a
   // permanent answer, but it is cached like one. Without a way to ask again the
@@ -422,6 +432,7 @@ export default function Studio({
             presetSlug={presetSlug}
             onPresetChange={setPresetSlug}
             upscale={upscale}
+            tooLongToUpscale={tooLongToUpscale}
             onRecheck={recheckQuality}
             disabled={mode === "music_removal"}
           />

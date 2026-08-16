@@ -151,6 +151,7 @@ export default function QualityCard({
   presetSlug,
   onPresetChange,
   upscale,
+  tooLongToUpscale = false,
   onRecheck,
   disabled,
 }: {
@@ -161,6 +162,8 @@ export default function QualityCard({
   onPresetChange: (slug: string) => void;
   /** Derived by the caller from the measured source; not user-set. */
   upscale: boolean;
+  /** Too many frames for the frame-by-frame pipeline to be viable. */
+  tooLongToUpscale?: boolean;
   /** Discard a cached answer and probe again. */
   onRecheck: () => void;
   /** Music removal remuxes the original streams, so none of this applies. */
@@ -282,6 +285,16 @@ export default function QualityCard({
           </>
         ) : sourceHeight === null ? (
           "Once the cartoon has been checked, it will be sharpened automatically if that helps."
+        ) : tooLongToUpscale && sourceHeight < preset.height ? (
+          <>
+            <span className="font-medium text-ink-100">
+              This cartoon is too long to sharpen.
+            </span>{" "}
+            Sharpening redraws every frame and would need tens of gigabytes and
+            several hours for a video this length, so it is skipped. The render
+            still works — the picture just stays at {sourceHeight}p. A shorter
+            cartoon can be sharpened.
+          </>
         ) : sourceHeight >= preset.height ? (
           `No sharpening needed — this cartoon is already ${sourceHeight}p, which covers a ${preset.height}p video.`
         ) : (

@@ -358,3 +358,71 @@ def test_measure_cached_survives_an_unreadable_file(tmp_path, monkeypatch) -> No
         )
         is None
     )
+
+
+# ------------------------------------------------- upscale length guard
+
+
+def test_upscale_refuses_a_video_that_would_take_hours(tmp_path, monkeypatch) -> None:
+    """Real-ESRGAN runs frame by frame and writes every frame to disk twice.
+
+    A 30-minute 360p cartoon is ~44,000 frames: roughly 11 GB of input PNG and
+    40 GB of output. One such render, auto-enabled, ground for twenty hours
+    before failing with a nonsense negative timeout. Refuse immediately and say
+    why instead.
+    """
+    from yt_audio_filter import upscale as up
+    from yt_audio_filter.exceptions import OverlayError
+
+    src = tmp_path / "video_long.mp4"
+    src.write_bytes(b"\x00" * 64)
+
+    monkeypatch.setattr(up, "ensure_ffmpeg_available", lambda: None)
+    monkeypatch.setattr(up, "ensure_realesrgan_available", lambda: None)
+    monkeypatch.setattr(up, "_probe_framerate", lambda p: 24.0)
+    monkeypatch.setattr(up, "_expected_frame_count", lambda p, fps: 44_078)
+
+    with pytest.raises(OverlayError) as excinfo:
+        up.upscale_video(src, tmp_path / "out.mp4")
+
+    assert "too long to upscale" in str(excinfo.value)
+    assert "44,078" in str(excinfo.value)
+
+
+def test_upscale_allows_a_short_clip(tmp_path, monkeypatch) -> None:
+    """The guard must not block the short visuals this feature exists for."""
+    from yt_audio_filter import upscale as up
+
+    src = tmp_path / "video_short.mp4"
+    src.write_bytes(b"\x00" * 64)
+
+    monkeypatch.setattr(up, "ensure_ffmpeg_available", lambda: None)
+    monkeypatch.setattr(up, "ensure_realesrgan_available", lambda: None)
+    monkeypatch.setattr(up, "_probe_framerate", lambda p: 24.0)
+    monkeypatch.setattr(up, "_expected_frame_count", lambda p, fps: 2_000)
+    # Stop before doing real work: reaching the extraction step proves the
+    # length guard let it through.
+    monkeypatch.setattr(
+        up.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("reached extraction"))
+    )
+
+    with pytest.raises(RuntimeError, match="reached extraction"):
+        up.upscale_video(src, tmp_path / "out.mp4")
+
+
+def test_unknown_duration_does_not_block_a_render(tmp_path, monkeypatch) -> None:
+    """ffprobe failing to report a duration must not veto the upscale."""
+    from yt_audio_filter import upscale as up
+
+    src = tmp_path / "video_x.mp4"
+    src.write_bytes(b"\x00" * 64)
+    monkeypatch.setattr(up, "ensure_ffmpeg_available", lambda: None)
+    monkeypatch.setattr(up, "ensure_realesrgan_available", lambda: None)
+    monkeypatch.setattr(up, "_probe_framerate", lambda p: 24.0)
+    monkeypatch.setattr(up, "_expected_frame_count", lambda p, fps: 0)
+    monkeypatch.setattr(
+        up.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("reached extraction"))
+    )
+
+    with pytest.raises(RuntimeError, match="reached extraction"):
+        up.upscale_video(src, tmp_path / "out.mp4")
