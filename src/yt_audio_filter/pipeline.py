@@ -21,7 +21,9 @@ from .utils import create_temp_dir, get_file_size_mb, validate_input_file
 logger = get_logger()
 
 
-def _process_chunk_worker(args: Tuple[Path, Path, str, str, str, Optional[int], int, bool, bool, bool, int]) -> Path:
+def _process_chunk_worker(
+    args: Tuple[Path, Path, str, str, str, Optional[int], int, bool, bool, bool, int, Optional[int]]
+) -> Path:
     """
     Worker function for parallel chunk processing.
 
@@ -30,12 +32,14 @@ def _process_chunk_worker(args: Tuple[Path, Path, str, str, str, Optional[int], 
 
     Args:
         args: Tuple of (chunk_path, output_path, device, model_name, audio_bitrate,
-                       segment, shifts, watermark, fp16, compile_model, chunk_index)
+                       segment, shifts, watermark, fp16, compile_model, chunk_index,
+                       scale_height)
 
     Returns:
         Path to the processed chunk
     """
-    chunk_path, output_path, device, model_name, audio_bitrate, segment, shifts, watermark, fp16, compile_model, chunk_index = args
+    (chunk_path, output_path, device, model_name, audio_bitrate, segment, shifts,
+     watermark, fp16, compile_model, chunk_index, scale_height) = args
 
     # Import torch here to ensure each process initializes CUDA independently
     import torch
@@ -56,6 +60,7 @@ def _process_chunk_worker(args: Tuple[Path, Path, str, str, str, Optional[int], 
             watermark=watermark,
             fp16=fp16,
             compile_model=compile_model,
+            scale_height=scale_height,
         )
 
         # Clear CUDA cache after processing
@@ -91,6 +96,7 @@ def _process_single_chunk(
     watermark: bool,
     fp16: bool,
     compile_model: bool,
+    scale_height: Optional[int] = None,
 ) -> Path:
     """
     Process a single video chunk (internal helper function).
@@ -160,6 +166,7 @@ def _process_video_chunked(
     compile_model: bool,
     chunk_duration: int,
     parallel_chunks: int = 1,
+    scale_height: Optional[int] = None,
 ) -> Path:
     """
     Process a video using chunked approach for consistent high-speed performance.
@@ -217,6 +224,7 @@ def _process_video_chunked(
                     fp16,
                     compile_model,
                     i + 1,  # chunk index for logging
+                    scale_height,
                 ))
                 processed_chunks.append(processed_chunk_path)
 
@@ -270,6 +278,7 @@ def _process_video_chunked(
                     watermark=watermark,
                     fp16=fp16,
                     compile_model=compile_model,
+                    scale_height=scale_height,
                 )
 
                 processed_chunks.append(processed_chunk_path)
@@ -428,6 +437,7 @@ def process_video(
             compile_model=compile_model,
             chunk_duration=effective_chunk_duration,
             parallel_chunks=parallel_chunks,
+            scale_height=scale_height,
         )
 
     # Otherwise, use standard single-video processing
