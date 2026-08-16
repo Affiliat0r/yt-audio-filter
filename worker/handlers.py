@@ -464,6 +464,7 @@ def handle_music_removal(
             input_path=video_metadata.file_path,
             output_path=output_path,
             progress_callback=on_progress,
+            scale_height=job_input.scale_height,
         )
 
     return deliver_render(

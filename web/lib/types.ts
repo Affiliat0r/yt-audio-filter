@@ -76,6 +76,11 @@ export interface MusicRemovalJobInput {
   visual: CatalogVideo;
   privacy: "private" | "unlisted" | "public";
   playlistId: string | null;
+  /**
+   * Rebuild the video at this height instead of copying it untouched.
+   * Absent keeps the fast lossless path, which is still the default.
+   */
+  scaleHeight?: number | null;
 }
 
 export interface SearchJobInput {

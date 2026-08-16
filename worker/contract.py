@@ -63,6 +63,20 @@ def _optional_str(value: Any) -> Optional[str]:
     return text or None
 
 
+def _optional_int(value: Any) -> Optional[int]:
+    """Normalise ``null`` / ``""`` / junk to ``None``.
+
+    A malformed number must not fail the whole job: the field is an optional
+    quality tweak, and dropping it renders exactly as before.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # CatalogVideo  <->  cartoon_catalog.CatalogVideo
 # ---------------------------------------------------------------------------
@@ -291,6 +305,9 @@ class MusicRemovalJobInput:
     visual: CatalogVideo
     privacy: str = "unlisted"
     playlist_id: Optional[str] = None
+    #: Rebuild the video at this height instead of copying it. None keeps the
+    #: fast lossless path; see ffmpeg.build_remux_command for the trade-off.
+    scale_height: Optional[int] = None
 
     @classmethod
     def from_json(cls, raw: Dict[str, Any]) -> "MusicRemovalJobInput":
@@ -300,15 +317,21 @@ class MusicRemovalJobInput:
             ),
             privacy=str(raw.get("privacy") or "unlisted"),
             playlist_id=_optional_str(raw.get("playlistId")),
+            scale_height=_optional_int(raw.get("scaleHeight")),
         )
 
     def to_json(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "kind": self.kind,
             "visual": catalog_video_to_json(self.visual),
             "privacy": self.privacy,
             "playlistId": self.playlist_id,
         }
+        # Omitted when unset so the payload round-trips unchanged for the
+        # lossless path, which is still the default and the common case.
+        if self.scale_height is not None:
+            payload["scaleHeight"] = self.scale_height
+        return payload
 
 
 @dataclass(frozen=True)

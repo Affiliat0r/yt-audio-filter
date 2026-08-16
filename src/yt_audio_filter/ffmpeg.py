@@ -305,105 +305,116 @@ def check_cuda_filters_available() -> bool:
         return False
 
 
+#: Content-ID evasion filter. Speeds video 5%, so audio needs `atempo` to match.
+WATERMARK_VIDEO_FILTER = (
+    "setpts=PTS/1.05,"
+    "scale=iw*0.75:ih*0.75,"
+    "pad=iw/0.75:ih/0.75:(ow-iw)/2:(oh-ih)/2:color=#1a1a2e,"
+    "eq=brightness=0.04:saturation=1.08,"
+    "hue=h=8,"
+    "drawbox=enable='lt(mod(t,5),0.15)':c=black:t=fill"
+)
+WATERMARK_AUDIO_FILTER = "atempo=1.05"
+
+
+def _remux_encoder_args() -> list:
+    """Encoder settings for when the video stream has to be rebuilt."""
+    if check_nvenc_available():
+        logger.debug("Using NVENC (GPU) for video encoding")
+        return ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "18", "-b:v", "0"]
+    logger.debug("NVENC not available, using CPU encoding")
+    return ["-c:v", "libx264", "-preset", "fast", "-crf", "18"]
+
+
+def build_remux_command(
+    video_path: Path,
+    audio_path: Path,
+    output_path: Path,
+    audio_bitrate: str = "192k",
+    watermark: bool = False,
+    scale_height: Optional[int] = None,
+    source_height: Optional[int] = None,
+) -> list:
+    """Build the ffmpeg argv for muxing ``audio_path`` onto ``video_path``.
+
+    By default the video stream is copied verbatim — that is what makes music
+    removal fast and keeps the picture bit-identical to the source.
+
+    ``scale_height`` opts into rebuilding the video at that height instead.
+    This is plain interpolation, not the detail reconstruction Real-ESRGAN
+    does, and it is deliberately a separate idea: sharpening is slow and only
+    viable on short clips, while scaling costs minutes at any length because it
+    streams rather than writing every frame to disk. It earns its keep because
+    YouTube gives 720p uploads a materially better bitrate ladder than 360p
+    ones, so the same footage often looks sharper on playback.
+
+    ``source_height`` short-circuits the pointless cases: a source already at
+    or above the target is copied, since re-encoding it would only throw away
+    quality.
+    """
+    filters: list = []
+    if watermark:
+        filters.append(WATERMARK_VIDEO_FILTER)
+
+    needs_scale = scale_height is not None and (
+        source_height is None or source_height < scale_height
+    )
+    if needs_scale:
+        # -2 keeps the source aspect ratio and rounds the width to an even
+        # number, which h264's 4:2:0 chroma grid requires. Hardcoding a width
+        # would stretch any source that is not 16:9.
+        filters.append(f"scale=-2:{int(scale_height)}:flags=lanczos")
+        # Interpolation softens edges; a light unsharp puts back the bite
+        # without the halos a heavier setting produces on flat cartoon colour.
+        filters.append("unsharp=5:5:0.4:5:5:0.0")
+
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-y",
+        "-i", str(video_path),
+        "-i", str(audio_path),
+        "-map", "0:v:0",   # first video stream only — cover art is a second one
+        "-map", "1:a",
+    ]
+    if filters:
+        cmd += ["-vf", ",".join(filters)]
+        if watermark:
+            cmd += ["-af", WATERMARK_AUDIO_FILTER]
+        cmd += _remux_encoder_args()
+        cmd += ["-pix_fmt", "yuv420p"]
+    else:
+        cmd += ["-c:v", "copy"]
+    cmd += ["-c:a", "aac", "-b:a", audio_bitrate, str(output_path)]
+    return cmd
+
+
 def remux_video(
     video_path: Path,
     audio_path: Path,
     output_path: Path,
     audio_bitrate: str = "192k",
-    watermark: bool = False
+    watermark: bool = False,
+    scale_height: Optional[int] = None,
+    source_height: Optional[int] = None,
 ) -> Path:
-    """
-    Remux video with new audio track.
+    """Mux ``audio_path`` onto ``video_path``.
 
-    The video stream is copied losslessly (unless watermark is enabled),
-    and the audio is encoded as AAC.
-
-    Args:
-        video_path: Path to original video (for video stream)
-        audio_path: Path to new audio file
-        output_path: Path for output video
-        audio_bitrate: Audio bitrate for AAC encoding
-        watermark: Add visual modifications to help avoid Content ID
-
-    Returns:
-        Path to the remuxed video
+    The video stream is copied losslessly unless a watermark or ``scale_height``
+    forces a rebuild. See ``build_remux_command`` for what scaling is and is not.
 
     Raises:
-        FFmpegError: If remuxing fails
+        FFmpegError: If remuxing fails.
     """
-    logger.debug(f"Remuxing video with new audio (watermark={watermark})")
-
-    if watermark:
-        # Apply aggressive transformations to evade Content ID:
-        # 1. Speed change (1.05x) - changes temporal fingerprint
-        # 2. Border/PiP - changes frame composition  
-        # 3. Frequent black frames - breaks continuous matching
-        # 4. Color adjustment
-        
-        video_filter = (
-            # Speed up video by 5%
-            "setpts=PTS/1.05,"
-            # Scale down to 75% for larger border
-            "scale=iw*0.75:ih*0.75,"
-            # Add padding (colored border)
-            "pad=iw/0.75:ih/0.75:(ow-iw)/2:(oh-ih)/2:color=#1a1a2e,"
-            # Color adjustments
-            "eq=brightness=0.04:saturation=1.08,"
-            "hue=h=8,"
-            # Insert black frame every 5 seconds (more frequent)
-            "drawbox=enable='lt(mod(t,5),0.15)':c=black:t=fill"
-        )
-        
-        # Audio filter to match video speed (pitch correction)
-        audio_filter = "atempo=1.05"
-        
-        # Check if NVENC (GPU encoding) is available
-        use_nvenc = check_nvenc_available()
-        if use_nvenc:
-            logger.debug("Using NVENC (GPU) for video encoding")
-            video_codec_args = [
-                "-c:v", "h264_nvenc",    # NVIDIA GPU encoder
-                "-preset", "p4",          # Balanced speed/quality (p1=fastest, p7=best)
-                "-cq", "18",              # Constant quality mode (similar to CRF)
-                "-b:v", "0",              # Let CQ control quality
-            ]
-        else:
-            logger.debug("NVENC not available, using CPU encoding")
-            video_codec_args = [
-                "-c:v", "libx264",        # CPU encoder
-                "-preset", "fast",        # Fast encoding preset
-                "-crf", "18",             # High quality
-            ]
-        
-        cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-y",  # Overwrite output
-            "-i", str(video_path),   # Input 0: original video
-            "-i", str(audio_path),   # Input 1: new audio
-            "-filter_complex", f"[0:v:0]{video_filter}[v];[1:a]{audio_filter}[a]",
-            "-map", "[v]",           # Map filtered video
-            "-map", "[a]",           # Map filtered audio
-            *video_codec_args,       # Video encoding options
-            "-c:a", "aac",           # Encode audio as AAC
-            "-b:a", audio_bitrate,   # Audio bitrate
-            str(output_path)
-        ]
-    else:
-        # Without watermark: copy video losslessly
-        cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-y",  # Overwrite output
-            "-i", str(video_path),   # Input 0: original video
-            "-i", str(audio_path),   # Input 1: new audio
-            "-map", "0:v:0",         # Map FIRST video stream only (avoid thumbnail/cover art)
-            "-map", "1:a",           # Map audio from input 1
-            "-c:v", "copy",          # Copy video losslessly
-            "-c:a", "aac",           # Encode audio as AAC
-            "-b:a", audio_bitrate,   # Audio bitrate
-            str(output_path)
-        ]
+    cmd = build_remux_command(
+        video_path=video_path,
+        audio_path=audio_path,
+        output_path=output_path,
+        audio_bitrate=audio_bitrate,
+        watermark=watermark,
+        scale_height=scale_height,
+        source_height=source_height,
+    )
 
     try:
         result = subprocess.run(

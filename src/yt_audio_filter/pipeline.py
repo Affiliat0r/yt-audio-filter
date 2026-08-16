@@ -139,6 +139,8 @@ def _process_single_chunk(
             output_path,
             audio_bitrate=audio_bitrate,
             watermark=watermark,
+            scale_height=scale_height,
+            source_height=_source_height(input_path),
         )
 
         return output_path
@@ -300,6 +302,23 @@ def _process_video_chunked(
         return output_path
 
 
+def _source_height(path: Path) -> Optional[int]:
+    """Height of the source video, or None when ffprobe will not say.
+
+    Used to skip scaling a source that is already tall enough — re-encoding it
+    would only lose quality. Unknown means "attempt it": the filter is harmless
+    either way, and refusing on a missing probe would silently disable the
+    feature.
+    """
+    try:
+        from .ffmpeg import get_video_info
+
+        info = get_video_info(Path(path))
+        return info.get("height") if info else None
+    except Exception:  # noqa: BLE001 - never block a render on a probe
+        return None
+
+
 def process_video(
     input_path: Path,
     output_path: Path,
@@ -314,6 +333,7 @@ def process_video(
     compile_model: bool = False,
     chunk_duration: Optional[int] = None,
     parallel_chunks: int = 1,
+    scale_height: Optional[int] = None,
 ) -> Path:
     """
     Process a video to isolate vocals and remove background music.
@@ -478,6 +498,8 @@ def process_video(
                 output_path,
                 audio_bitrate=audio_bitrate,
                 watermark=watermark,
+                scale_height=scale_height,
+                source_height=_source_height(input_path),
             )
 
             if progress_callback:

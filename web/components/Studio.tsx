@@ -58,6 +58,9 @@ export default function Studio({
   const [burnSubtitles, setBurnSubtitles] = useState(false);
   const [metadataPath, setMetadataPath] = useState(DEFAULT_METADATA_PATH);
   const [playlistId, setPlaylistId] = useState("");
+  // null = copy the video untouched. Music removal only; the overlay
+  // pipeline already renders at the preset resolution.
+  const [scaleHeight, setScaleHeight] = useState<number | null>(null);
 
   // What each panel has composed. The panels report upward instead of holding
   // their own submit button, so the action can sit after the quality step —
@@ -413,6 +416,9 @@ export default function Studio({
                 <MusicPanel
                   visual={visual}
                   onPrivacyChange={setMusicPrivacy}
+                  sourceHeight={measuredHeight}
+                  scaleHeight={scaleHeight}
+                  onScaleHeightChange={setScaleHeight}
                 />
               </>
             )}

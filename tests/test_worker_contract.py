@@ -739,3 +739,48 @@ def test_load_blob_token_falls_back_to_the_env_file(tmp_path: Path):
 
     assert load_blob_token(env={}, env_file=env_file) == "from-file"
     assert load_blob_token(env={}, env_file=tmp_path / "absent.env") is None
+
+
+# ------------------------------------------------- music-removal scale option
+
+
+def test_music_removal_carries_scale_height_both_ways() -> None:
+    """camelCase on the wire, snake_case in Python."""
+    from worker.contract import MusicRemovalJobInput
+
+    raw = {
+        "kind": "music_removal",
+        "visual": {"videoId": "abc12345xyz", "url": "u", "title": "t",
+                   "duration": 10, "viewCount": 0, "uploadDate": "",
+                   "thumbnailUrl": "", "channelSlug": "c"},
+        "privacy": "private",
+        "playlistId": None,
+        "scaleHeight": 720,
+    }
+    parsed = MusicRemovalJobInput.from_json(raw)
+    assert parsed.scale_height == 720
+    assert parsed.to_json()["scaleHeight"] == 720
+
+
+def test_absent_scale_height_keeps_the_lossless_path() -> None:
+    from worker.contract import MusicRemovalJobInput
+
+    raw = {
+        "kind": "music_removal",
+        "visual": {"videoId": "abc12345xyz", "url": "u", "title": "t",
+                   "duration": 10, "viewCount": 0, "uploadDate": "",
+                   "thumbnailUrl": "", "channelSlug": "c"},
+    }
+    assert MusicRemovalJobInput.from_json(raw).scale_height is None
+
+
+def test_a_junk_scale_height_is_dropped_not_fatal() -> None:
+    """It is an optional quality tweak; a bad value must render as before
+    rather than failing a job that would otherwise have worked."""
+    from worker.contract import _optional_int
+
+    assert _optional_int("banana") is None
+    assert _optional_int("") is None
+    assert _optional_int(None) is None
+    assert _optional_int("720") == 720
+    assert _optional_int(720.0) == 720
