@@ -46,6 +46,9 @@ from .state import RenderedJobStore
 logger = get_logger()
 
 #: Network-error backoff ceiling. Vercel redeploys and home Wi-Fi both blip.
+MAX_IDLE_POLL_SECONDS = 60.0
+#: How often a heartbeat is actually written, regardless of poll rate.
+HEARTBEAT_INTERVAL_SECONDS = 60.0
 MAX_BACKOFF_SECONDS = 60.0
 
 
@@ -212,13 +215,32 @@ def run_forever(
     stop: Optional[threading.Event] = None,
     once: bool = False,
 ) -> None:
-    """Poll, dispatch, repeat. Only Ctrl-C (or ``stop``) ends this."""
+    """Poll, dispatch, repeat. Only Ctrl-C (or ``stop``) ends this.
+
+    The idle interval grows the longer nothing arrives. This is a cost control,
+    not a nicety: every poll costs Redis commands, and two workers polling flat
+    out every 5s exhausted a 500,000-command monthly allowance in under three
+    days — which takes the whole Studio down, not just the workers. Backing off
+    to a minute while idle cuts that by an order of magnitude, and the first
+    poll after any job resets it, so a busy queue still feels immediate.
+    """
     stop = stop or threading.Event()
     backoff = cfg.poll_seconds
+    idle_wait = cfg.poll_seconds
+    last_heartbeat = 0.0
 
     while not stop.is_set():
+        # A heartbeat costs several Redis writes and says the same thing every
+        # time. Sending it on a timer instead of every poll makes an idle poll
+        # a single queue check.
+        now = time.monotonic()
+        due = (now - last_heartbeat) >= HEARTBEAT_INTERVAL_SECONDS
         try:
-            job = client.claim(build_heartbeat(cfg.worker_id))
+            job = client.claim(
+                build_heartbeat(cfg.worker_id), include_heartbeat=due
+            )
+            if due:
+                last_heartbeat = now
         except Exception as exc:  # noqa: BLE001 - transport hiccups are normal
             logger.warning("Claim failed (%s); retrying in %.0fs", exc, backoff)
             if stop.wait(backoff):
@@ -231,9 +253,13 @@ def run_forever(
         if job is None:
             if once:
                 return
-            if stop.wait(cfg.poll_seconds):
+            if stop.wait(idle_wait):
                 return
+            idle_wait = min(idle_wait * 1.5, MAX_IDLE_POLL_SECONDS)
             continue
+
+        # Work arrived: go back to checking often, since more may follow.
+        idle_wait = cfg.poll_seconds
 
         try:
             execute_job(job, cfg, client, store)

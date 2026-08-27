@@ -27,6 +27,13 @@ export async function POST(req: Request) {
 
   const job = await claimNextJob(workerId);
 
+  // An idle worker polls with just its id. Writing a heartbeat that says the
+  // same thing on every poll is what exhausted the Redis free tier, so it is
+  // only recorded when the worker actually sends one (about once a minute).
+  if (beat.hostname === undefined && beat.version === undefined) {
+    return NextResponse.json({ job });
+  }
+
   await recordHeartbeat({
     at: Date.now(),
     workerId: workerId ?? "legacy",

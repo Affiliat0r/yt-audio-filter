@@ -27,6 +27,15 @@ JobStatus = Literal["queued", "claimed", "running", "done", "error", "cancelled"
 CacheState = Literal["new", "downloaded", "upscaled"]
 SourceQualityKind = Literal["measured", "listed"]
 Privacy = Literal["private", "unlisted", "public"]
+AuthCodeStatus = Literal["pending", "ready", "expired"]
+
+#: Mirrors ``AUTH_REQUEST_TTL_SECONDS`` — how long the Studio keeps a worker's
+#: authorisation request claimable.
+AUTH_REQUEST_TTL_SECONDS = 15 * 60
+
+#: Mirrors ``AUTH_CODE_TTL_SECONDS`` — how long a delivered authorisation code
+#: waits to be collected.
+AUTH_CODE_TTL_SECONDS = 5 * 60
 
 #: Fallback used when a job's ``settings.metadataPath`` is blank.
 DEFAULT_METADATA_PATH = "examples/metadata-surah-arrahman.json"
@@ -628,6 +637,81 @@ class Job:
             "finishedAt": self.finished_at,
             "uploadRequested": self.upload_requested,
         }
+
+
+# ---------------------------------------------------------------------------
+# Remote YouTube authorisation (PKCE)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AuthRequest:
+    """Mirrors ``PendingAuthRequest`` — the body of ``/api/worker/auth-request``.
+
+    Only the *public* half of the PKCE exchange travels: the ``code_verifier``
+    behind ``code_challenge`` never leaves this machine, and neither does the
+    OAuth client secret. That is what makes the relayed authorisation code
+    useless to anyone who reads the Studio's Redis.
+    """
+
+    worker_id: str
+    hostname: str
+    state: str
+    code_challenge: str
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "workerId": self.worker_id,
+            "hostname": self.hostname,
+            "state": self.state,
+            "codeChallenge": self.code_challenge,
+        }
+
+
+@dataclass(frozen=True)
+class AuthRequestAck:
+    """The Studio's answer to ``/api/worker/auth-request``."""
+
+    #: Session-gated URL to open in a browser on any device. The Studio builds
+    #: it because only it knows its own public origin.
+    authorize_url: Optional[str] = None
+    expires_at: int = 0
+
+    @classmethod
+    def from_json(cls, raw: Optional[Dict[str, Any]]) -> "AuthRequestAck":
+        raw = raw or {}
+        return cls(
+            authorize_url=_optional_str(raw.get("authorizeUrl")),
+            expires_at=int(raw.get("expiresAt") or 0),
+        )
+
+
+@dataclass(frozen=True)
+class AuthCodeResponse:
+    """Mirrors ``AuthCodeResponse`` — the answer to the worker's poll.
+
+    ``state`` is echoed so the worker can refuse a code minted for a different
+    flow; ``code`` is non-null exactly once, because reading deletes it.
+    """
+
+    state: str = ""
+    status: AuthCodeStatus = "pending"
+    code: Optional[str] = None
+
+    @classmethod
+    def from_json(cls, raw: Optional[Dict[str, Any]]) -> "AuthCodeResponse":
+        raw = raw or {}
+        status = str(raw.get("status") or "pending")
+        if status not in ("pending", "ready", "expired"):
+            raise ContractError(f"Unknown auth code status: {status!r}")
+        return cls(
+            state=str(raw.get("state") or ""),
+            status=status,  # type: ignore[arg-type]
+            code=_optional_str(raw.get("code")),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        return {"state": self.state, "status": self.status, "code": self.code}
 
 
 @dataclass(frozen=True)

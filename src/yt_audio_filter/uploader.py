@@ -7,7 +7,7 @@ import pickle
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 
 from .exceptions import PrerequisiteError, YTAudioFilterError
 from .logger import get_logger
@@ -21,6 +21,16 @@ logger = get_logger()
 CREDENTIALS_DIR = Path.home() / ".yt-audio-filter"
 CLIENT_SECRETS_FILE = CREDENTIALS_DIR / "client_secrets.json"
 OAUTH_TOKEN_FILE = CREDENTIALS_DIR / "oauth_token.pickle"
+
+#: Scopes every upload path asks for. Module-level because the Studio needs the
+#: identical list when it builds Google's consent URL (mirrored in
+#: ``YOUTUBE_OAUTH_SCOPES`` in ``web/lib/types.ts``) — a mismatch here silently
+#: produces credentials that fail the subset check below on the next run.
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube.force-ssl",  # Allows editing video metadata
+]
 
 # youtubeuploader binary support
 YOUTUBEUPLOADER_TOKEN_FILE = CREDENTIALS_DIR / "request.token"
@@ -450,6 +460,64 @@ def _noninteractive() -> bool:
     return os.environ.get(NONINTERACTIVE_ENV, "").strip().lower() not in ("", "0", "false")
 
 
+#: Optional escape hatch from "this machine cannot show a browser".
+#:
+#: Set by the worker (``worker/remote_auth.py``) to a zero-argument callable
+#: returning fresh ``Credentials``, or ``None`` when remote authorisation is not
+#: configured. It exists as a module-level hook rather than a parameter because
+#: ``authenticate_youtube`` is reached from half a dozen call sites — the two
+#: upload helpers here, ``list_playlists``, ``create_playlist``,
+#: ``get_uploaded_source_ids``, and ``overlay_pipeline.upload_rendered`` — none
+#: of which have any business knowing about the Studio. Threading a callable
+#: through all of them would push worker concepts into every signature; this
+#: keeps ``src/`` free of any dependency on ``worker/``, which supplies the
+#: implementation and owns the direction of the import.
+REMOTE_AUTH_HANDLER: Optional[Callable[[], Any]] = None
+
+
+def set_remote_auth_handler(
+    handler: Optional[Callable[[], Any]],
+) -> Optional[Callable[[], Any]]:
+    """Install (or clear) the remote-auth hook; returns the previous one.
+
+    Returning the previous handler is what lets the worker scope it to a single
+    job with a context manager, so progress lands on the job the user is
+    actually watching.
+    """
+    global REMOTE_AUTH_HANDLER
+    previous = REMOTE_AUTH_HANDLER
+    REMOTE_AUTH_HANDLER = handler
+    return previous
+
+
+def _try_remote_auth():
+    """Ask the injected handler for credentials. ``None`` if it cannot help.
+
+    Never raises: a remote flow that is unconfigured, declined, or timed out
+    must leave the caller free to fall back to the existing error message,
+    which tells the user exactly what to do at the machine itself.
+    """
+    handler = REMOTE_AUTH_HANDLER
+    if handler is None:
+        return None
+    try:
+        return handler()
+    except Exception as exc:  # noqa: BLE001 - falls back to the clear error
+        logger.warning("Remote YouTube authorisation failed: %s", exc)
+        return None
+
+
+def _persist_credentials(credentials) -> None:
+    """Pickle credentials to :data:`OAUTH_TOKEN_FILE`.
+
+    One helper for all three acquisition paths (silent refresh, local browser
+    consent, remote consent) so every future run loads the same shape.
+    """
+    OAUTH_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(OAUTH_TOKEN_FILE, "wb") as token:
+        pickle.dump(credentials, token)
+
+
 def authenticate_youtube():
     """
     Authenticate with YouTube API using OAuth2.
@@ -465,12 +533,6 @@ def authenticate_youtube():
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
-
-    SCOPES = [
-        "https://www.googleapis.com/auth/youtube.upload",
-        "https://www.googleapis.com/auth/youtube.readonly",
-        "https://www.googleapis.com/auth/youtube.force-ssl",  # Allows editing video metadata
-    ]
 
     credentials = None
 
@@ -500,9 +562,7 @@ def authenticate_youtube():
             from google.auth.transport.requests import Request
 
             credentials.refresh(Request())
-            CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
-            with open(OAUTH_TOKEN_FILE, "wb") as token:
-                pickle.dump(credentials, token)
+            _persist_credentials(credentials)
             logger.info("YouTube credentials refreshed silently")
         except Exception as e:
             # Refresh tokens do die — revoked access, password change, or an
@@ -513,11 +573,6 @@ def authenticate_youtube():
 
     # If still no valid credentials, authenticate interactively
     if not credentials or not credentials.valid:
-        if not check_credentials_configured():
-            raise YouTubeUploadError(
-                "YouTube API not configured", setup_credentials_guide()
-            )
-
         # `run_local_server` opens a browser and then blocks forever waiting for
         # a redirect. On an unattended worker that is the worst possible
         # outcome: nobody is sitting at that machine to click Allow, the job
@@ -525,29 +580,48 @@ def authenticate_youtube():
         # whole queue stops behind it. Failing fast is strictly better — the
         # user sees why, and the machine keeps working.
         if _noninteractive():
-            raise YouTubeUploadError(
-                f"{socket.gethostname()} needs to be re-authorised with YouTube",
-                "Its saved credentials could not be refreshed, and this machine "
-                "cannot show a sign-in window. On that machine, run:\n"
-                "    .venv\\Scripts\\python -c \"from yt_audio_filter.uploader "
-                'import authenticate_youtube; authenticate_youtube()"\n'
-                "then queue the upload again. Nothing was uploaded.",
-            )
+            # ...unless somebody can consent from wherever they *are*. The
+            # remote flow relays only an authorisation code through the Studio;
+            # the PKCE verifier and the client secret never leave this machine,
+            # so the relay cannot redeem what it carries. Tried first because a
+            # machine set up purely for remote auth has no desktop
+            # client_secrets.json to check for.
+            remote = _try_remote_auth()
+            if remote is not None:
+                credentials = remote
+                _persist_credentials(credentials)
+                logger.info("YouTube authorised remotely via the Studio")
+            elif not check_credentials_configured():
+                raise YouTubeUploadError(
+                    "YouTube API not configured", setup_credentials_guide()
+                )
+            else:
+                raise YouTubeUploadError(
+                    f"{socket.gethostname()} needs to be re-authorised with YouTube",
+                    "Its saved credentials could not be refreshed, and this machine "
+                    "cannot show a sign-in window. On that machine, run:\n"
+                    "    .venv\\Scripts\\python -c \"from yt_audio_filter.uploader "
+                    'import authenticate_youtube; authenticate_youtube()"\n'
+                    "then queue the upload again. Nothing was uploaded.",
+                )
+        else:
+            if not check_credentials_configured():
+                raise YouTubeUploadError(
+                    "YouTube API not configured", setup_credentials_guide()
+                )
 
-        try:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(CLIENT_SECRETS_FILE), SCOPES
-            )
-            credentials = flow.run_local_server(port=0)
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(CLIENT_SECRETS_FILE), SCOPES
+                )
+                credentials = flow.run_local_server(port=0)
 
-            # Save credentials for next time
-            CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
-            with open(OAUTH_TOKEN_FILE, "wb") as token:
-                pickle.dump(credentials, token)
-            logger.info("YouTube authentication successful - credentials saved")
+                # Save credentials for next time
+                _persist_credentials(credentials)
+                logger.info("YouTube authentication successful - credentials saved")
 
-        except Exception as e:
-            raise YouTubeUploadError(f"YouTube authentication failed: {e}")
+            except Exception as e:
+                raise YouTubeUploadError(f"YouTube authentication failed: {e}")
 
     return build("youtube", "v3", credentials=credentials)
 

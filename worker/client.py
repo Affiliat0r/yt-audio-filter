@@ -1,13 +1,15 @@
 """HTTP client for the Studio worker API (``/api/worker/*``).
 
-Four endpoints, all authenticated with the static ``x-worker-token`` header:
+Six endpoints, all authenticated with the static ``x-worker-token`` header:
 
-===========================  ======  ==========================================
-``POST /api/worker/claim``   claim   heartbeat in, ``{job: Job|null}`` out
-``POST /api/worker/progress``update  ``{cancelled: bool}`` out — honour it
-``POST /api/worker/complete``finish  terminal state, ok / error
-``POST /api/worker/catalog`` push    the scraped cartoon catalog
-===========================  ======  ==========================================
+=============================  ======  ========================================
+``POST /api/worker/claim``     claim   heartbeat in, ``{job: Job|null}`` out
+``POST /api/worker/progress``  update  ``{cancelled: bool}`` out — honour it
+``POST /api/worker/complete``  finish  terminal state, ok / error
+``POST /api/worker/catalog``   push    the scraped cartoon catalog
+``POST /api/worker/auth-request`` ask  register a YouTube consent request
+``GET  /api/worker/auth-code`` poll    collect the relayed code, once
+=============================  ======  ========================================
 """
 
 from __future__ import annotations
@@ -18,7 +20,14 @@ import requests
 
 from yt_audio_filter.logger import get_logger
 
-from .contract import Job, JobResult, WorkerHeartbeat
+from .contract import (
+    AuthCodeResponse,
+    AuthRequest,
+    AuthRequestAck,
+    Job,
+    JobResult,
+    WorkerHeartbeat,
+)
 
 logger = get_logger()
 
@@ -89,16 +98,47 @@ class StudioClient:
             raise StudioHTTPError(f"POST {path} returned non-JSON body", status) from exc
         return data if isinstance(data, dict) else {}
 
+    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        response = self.session.get(
+            url,
+            params=params or {},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        status = getattr(response, "status_code", 0)
+        if not 200 <= status < 300:
+            body = ""
+            try:
+                body = response.text[:500]
+            except Exception:  # noqa: BLE001 - diagnostics only
+                pass
+            raise StudioHTTPError(f"GET {path} failed with HTTP {status}", status, body)
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise StudioHTTPError(f"GET {path} returned non-JSON body", status) from exc
+        return data if isinstance(data, dict) else {}
+
     # --------------------------------------------------------------- actions
 
-    def claim(self, heartbeat: WorkerHeartbeat) -> Optional[Job]:
+    def claim(
+        self, heartbeat: WorkerHeartbeat, *, include_heartbeat: bool = True
+    ) -> Optional[Job]:
         """Claim the next queued job, or return ``None`` when idle.
 
         The heartbeat body carries this machine's ``workerId``; the Studio uses
         it to skip jobs pinned to a *different* worker, so a laptop only ever
         gets handed the work meant for it (plus untargeted work).
         """
-        data = self._post("/api/worker/claim", heartbeat.to_json())
+        payload = heartbeat.to_json()
+        if not include_heartbeat:
+            # The Studio writes a heartbeat only when one is present. Omitting
+            # it turns an idle poll into a single Redis command instead of five,
+            # which is the difference between the free tier lasting days and
+            # lasting months.
+            payload = {"workerId": payload.get("workerId", "")}
+        data = self._post("/api/worker/claim", payload)
         raw_job = data.get("job")
         if not raw_job:
             return None
@@ -177,3 +217,25 @@ class StudioClient:
         data = self._post("/api/worker/catalog", payload)
         count = data.get("count")
         return int(count) if isinstance(count, int) else len(videos)
+
+    # ------------------------------------------------- remote YouTube auth
+
+    def request_auth(self, request: AuthRequest) -> AuthRequestAck:
+        """Register a request for YouTube consent and get the URL to open.
+
+        Only the public half of the PKCE pair travels. The Studio builds the
+        authorise URL because only it knows its own public origin.
+        """
+        return AuthRequestAck.from_json(
+            self._post("/api/worker/auth-request", request.to_json())
+        )
+
+    def fetch_auth_code(self, state: str) -> AuthCodeResponse:
+        """Poll for the relayed authorisation code.
+
+        Returns ``pending`` until consent completes, then ``ready`` exactly
+        once — the Studio deletes the code as it hands it over.
+        """
+        return AuthCodeResponse.from_json(
+            self._get("/api/worker/auth-code", {"state": state})
+        )

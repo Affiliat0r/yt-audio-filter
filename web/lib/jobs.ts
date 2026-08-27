@@ -309,7 +309,10 @@ export async function recordHeartbeat(beat: WorkerHeartbeat): Promise<void> {
   await r.set(KEYS.workerHeartbeat(beat.workerId), beat, { ex: 300 });
   await r.zadd(KEYS.workerIndex, { score: Date.now(), member: beat.workerId });
   // Keep the legacy key fresh too, so the old status endpoint still works.
-  await r.set(KEYS.heartbeat, beat, { ex: 300 });
+  // The legacy single-worker key was a compatibility shim for workers that
+  // predate per-worker heartbeats. Both are upgraded, and a second write per
+  // heartbeat is not free on a metered tier.
+  // await r.set(KEYS.heartbeat, beat, { ex: 300 });
 }
 
 export async function listWorkers(): Promise<WorkerSummary[]> {

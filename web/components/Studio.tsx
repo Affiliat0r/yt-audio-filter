@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import AuthPrompt from "./AuthPrompt";
 import Gallery, { type Channel } from "./Gallery";
 import SurahPanel from "./SurahPanel";
 import AyahPanel from "./AyahPanel";
@@ -303,6 +304,10 @@ export default function Studio({
           </form>
         </div>
       </header>
+
+      {/* Sits above everything: an unauthorised worker cannot publish, and the
+          prompt is only live for 15 minutes. */}
+      <AuthPrompt />
 
       {!worker?.online && (
         <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">

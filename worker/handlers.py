@@ -9,6 +9,7 @@ which comes back as a second job with ``uploadRequested`` set.
 from __future__ import annotations
 
 import dataclasses
+import socket
 import threading
 import time
 from contextlib import contextmanager
@@ -619,12 +620,40 @@ HANDLERS: Dict[str, Handler] = {
 }
 
 
+@contextmanager
+def _remote_auth_for(job: Job, ctx: "JobContext", cfg: WorkerConfig, client) -> Iterator[None]:
+    """Route YouTube consent through the Studio for the duration of one job.
+
+    Scoped rather than installed once at startup so the "needs authorising"
+    prompt lands on the job the user is actually watching. The previous handler
+    is restored on the way out, so a nested or concurrent job cannot inherit
+    another job's progress reporter.
+    """
+    from yt_audio_filter import uploader
+
+    from .remote_auth import RemoteAuthorizer
+
+    authorizer = RemoteAuthorizer(
+        client,
+        cfg.base_url,
+        cfg.worker_id,
+        socket.gethostname(),
+        report=lambda message, lines: ctx.report(message, None, lines),
+    )
+    previous = uploader.set_remote_auth_handler(authorizer)
+    try:
+        yield
+    finally:
+        uploader.set_remote_auth_handler(previous)
+
+
 def run_job(
     job: Job, ctx: JobContext, cfg: WorkerConfig, store: RenderedJobStore
 ) -> JobResult:
     """Route a claimed job to its handler and return the result payload."""
     if job.upload_requested:
-        return handle_upload(job, ctx, cfg, store)
+        with _remote_auth_for(job, ctx, cfg, ctx.client):
+            return handle_upload(job, ctx, cfg, store)
     handler = HANDLERS.get(job.kind)
     if handler is None:
         raise OverlayError(

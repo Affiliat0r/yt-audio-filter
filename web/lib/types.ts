@@ -208,6 +208,74 @@ export interface WorkerSummary extends WorkerHeartbeat {
 /** Port the worker's local discovery endpoint listens on. */
 export const DISCOVERY_PORT = 7717;
 
+// -------------------------------------------------- remote YouTube auth
+
+/**
+ * Scopes a worker's uploads need. Mirrors `uploader.SCOPES` in
+ * `src/yt_audio_filter/uploader.py` — the Studio only ever relays them into
+ * Google's consent URL, it never holds a token of its own.
+ */
+export const YOUTUBE_OAUTH_SCOPES = [
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
+];
+
+/** Google's consent endpoint. */
+export const GOOGLE_AUTH_ENDPOINT =
+  "https://accounts.google.com/o/oauth2/v2/auth";
+
+/** How long a worker's authorisation request stays claimable. */
+export const AUTH_REQUEST_TTL_SECONDS = 15 * 60;
+
+/** How long a delivered authorisation code waits to be collected. */
+export const AUTH_CODE_TTL_SECONDS = 5 * 60;
+
+/**
+ * A worker waiting for a human to complete Google's consent screen.
+ *
+ * The Studio deliberately holds only the public half of a PKCE exchange. The
+ * `code_verifier` and the OAuth client secret stay on the worker, so this
+ * record — and the authorisation code that later joins it — cannot be redeemed
+ * by anyone who reads Redis.
+ */
+export interface PendingAuthRequest {
+  workerId: string;
+  hostname: string;
+  /**
+   * 32 random bytes, urlsafe-base64. Unguessable on purpose: it is the only
+   * thing authorising Google's unauthenticated callback.
+   */
+  state: string;
+  /** base64url(sha256(codeVerifier)), unpadded — RFC 7636 S256. */
+  codeChallenge: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+/**
+ * What the browser is allowed to see. `state` is withheld: the Authorise
+ * button passes a `workerId` and the server looks the rest up, so the value
+ * that authorises the callback never reaches a page.
+ */
+export interface PendingAuthSummary {
+  workerId: string;
+  hostname: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export type AuthCodeStatus = "pending" | "ready" | "expired";
+
+/** Answer to the worker's `GET /api/worker/auth-code` poll. */
+export interface AuthCodeResponse {
+  /** Echoed back so the worker can refuse a code minted for another flow. */
+  state: string;
+  status: AuthCodeStatus;
+  /** Non-null exactly once — reading a code deletes it. */
+  code: string | null;
+}
+
 /** A short-lived label for a job, used in listings. */
 export function jobLabel(job: Job): string {
   switch (job.input.kind) {

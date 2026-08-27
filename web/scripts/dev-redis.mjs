@@ -46,6 +46,14 @@ function execute(cmd) {
       const v = strings.get(String(args[0]));
       return v === undefined ? null : v;
     }
+    case "GETDEL": {
+      // Single-use reads (the relayed OAuth code) depend on this being one
+      // operation, not a GET the caller follows with a DEL.
+      const key = String(args[0]);
+      const v = strings.get(key);
+      strings.delete(key);
+      return v === undefined ? null : v;
+    }
     case "DEL": {
       let n = 0;
       for (const k of args) {
@@ -96,6 +104,12 @@ function execute(cmd) {
         z.set(member, Number(rest[i]));
       }
       return added;
+    }
+    case "ZREM": {
+      const z = zset(String(args[0]));
+      let removed = 0;
+      for (const m of args.slice(1)) if (z.delete(String(m))) removed++;
+      return removed;
     }
     case "ZRANGE": {
       const z = zset(String(args[0]));

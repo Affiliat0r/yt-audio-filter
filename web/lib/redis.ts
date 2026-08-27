@@ -53,6 +53,20 @@ export const KEYS = {
    * preview route burning a Blob API operation on every single request.
    */
   blobPresign: (pathname: string) => `blob:presign:${pathname}`,
+  /**
+   * Remote YouTube authorisation, PKCE. Three short-lived keys:
+   *   authRequest — the pending record, keyed by the worker asking.
+   *   authState   — state -> workerId, so Google's callback (which knows only
+   *                 the state) can be validated without a session.
+   *   authCode    — the relayed authorisation code, single-use.
+   * None of them is redeemable on its own: the code verifier and the client
+   * secret never leave the worker.
+   */
+  authRequest: (workerId: string) => `auth:req:${workerId}`,
+  authState: (state: string) => `auth:state:${state}`,
+  authCode: (state: string) => `auth:code:${state}`,
+  /** Worker ids with a live request, so the Studio can show the prompt. */
+  authIndex: "auth:index",
 } as const;
 
 /** Jobs older than this are pruned from the index on write. */

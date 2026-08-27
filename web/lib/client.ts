@@ -7,6 +7,7 @@ import {
   type CatalogVideo,
   type Job,
   type JobInput,
+  type PendingAuthSummary,
   type SourceQuality,
   type WorkerSummary,
 } from "./types";
@@ -109,6 +110,41 @@ export const fetchWorkerStatus = () =>
 
 export const fetchWorkers = () =>
   api<{ workers: WorkerSummary[] }>("/api/workers").then((r) => r.workers);
+
+/** Machines whose YouTube credentials have died and need consent re-granted. */
+export const fetchPendingAuth = () =>
+  api<{ pending: PendingAuthSummary[] }>("/api/auth/youtube/pending").then(
+    (r) => r.pending
+  );
+
+/**
+ * Poll for workers waiting on YouTube authorisation.
+ *
+ * Polled rather than derived from the job, because the request outlives the
+ * job that triggered it: the upload fails, the prompt stays up for 15 minutes,
+ * and the next upload attempt after authorising just works. It also has to be
+ * visible from a device that never saw the failing job.
+ */
+export function usePendingAuth(intervalMs = 15000) {
+  const [pending, setPending] = useState<PendingAuthSummary[]>([]);
+
+  const refresh = useCallback(async () => {
+    try {
+      setPending(await fetchPendingAuth());
+    } catch {
+      // A signed-out or offline tab simply shows no prompt.
+      setPending([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const h = setInterval(refresh, intervalMs);
+    return () => clearInterval(h);
+  }, [refresh, intervalMs]);
+
+  return pending;
+}
 
 /**
  * Ask the worker on THIS machine who it is.
