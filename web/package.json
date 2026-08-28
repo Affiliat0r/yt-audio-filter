@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@upstash/redis": "^1.34.3",
-    "@vercel/blob": "^2.8.0",
     "next": "^16.2.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

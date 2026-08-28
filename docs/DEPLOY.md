@@ -2,15 +2,15 @@
 
 > **Live deployment:** https://quran-studio-mocha.vercel.app
 > Project `quran-studio` under `hasans-projects-76845795`. Redis (Upstash
-> `upstash-kv-claret-pillar`) and Blob (`quran-studio-renders`, public) are
-> provisioned and linked. The steps below are the from-scratch recipe — for the
-> existing deployment you only need step 5, "Run the worker".
+> `upstash-kv-claret-pillar`) is provisioned and linked. The steps below are the
+> from-scratch recipe — for the existing deployment you only need step 5, "Run
+> the worker".
 
 The Studio is split in two:
 
 | Piece | Runs on | Does |
 |---|---|---|
-| `web/` — Next.js | Vercel, always up | The whole UI, job queue API, previews |
+| `web/` — Next.js | Vercel, always up | The whole UI and the job queue API |
 | `worker/` — Python | Your PC | Downloads, FFmpeg, Demucs, Real-ESRGAN, NVENC, YouTube upload |
 
 The worker **polls** Vercel over plain outbound HTTPS. There is no inbound
@@ -86,20 +86,11 @@ Fill in:
 ```ini
 STUDIO_BASE_URL=https://quran-studio.vercel.app
 WORKER_TOKEN=<the same value you set on Vercel>
-BLOB_READ_WRITE_TOKEN=<optional — see below>
 ```
 
-### Vercel Blob (optional, enables in-browser preview)
-
-Without it everything still renders; you just do not get a preview player or a
-download button in the browser, because the MP4 never leaves your PC.
-
-Vercel dashboard → **Storage → Blob → Create**, then copy the read-write token
-into `worker/.env`. Verify it in one command:
-
-```bash
-python -m worker.worker --selftest-blob
-```
+> **Renders never leave the worker.** The Studio shows the finished file's
+> name, size, and path on that machine; there is no in-browser player and no
+> download. Uploading to YouTube is how a render becomes watchable elsewhere.
 
 ## 5. Run the worker
 

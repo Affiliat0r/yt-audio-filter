@@ -17,7 +17,6 @@ import pytest
 from worker.config import (
     DEFAULT_POLL_SECONDS,
     WorkerConfigError,
-    load_blob_token,
     load_config,
     parse_env_file,
 )
@@ -351,7 +350,7 @@ def test_job_from_json_parses_the_full_envelope():
             "settings": _settings_json(),
         },
         "progress": {"stage": "Claimed", "percent": None, "log": ["a"], "updatedAt": 5},
-        "result": {"blobUrl": "https://blob/x.mp4", "sizeBytes": 12},
+        "result": {"localPath": "D:/cache/x.mp4", "sizeBytes": 12},
         "error": None,
         "errorDetails": None,
         "createdAt": 1,
@@ -365,7 +364,7 @@ def test_job_from_json_parses_the_full_envelope():
     assert job.kind == "surah"
     assert job.upload_requested is True
     assert isinstance(job.input, SurahJobInput)
-    assert job.result is not None and job.result.blob_url == "https://blob/x.mp4"
+    assert job.result is not None and job.result.local_path == "D:/cache/x.mp4"
     assert job.result.size_bytes == 12
     assert job.progress.log == ["a"]
 
@@ -451,12 +450,14 @@ def test_job_progress_defaults():
 
 def test_job_result_to_json_omits_unset_fields():
     assert JobResult().to_json() == {}
-    assert JobResult(blob_url="u").to_json() == {"blobUrl": "u"}
+    assert JobResult(local_path="D:/cache/x.mp4").to_json() == {
+        "localPath": "D:/cache/x.mp4"
+    }
 
 
 def test_job_result_to_json_uses_camel_case():
     payload = JobResult(
-        blob_url="u",
+        local_path="D:/cache/f.mp4",
         file_name="f.mp4",
         size_bytes=9,
         youtube_video_id="yt1",
@@ -464,7 +465,7 @@ def test_job_result_to_json_uses_camel_case():
     ).to_json()
 
     assert set(payload) == {
-        "blobUrl",
+        "localPath",
         "fileName",
         "sizeBytes",
         "youtubeVideoId",
@@ -535,11 +536,13 @@ def test_job_result_parses_source_quality_back_from_the_wire():
     assert result.source_quality.codec == "vp9"
 
 
-def test_job_result_merge_keeps_the_preview_url_when_adding_a_youtube_id():
-    rendered = JobResult(blob_url="https://blob/x.mp4", file_name="x.mp4", size_bytes=7)
+def test_job_result_merge_keeps_the_local_path_when_adding_a_youtube_id():
+    """The upload pass returns only the YouTube id; without the merge the card
+    would lose the path telling the user where the file actually is."""
+    rendered = JobResult(local_path="D:/cache/x.mp4", file_name="x.mp4", size_bytes=7)
 
     merged = rendered.merged_with(JobResult(youtube_video_id="yt42"))
-    assert merged.blob_url == "https://blob/x.mp4"
+    assert merged.local_path == "D:/cache/x.mp4"
     assert merged.file_name == "x.mp4"
     assert merged.youtube_video_id == "yt42"
 
@@ -614,7 +617,7 @@ def test_parse_env_file_handles_comments_quotes_and_export(tmp_path: Path):
                 "",
                 "STUDIO_BASE_URL=https://x.vercel.app",
                 'WORKER_TOKEN="quoted-token"',
-                "export BLOB_READ_WRITE_TOKEN='single'",
+                "export WORKER_ID='single'",
                 "NOT_A_PAIR",
                 "WORKER_POLL_SECONDS = 9 ",
             ]
@@ -625,7 +628,7 @@ def test_parse_env_file_handles_comments_quotes_and_export(tmp_path: Path):
     values = parse_env_file(env_file)
     assert values["STUDIO_BASE_URL"] == "https://x.vercel.app"
     assert values["WORKER_TOKEN"] == "quoted-token"
-    assert values["BLOB_READ_WRITE_TOKEN"] == "single"
+    assert values["WORKER_ID"] == "single"
     assert values["WORKER_POLL_SECONDS"] == "9"
     assert "NOT_A_PAIR" not in values
 
@@ -647,7 +650,6 @@ def test_load_config_reads_the_env_file_and_applies_defaults(tmp_path: Path):
     assert cfg.token == "tok"
     assert cfg.poll_seconds == DEFAULT_POLL_SECONDS
     assert cfg.cache_dir == Path("cache")
-    assert cfg.blob_enabled is False
     assert cfg.discovery_port == DEFAULT_DISCOVERY_PORT
     # Nothing configured, so an id was derived and remembered for next time.
     assert cfg.worker_id
@@ -662,7 +664,6 @@ def test_load_config_prefers_the_process_environment(tmp_path: Path):
         env={
             "STUDIO_BASE_URL": "https://env",
             "WORKER_TOKEN": "env-tok",
-            "BLOB_READ_WRITE_TOKEN": "blob-tok",
             "WORKER_POLL_SECONDS": "2.5",
             "WORKER_CACHE_DIR": "D:/cache",
         },
@@ -674,7 +675,6 @@ def test_load_config_prefers_the_process_environment(tmp_path: Path):
     assert cfg.token == "env-tok"
     assert cfg.poll_seconds == 2.5
     assert cfg.cache_dir == Path("D:/cache")
-    assert cfg.blob_enabled is True
 
 
 def test_load_config_takes_an_explicit_worker_id_over_the_derived_one(tmp_path: Path):
@@ -731,14 +731,6 @@ def test_load_config_rejects_a_non_numeric_poll_interval(tmp_path: Path):
 
     with pytest.raises(WorkerConfigError, match="WORKER_POLL_SECONDS"):
         load_config(env=env, env_file=tmp_path / "absent.env")
-
-
-def test_load_blob_token_falls_back_to_the_env_file(tmp_path: Path):
-    env_file = tmp_path / ".env"
-    env_file.write_text("BLOB_READ_WRITE_TOKEN=from-file\n", encoding="utf-8")
-
-    assert load_blob_token(env={}, env_file=env_file) == "from-file"
-    assert load_blob_token(env={}, env_file=tmp_path / "absent.env") is None
 
 
 # ------------------------------------------------- music-removal scale option

@@ -34,10 +34,10 @@ from yt_audio_filter.exceptions import YTAudioFilterError
 from yt_audio_filter.logger import get_logger, setup_logger
 from yt_audio_filter.uploader import NONINTERACTIVE_ENV
 
-from . import WORKER_VERSION, blob
+from . import WORKER_VERSION
 from .catalog_sync import DEFAULT_INTERVAL_SECONDS, start_catalog_sync
 from .client import StudioClient
-from .config import WorkerConfig, WorkerConfigError, load_blob_token, load_config
+from .config import WorkerConfig, WorkerConfigError, load_config
 from .contract import Job, JobResult, WorkerHeartbeat
 from .discovery import WorkerIdentity, start_discovery
 from .handlers import JobCancelled, JobContext, run_job
@@ -279,11 +279,6 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--selftest-blob",
-        action="store_true",
-        help="Upload a tiny file to Vercel Blob, print the URL, and exit.",
-    )
-    parser.add_argument(
         "--once",
         action="store_true",
         help="Claim and run at most one job, then exit (useful for smoke tests).",
@@ -317,22 +312,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     setup_logger(verbose=args.verbose)
     _forbid_interactive_auth()
 
-    if args.selftest_blob:
-        token = load_blob_token()
-        if not token:
-            logger.error(
-                "BLOB_READ_WRITE_TOKEN is not set (checked the environment and "
-                "worker/.env). Copy it from the Vercel project's Storage tab."
-            )
-            return 2
-        try:
-            url = blob.selftest(token)
-        except Exception as exc:  # noqa: BLE001 - the message is the product
-            logger.error("Blob self-test failed: %s", exc)
-            return 1
-        print(url)
-        return 0
-
     try:
         cfg = load_config()
     except WorkerConfigError as exc:
@@ -355,13 +334,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         discovery_status = f"unavailable (port {cfg.discovery_port} busy)"
 
     logger.info(
-        "Worker %s starting: id=%s studio=%s cache=%s gpu=%s blob=%s discovery=%s",
+        "Worker %s starting: id=%s studio=%s cache=%s gpu=%s discovery=%s",
         WORKER_VERSION,
         cfg.worker_id,
         cfg.base_url,
         cfg.cache_dir,
         identity.gpu or "none detected",
-        "enabled" if cfg.blob_enabled else "disabled (no token)",
         discovery_status,
     )
 

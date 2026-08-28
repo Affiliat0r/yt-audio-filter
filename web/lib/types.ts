@@ -138,14 +138,14 @@ export interface JobProgress {
 
 export interface JobResult {
   /**
-   * Raw Vercel Blob URL of the rendered MP4. The store is private, so this is
-   * NOT directly playable — it 403s without a signature. Kept for debugging
-   * and as the "a render exists" flag; the browser uses
-   * `/api/jobs/:id/preview` instead.
+   * Absolute path of the rendered file **on the worker's own filesystem**.
+   *
+   * The browser cannot fetch it — it is not a URL and there is no server
+   * serving it. Show it as plain text so the user knows which machine holds
+   * the render and where; never render it as a link. Its presence is also the
+   * "a render exists" flag that gates the Upload to YouTube button.
    */
-  blobUrl?: string;
-  /** Blob pathname, used to mint presigned preview URLs. */
-  blobPathname?: string;
+  localPath?: string;
   fileName?: string;
   sizeBytes?: number;
   /** Set when the job also uploaded to YouTube. */

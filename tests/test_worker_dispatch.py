@@ -10,14 +10,12 @@ Everything below is mocked: no ``requests``, no FFmpeg, no Demucs, no network.
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
 
-from worker.blob import BlobUpload, BlobUploadError
 from worker.config import WorkerConfig
 from worker.contract import Job, JobResult
 from worker.handlers import (
@@ -111,7 +109,6 @@ def cfg(tmp_path: Path) -> WorkerConfig:
     return WorkerConfig(
         base_url="https://studio.test",
         token="tok",
-        blob_token=None,
         poll_seconds=0.01,
         cache_dir=tmp_path / "cache",
     )
@@ -645,7 +642,11 @@ def test_upload_request_uploads_the_existing_file_without_re_rendering(
     job = _surah_job(
         metadata_file,
         upload_requested=True,
-        result={"blobUrl": "https://blob/x.mp4", "fileName": "x.mp4", "sizeBytes": 5},
+        result={
+            "localPath": str(rendered),
+            "fileName": "rendered.mp4",
+            "sizeBytes": 2048,
+        },
     )
 
     with patch(
@@ -663,9 +664,11 @@ def test_upload_request_uploads_the_existing_file_without_re_rendering(
     assert kwargs["visual_title"] == "Fun Cartoon"
     assert kwargs["playlist_id"] == "PL1"
 
-    # The preview URL must survive alongside the new YouTube id.
+    # The render's own fields must survive alongside the new YouTube id, so the
+    # finished card can still say where the file is.
     assert result.youtube_video_id == "yt-42"
-    assert result.blob_url == "https://blob/x.mp4"
+    assert result.local_path == str(rendered)
+    assert result.file_name == "rendered.mp4"
 
 
 def test_ayah_upload_collapses_ranges_into_surah_numbers(
@@ -697,7 +700,7 @@ def test_surahs_from_ranges_collapses_consecutive_duplicates():
 def test_music_removal_upload_uses_the_seo_uploader(cfg, store, rendered, tmp_path):
     client = FakeClient()
     store.record("job-1", rendered, "music_removal", _video_metadata(tmp_path / "src.mp4"))
-    job = _music_job(upload_requested=True, result={"blobUrl": "https://blob/m.mp4"})
+    job = _music_job(upload_requested=True, result={"localPath": str(rendered)})
 
     with patch("yt_audio_filter.uploader.upload_to_youtube", return_value="yt-99") as mock:
         result = run_job(job, _ctx(client), cfg, store)
@@ -708,7 +711,7 @@ def test_music_removal_upload_uses_the_seo_uploader(cfg, store, rendered, tmp_pa
     assert kwargs["playlist_id"] == "PLmusic"
     assert kwargs["original_metadata"].title == "Original Title"
     assert result.youtube_video_id == "yt-99"
-    assert result.blob_url == "https://blob/m.mp4"
+    assert result.local_path == str(rendered)
 
 
 def test_upload_without_a_recorded_render_fails_with_a_clear_error(
@@ -722,86 +725,65 @@ def test_upload_without_a_recorded_render_fails_with_a_clear_error(
 
 
 # ---------------------------------------------------------------------------
-# Blob delivery
+# Render delivery — the file never leaves this machine
 # ---------------------------------------------------------------------------
 
 
-def test_successful_blob_upload_populates_blob_url(cfg, store, metadata_file, rendered):
-    client = FakeClient()
-    blob_cfg = WorkerConfig(
-        base_url=cfg.base_url,
-        token=cfg.token,
-        blob_token="blob-tok",
-        poll_seconds=cfg.poll_seconds,
-        cache_dir=cfg.cache_dir,
-    )
-
-    upload = BlobUpload(
-        url="https://blob.example/rendered-xyz.mp4",
-        download_url="https://blob.example/rendered-xyz.mp4?download=1",
-        pathname="rendered.mp4",
-        size_bytes=2048,
-    )
-    with patch("worker.blob.upload_file", return_value=upload) as mock_upload, patch(
-        "yt_audio_filter.overlay_pipeline.run_overlay_from_surah_numbers",
-        return_value=OverlayResult(output_path=rendered),
-    ):
-        result = run_job(_surah_job(metadata_file), _ctx(client), blob_cfg, store)
-
-    assert mock_upload.call_args.args == (rendered, "blob-tok")
-    assert result.blob_url == "https://blob.example/rendered-xyz.mp4"
-
-
-def test_blob_upload_failure_still_completes_the_job_successfully(
+def test_render_result_carries_the_local_path_name_and_size(
     cfg, store, metadata_file, rendered
 ):
+    """``localPath`` is the whole delivery story now: it tells the user which
+    file to look for, and it is what the Studio gates the Upload button on."""
     client = FakeClient()
-    blob_cfg = WorkerConfig(
-        base_url=cfg.base_url,
-        token=cfg.token,
-        blob_token="blob-tok",
-        poll_seconds=cfg.poll_seconds,
-        cache_dir=cfg.cache_dir,
-    )
-    job = _surah_job(metadata_file)
 
     with patch(
-        "worker.blob.upload_file", side_effect=BlobUploadError("HTTP 403", 403, "denied")
-    ), patch(
         "yt_audio_filter.overlay_pipeline.run_overlay_from_surah_numbers",
         return_value=OverlayResult(output_path=rendered),
     ):
-        execute_job(job, blob_cfg, client, store)
+        execute_job(_surah_job(metadata_file), cfg, client, store)
 
     assert len(client.complete_calls) == 1
     call = client.complete_calls[0]
     assert call["ok"] is True
-    assert "blobUrl" not in call["result"]
+    assert call["result"]["localPath"] == str(rendered.resolve())
     assert call["result"]["fileName"] == "rendered.mp4"
+    assert call["result"]["sizeBytes"] == 2048
 
+    # The path is in the log too, so it survives dismissing the job card.
     logged = " ".join(line for _, _, lines in client.progress_calls for line in lines)
-    assert "HTTP 403" in logged
-    assert str(rendered) in logged  # the local path must be recoverable
+    assert str(rendered.resolve()) in logged
 
 
-def test_missing_blob_token_completes_the_job_and_logs_the_local_path(
+def test_render_records_the_path_in_the_sidecar_store_for_a_later_upload(
     cfg, store, metadata_file, rendered
 ):
+    """The upload handler reads the sidecar, not the job result — that is what
+    lets a render survive a worker restart before it is published."""
     client = FakeClient()
 
     with patch(
         "yt_audio_filter.overlay_pipeline.run_overlay_from_surah_numbers",
         return_value=OverlayResult(output_path=rendered),
-    ), patch("worker.blob.upload_file") as mock_upload:
+    ):
         execute_job(_surah_job(metadata_file), cfg, client, store)
 
-    mock_upload.assert_not_called()
-    assert client.complete_calls[0]["ok"] is True
-    assert "blobUrl" not in client.complete_calls[0]["result"]
+    record = store.lookup("job-1")
+    assert record is not None
+    assert Path(record.path) == rendered.resolve()
 
-    logged = " ".join(line for _, _, lines in client.progress_calls for line in lines)
-    assert "BLOB_READ_WRITE_TOKEN" in logged
-    assert str(rendered) in logged
+
+def test_search_result_has_no_local_path_so_it_can_never_be_uploaded(cfg, store):
+    """A search job finishes ``done`` with nothing on disk. Its result must not
+    carry ``localPath``, because that field is the Studio's upload gate."""
+    client = FakeClient()
+
+    with patch("yt_audio_filter.cartoon_search.search_videos", return_value=[]):
+        execute_job(
+            _job("search", {"kind": "search", "query": "cartoon"}), cfg, client, store
+        )
+
+    assert client.complete_calls[0]["ok"] is True
+    assert "localPath" not in client.complete_calls[0]["result"]
 
 
 # ---------------------------------------------------------------------------
@@ -931,7 +913,6 @@ def _targeted_cfg(cfg: WorkerConfig, worker_id: str) -> WorkerConfig:
     return WorkerConfig(
         base_url=cfg.base_url,
         token=cfg.token,
-        blob_token=cfg.blob_token,
         poll_seconds=cfg.poll_seconds,
         cache_dir=cfg.cache_dir,
         worker_id=worker_id,
@@ -1002,89 +983,6 @@ def test_unknown_job_kind_is_rejected(cfg, store):
 
     with pytest.raises(OverlayError, match="Unknown job kind"):
         run_job(job, _ctx(client), cfg, store)
-
-
-# --------------------------------------------------------------- blob pathname
-
-
-def test_blob_pathname_comes_from_url_not_echoed_field() -> None:
-    """Regression: with ``x-add-random-suffix: 1`` the Blob API echoes back the
-    *requested* pathname while storing the object under a suffixed name.
-
-    Trusting the echoed field made the Studio presign a path that does not
-    exist, so every render preview 404'd even though the upload succeeded.
-    """
-    from unittest.mock import MagicMock
-
-    from worker import blob as blob_mod
-
-    response = MagicMock()
-    response.status_code = 200
-    response.json.return_value = {
-        # What the API really returns: suffixed url, unsuffixed pathname.
-        "url": "https://s.private.blob.vercel-storage.com/AnNas_LI0SR-Xy7Qz9.mp4",
-        "downloadUrl": "https://s.private.blob.vercel-storage.com/AnNas_LI0SR-Xy7Qz9.mp4?download=1",
-        "pathname": "AnNas_LI0SR.mp4",
-    }
-    session = MagicMock()
-    session.put.return_value = response
-
-    with tempfile.TemporaryDirectory() as tmp:
-        src = Path(tmp) / "AnNas_LI0SR.mp4"
-        src.write_bytes(b"\x00" * 32)
-        upload = blob_mod.upload_file(src, "tok", session=session)
-
-    assert upload.pathname == "AnNas_LI0SR-Xy7Qz9.mp4"
-    assert upload.pathname != response.json.return_value["pathname"]
-
-    # And the private-store access header must be present.
-    sent_headers = session.put.call_args.kwargs["headers"]
-    assert sent_headers["x-vercel-blob-access"] == "private"
-
-
-# ------------------------------------------------- blob cleanup after upload
-
-
-def test_blob_deleted_after_successful_youtube_upload() -> None:
-    """Once a render is on YouTube the preview copy is redundant, and Vercel
-    Blob's free tier meters API operations — every later read of it costs one.
-    """
-    from unittest.mock import MagicMock
-
-    from worker import blob as blob_mod
-
-    session = MagicMock()
-    session.post.return_value = MagicMock(status_code=200)
-
-    ok = blob_mod.delete_blob("https://s.blob.vercel-storage.com/x.mp4", "tok", session=session)
-
-    assert ok is True
-    url, kwargs = session.post.call_args[0][0], session.post.call_args.kwargs
-    assert url.endswith("/delete")
-    assert kwargs["json"] == {"urls": ["https://s.blob.vercel-storage.com/x.mp4"]}
-    assert kwargs["headers"]["authorization"] == "Bearer tok"
-
-
-def test_blob_delete_never_raises() -> None:
-    """It runs after an upload that already succeeded. Failing the job over
-    leftover storage would be absurd, so every failure path returns False."""
-    from unittest.mock import MagicMock
-
-    import requests as _requests
-
-    from worker import blob as blob_mod
-
-    transport_err = MagicMock()
-    transport_err.post.side_effect = _requests.RequestException("boom")
-    assert blob_mod.delete_blob("https://x/y.mp4", "tok", session=transport_err) is False
-
-    http_err = MagicMock()
-    http_err.post.return_value = MagicMock(status_code=500)
-    assert blob_mod.delete_blob("https://x/y.mp4", "tok", session=http_err) is False
-
-    # Missing url or token is a no-op, not a crash.
-    assert blob_mod.delete_blob("", "tok") is False
-    assert blob_mod.delete_blob("https://x/y.mp4", "") is False
 
 
 # ------------------------------------------- unknown job kinds must not stall

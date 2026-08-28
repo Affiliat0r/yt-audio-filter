@@ -6,7 +6,6 @@ REM (cache\, config\channels.json, examples\*.json) resolve correctly.
 REM
 REM Usage:
 REM   run_worker.bat                 start the polling loop
-REM   run_worker.bat --selftest-blob verify BLOB_READ_WRITE_TOKEN and exit
 REM   run_worker.bat --once -v       run a single job with debug logging
 
 setlocal

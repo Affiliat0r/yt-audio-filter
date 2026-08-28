@@ -236,8 +236,14 @@ Next.js Studio UI                  worker.py polls for jobs
 /api/jobs/:id    poll status ◄──── posts /api/worker/progress
 /api/worker/*    worker API  ◄──── posts /api/worker/complete
 Upstash Redis    job records        runs the EXISTING pipeline unchanged
-Vercel Blob      result MP4         uploads result for preview
+                                    rendered MP4 stays on this disk
 ```
+
+**Rendered files never leave the worker.** The Studio reports a finished
+render's name, size, and path on that machine and nothing more — no player, no
+download. Uploading to YouTube is how a render becomes watchable anywhere
+else. (A Vercel Blob preview used to exist; its free tier ran out twice in one
+week, and the preview was not worth paying for.)
 
 The worker only makes **outbound** HTTPS calls — no inbound ports, no tunnel,
 works behind NAT, and keeps the residential IP that stops YouTube bot
@@ -257,8 +263,7 @@ real render.
 | `web/lib/auth.ts` | Password → HMAC-signed session cookie for users; static `x-worker-token` header for the worker. |
 | `web/data/*.json` | Surahs, reciters, presets, channels baked in at build time. **Generated — never hand-edit.** Run `python scripts/sync_web_data.py`. |
 | `web/scripts/dev-redis.mjs` | In-memory Upstash-REST stand-in for local dev. Test fixture only. |
-| `worker/handlers.py` | Dispatches each job kind to the existing pipeline functions. Always passes `upload=False` — uploads are a separate, explicitly user-triggered step. |
-| `worker/blob.py` | Direct REST upload to Vercel Blob. Degrades gracefully: a failed/absent token still completes the job, just without an in-browser preview. |
+| `worker/handlers.py` | Dispatches each job kind to the existing pipeline functions. Always passes `upload=False` — uploads are a separate, explicitly user-triggered step. `deliver_render` records the finished file in the sidecar store and reports its `localPath`. |
 | `worker/identity.py` | Stable per-machine `workerId`, derived from hostname + machine GUID and persisted to `worker/state/worker_id.txt` so a restart keeps it. |
 | `worker/discovery.py` | Loopback-only `GET /whoami` on port 7717. Lets the browser work out which worker shares its machine. |
 
@@ -276,9 +281,15 @@ Setup, secrets, and deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ### Gotchas
 
-- **Nothing uploads to YouTube automatically.** Renders always land as a
-  preview; publishing requires the explicit "Upload to YouTube" button, which
-  re-queues the job with `uploadRequested=true` and reuses the rendered file.
+- **Nothing uploads to YouTube automatically.** A render just lands on the
+  worker's disk; publishing requires the explicit "Upload to YouTube" button,
+  which re-queues the job with `uploadRequested=true` and reuses that file.
+- **`JobResult.localPath` is the upload gate.** `requestUpload` in
+  `web/lib/jobs.ts` only re-queues a `done` job whose result carries a
+  `localPath`, because that is the one field meaning "a file exists". Gate on
+  anything looser and `search`/`probe` jobs — which finish `done` with nothing
+  on disk — become uploadable. It is a worker-filesystem path, so the UI shows
+  it as plain text and never as a link.
 - **Search runs on the worker**, not Vercel — yt-dlp cannot run in a
   serverless function. The UI polls a `kind: "search"` job.
 - **Search picks must reach the catalog.** The frontend sends the whole

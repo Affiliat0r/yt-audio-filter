@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Explicit, user-initiated YouTube upload of an already-rendered job.
- * Nothing uploads without this call — renders always land as a preview first.
+ * Nothing uploads without this call — a render only ever lands on the
+ * worker's disk until the user presses the button.
  */
 export async function POST(
   _req: Request,

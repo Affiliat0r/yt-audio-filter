@@ -472,7 +472,7 @@ export default function Studio({
                 ? "Pick a video in step 1 first."
                 : !action.ready && mode !== "music_removal"
                   ? "Choose what to recite in step 2 first."
-                  : "Renders land as a preview on this page. Publishing to YouTube is a separate button afterwards."}
+                  : "Renders stay on the worker's disk. Publishing to YouTube is a separate button afterwards."}
             </p>
           </section>
 

@@ -494,10 +494,11 @@ class JobResult:
     """Mirrors ``JobResult``. ``to_json`` omits unset fields entirely, so a
     merge on the frontend never clobbers a previous value with ``null``."""
 
-    blob_url: Optional[str] = None
-    #: Blob pathname; the Studio needs it to mint presigned preview URLs,
-    #: because the render store is private and blob_url alone 403s.
-    blob_pathname: Optional[str] = None
+    #: Absolute path of the rendered file on *this* worker's filesystem. The
+    #: browser cannot fetch it; the Studio shows it as text so the user knows
+    #: which machine holds the render, and uses its presence as the "a render
+    #: exists" flag that gates the Upload to YouTube button.
+    local_path: Optional[str] = None
     file_name: Optional[str] = None
     size_bytes: Optional[int] = None
     youtube_video_id: Optional[str] = None
@@ -512,8 +513,7 @@ class JobResult:
         results = raw.get("searchResults")
         quality = raw.get("sourceQuality")
         return cls(
-            blob_url=_optional_str(raw.get("blobUrl")),
-            blob_pathname=_optional_str(raw.get("blobPathname")),
+            local_path=_optional_str(raw.get("localPath")),
             file_name=_optional_str(raw.get("fileName")),
             size_bytes=None if size is None else int(size),
             youtube_video_id=_optional_str(raw.get("youtubeVideoId")),
@@ -523,10 +523,8 @@ class JobResult:
 
     def to_json(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {}
-        if self.blob_url is not None:
-            payload["blobUrl"] = self.blob_url
-        if self.blob_pathname is not None:
-            payload["blobPathname"] = self.blob_pathname
+        if self.local_path is not None:
+            payload["localPath"] = self.local_path
         if self.file_name is not None:
             payload["fileName"] = self.file_name
         if self.size_bytes is not None:
@@ -542,15 +540,12 @@ class JobResult:
     def merged_with(self, other: "JobResult") -> "JobResult":
         """Overlay ``other``'s set fields on top of this result.
 
-        Used by the upload path so the blob preview URL from the original
-        render survives alongside the new ``youtubeVideoId``.
+        Used by the upload path so the rendered file's local path and size from
+        the original render survive alongside the new ``youtubeVideoId``.
         """
         return JobResult(
-            blob_url=other.blob_url if other.blob_url is not None else self.blob_url,
-            blob_pathname=(
-                other.blob_pathname
-                if other.blob_pathname is not None
-                else self.blob_pathname
+            local_path=(
+                other.local_path if other.local_path is not None else self.local_path
             ),
             file_name=other.file_name if other.file_name is not None else self.file_name,
             size_bytes=(

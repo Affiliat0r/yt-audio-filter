@@ -32,7 +32,6 @@ class WorkerConfig:
 
     base_url: str
     token: str
-    blob_token: Optional[str] = None
     poll_seconds: float = DEFAULT_POLL_SECONDS
     cache_dir: Path = Path(DEFAULT_CACHE_DIR)
     #: Vercel automation-bypass secret. Only needed when the target deployment
@@ -43,10 +42,6 @@ class WorkerConfig:
     worker_id: str = ""
     #: Port of the loopback ``/whoami`` endpoint the browser probes.
     discovery_port: int = DEFAULT_DISCOVERY_PORT
-
-    @property
-    def blob_enabled(self) -> bool:
-        return bool(self.blob_token)
 
 
 def parse_env_file(path: Path) -> Dict[str, str]:
@@ -158,7 +153,6 @@ def load_config(
     return WorkerConfig(
         base_url=base_url.rstrip("/"),
         token=token,
-        blob_token=_lookup("BLOB_READ_WRITE_TOKEN", env, file_values),
         poll_seconds=poll_seconds,
         cache_dir=Path(cache_dir),
         bypass_secret=_lookup("VERCEL_AUTOMATION_BYPASS_SECRET", env, file_values),
@@ -168,17 +162,3 @@ def load_config(
         ),
         discovery_port=discovery_port,
     )
-
-
-def load_blob_token(
-    env: Optional[Mapping[str, str]] = None,
-    env_file: Optional[Path] = None,
-) -> Optional[str]:
-    """Read just ``BLOB_READ_WRITE_TOKEN``.
-
-    ``--selftest-blob`` uses this so the token can be verified without a
-    Studio URL or worker token configured yet.
-    """
-    env = os.environ if env is None else env
-    file_values = parse_env_file(ENV_FILE if env_file is None else Path(env_file))
-    return _lookup("BLOB_READ_WRITE_TOKEN", env, file_values)

@@ -107,7 +107,7 @@ export default function WorkerTarget({
           ? "Looking for a worker on this machine…"
           : localWorkerId
             ? selected === localWorkerId
-              ? "Rendering here. Nothing leaves this machine except the preview."
+              ? "Rendering here. Nothing leaves this machine."
               : "A worker is running here, but work is pinned elsewhere."
             : online.length
               ? "No worker on this machine — work will run on another one."

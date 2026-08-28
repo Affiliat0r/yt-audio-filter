@@ -1,9 +1,9 @@
 """Sidecar map from job id to the rendered file on this machine.
 
-The Studio only ever sees a Blob URL. When the user later clicks "Upload to
-YouTube", the job comes back with ``uploadRequested`` set and the worker has
-to find the local MP4 again — possibly after a restart. That mapping lives
-here as a small JSON file under ``worker/state/``.
+The rendered file never leaves this machine. When the user later clicks
+"Upload to YouTube", the job comes back with ``uploadRequested`` set and the
+worker has to find the local MP4 again — possibly after a restart. That
+mapping lives here as a small JSON file under ``worker/state/``.
 
 Music-removal jobs additionally stash the source video's YouTube metadata,
 because ``uploader.upload_to_youtube`` derives its SEO title/description/tags

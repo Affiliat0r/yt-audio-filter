@@ -8,7 +8,6 @@ which comes back as a second job with ``uploadRequested`` set.
 
 from __future__ import annotations
 
-import dataclasses
 import socket
 import threading
 import time
@@ -28,7 +27,6 @@ from yt_audio_filter.exceptions import OverlayError
 from yt_audio_filter.logger import get_logger
 from yt_audio_filter.metadata import OverlayMetadata, load_metadata
 
-from . import blob
 from .catalog_sync import cache_state_for, scan_cache_states
 from .client import StudioClient
 from .config import WorkerConfig
@@ -97,7 +95,7 @@ class JobContext:
         """Push a progress update, raising :class:`JobCancelled` if cancelled.
 
         The percentage is clamped to 0-100 *and* to never decrease: a
-        music-removal job's blended bar already reaches 100 before the blob
+        music-removal job's blended bar already reaches 100 before the final
         delivery stage reports, and a bar that walks backwards reads as a bug.
         """
         if stage is not None:
@@ -282,52 +280,30 @@ def surahs_from_ranges(ranges: List[AyahRangeSpec]) -> List[int]:
 def deliver_render(
     job: Job,
     ctx: JobContext,
-    cfg: WorkerConfig,
     store: RenderedJobStore,
     output_path: Path,
     *,
     video_metadata: Optional[youtube.VideoMetadata] = None,
 ) -> JobResult:
-    """Record the local file, then best-effort publish it to Vercel Blob.
+    """Record the rendered file and report where it landed.
 
-    A missing token or a failed upload is **not** a job failure: the render
-    is on disk and the log line says where. Only the browser preview is lost.
+    The file never leaves this machine: ``local_path`` is a path on the
+    worker's own disk, which the Studio shows as text. It is also what the
+    Studio gates the "Upload to YouTube" button on, and the sidecar
+    ``store.record`` is what lets that upload find the file again after a
+    worker restart.
     """
-    output_path = Path(output_path)
+    output_path = Path(output_path).resolve()
     store.record(job.id, output_path, job.kind, video_metadata)
 
     size = output_path.stat().st_size if output_path.exists() else 0
-    result = JobResult(file_name=output_path.name, size_bytes=size)
-
-    if not cfg.blob_enabled:
-        ctx.report(
-            "Rendered (preview unavailable)",
-            98,
-            [
-                "BLOB_READ_WRITE_TOKEN is not set, so no browser preview was "
-                f"uploaded. The rendered file is on the worker at {output_path}",
-            ],
-        )
-        return result
-
-    ctx.report("Uploading preview to Vercel Blob", 92)
-    try:
-        upload = blob.upload_file(output_path, cfg.blob_token or "")
-    except Exception as exc:  # noqa: BLE001 - preview is optional
-        logger.warning("Blob upload failed for job %s: %s", job.id, exc)
-        ctx.report(
-            "Rendered (preview upload failed)",
-            98,
-            [
-                f"Vercel Blob upload failed: {exc}",
-                f"The rendered file is on the worker at {output_path}",
-            ],
-        )
-        return result
-
-    ctx.report("Preview ready", 99, [f"Preview uploaded: {upload.url}"])
-    return dataclasses.replace(
-        result, blob_url=upload.url, blob_pathname=upload.pathname
+    ctx.report(
+        "Render complete",
+        99,
+        [f"Rendered file is on this worker at {output_path}"],
+    )
+    return JobResult(
+        local_path=str(output_path), file_name=output_path.name, size_bytes=size
     )
 
 
@@ -369,7 +345,7 @@ def handle_surah(
             upload=False,
         )
 
-    return deliver_render(job, ctx, cfg, store, overlay_result.output_path)
+    return deliver_render(job, ctx, store, overlay_result.output_path)
 
 
 def handle_ayah(
@@ -408,7 +384,7 @@ def handle_ayah(
             burn_subtitles=settings.burn_subtitles,
         )
 
-    return deliver_render(job, ctx, cfg, store, overlay_result.output_path)
+    return deliver_render(job, ctx, store, overlay_result.output_path)
 
 
 def handle_music_removal(
@@ -468,9 +444,7 @@ def handle_music_removal(
             scale_height=job_input.scale_height,
         )
 
-    return deliver_render(
-        job, ctx, cfg, store, output_path, video_metadata=video_metadata
-    )
+    return deliver_render(job, ctx, store, output_path, video_metadata=video_metadata)
 
 
 def handle_search(
@@ -588,21 +562,9 @@ def handle_upload(
         [f"https://www.youtube.com/watch?v={video_id}"],
     )
 
-    # The preview blob existed so the video could be watched before publishing.
-    # It is now on YouTube, so the copy is redundant — and Vercel Blob's free
-    # tier meters API operations, which every subsequent read of it spends.
-    # Best-effort: a failure here must not fail an upload that already worked.
-    result = existing.merged_with(JobResult(youtube_video_id=video_id))
-    if existing.blob_url and cfg.blob_token:
-        if blob.delete_blob(existing.blob_url, cfg.blob_token):
-            ctx.report("Uploaded", 100, ["Preview copy removed from Blob storage"])
-            result = JobResult(
-                youtube_video_id=video_id,
-                file_name=existing.file_name,
-                size_bytes=existing.size_bytes,
-                search_results=existing.search_results,
-            )
-    return result
+    # Keep the render's own fields (local path, file name, size) and add the
+    # YouTube id, so the finished card can still say where the file lives.
+    return existing.merged_with(JobResult(youtube_video_id=video_id))
 
 
 # ---------------------------------------------------------------------------

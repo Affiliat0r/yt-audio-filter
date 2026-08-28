@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { cancelJob, requestUpload } from "@/lib/client";
 import type { Job } from "@/lib/types";
 
+/** Bytes as MB/GB — the render size is the only number worth showing. */
+function formatSize(bytes: number): string {
+  const mb = bytes / 1_048_576;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+}
+
 function StatusPill({ job }: { job: Job }) {
   const map: Record<string, string> = {
     queued: "border-ink-600 text-ink-300",
@@ -126,43 +132,36 @@ export default function JobMonitor({
 
       {job.status === "done" && job.result && (
         <div className="space-y-3">
-          {job.result.blobPathname ? (
-            <>
-              {/* The blob store is private; this route checks the session
-                  cookie and redirects to a short-lived presigned URL. */}
-              <video
-                key={job.id}
-                src={`/api/jobs/${job.id}/preview`}
-                controls
-                className="w-full rounded-lg border border-ink-800 bg-black"
-              />
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={`/api/jobs/${job.id}/preview?download=1`}
-                  className="btn-ghost"
-                >
-                  Download MP4
-                </a>
-                {!job.result.youtubeVideoId && job.kind !== "search" && (
-                  <button
-                    onClick={doUpload}
-                    className="btn-primary"
-                    disabled={busy}
-                  >
-                    {busy ? "Queueing…" : "Upload to YouTube"}
-                  </button>
-                )}
-              </div>
-            </>
-          ) : (
-            job.kind !== "search" && (
-              <p className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-ink-300">
-                Rendered on the worker, but no preview URL was produced. Set
-                <code className="mx-1">BLOB_READ_WRITE_TOKEN</code> in the
-                worker&apos;s <code>.env</code> to enable in-browser preview and
-                download. The file is on your PC — see the log above for its path.
+          {job.result.localPath && (
+            <div className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-ink-300">
+              <p>
+                <span className="text-ink-100">{job.result.fileName}</span>
+                {job.result.sizeBytes
+                  ? ` — ${formatSize(job.result.sizeBytes)}`
+                  : ""}
               </p>
-            )
+              <p className="mt-1 text-xs">
+                Saved on{" "}
+                <span className="text-ink-100">
+                  {job.claimedBy ?? "the worker"}
+                </span>
+                . It stays on that machine — upload it to YouTube to watch it
+                from anywhere.
+              </p>
+              {/* Plain text, never a link: this is a path on the worker's own
+                  filesystem, and no browser can fetch it. */}
+              <p className="mt-2 break-all font-mono text-xs text-ink-400">
+                {job.result.localPath}
+              </p>
+            </div>
+          )}
+
+          {job.result.localPath && !job.result.youtubeVideoId && (
+            <div className="flex flex-wrap gap-2">
+              <button onClick={doUpload} className="btn-primary" disabled={busy}>
+                {busy ? "Queueing…" : "Upload to YouTube"}
+              </button>
+            </div>
           )}
 
           {job.result.youtubeVideoId && (

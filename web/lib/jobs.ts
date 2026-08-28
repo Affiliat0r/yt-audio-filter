@@ -207,11 +207,19 @@ export async function cancelJob(id: string): Promise<Job | null> {
   return job;
 }
 
-/** Flag an already-rendered job for YouTube upload by the worker. */
+/**
+ * Flag an already-rendered job for YouTube upload by the worker.
+ *
+ * The gate is `result.localPath`: the worker only sets it after a render has
+ * landed on its disk, so it is the one field that means "there is a file to
+ * publish". `search` and `probe` jobs finish `done` with no file at all and
+ * must never pass — the returned job comes back with `uploadRequested` still
+ * false, which is what the API route turns into a 409.
+ */
 export async function requestUpload(id: string): Promise<Job | null> {
   const job = await getJob(id);
   if (!job) return null;
-  if (job.status !== "done" || !job.result?.blobUrl) return job;
+  if (job.status !== "done" || !job.result?.localPath) return job;
   job.uploadRequested = true;
   job.status = "queued";
   job.progress = {

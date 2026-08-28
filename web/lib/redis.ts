@@ -49,11 +49,6 @@ export const KEYS = {
   /** Set of known worker ids, so they can be listed without a KEYS scan. */
   workerIndex: "worker:index",
   /**
-   * Cached presigned preview URL per blob pathname. Exists purely to stop the
-   * preview route burning a Blob API operation on every single request.
-   */
-  blobPresign: (pathname: string) => `blob:presign:${pathname}`,
-  /**
    * Remote YouTube authorisation, PKCE. Three short-lived keys:
    *   authRequest — the pending record, keyed by the worker asking.
    *   authState   — state -> workerId, so Google's callback (which knows only

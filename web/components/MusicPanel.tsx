@@ -49,8 +49,8 @@ export default function MusicPanel({
           <option value="public">public</option>
         </select>
         <p className="mt-1 text-xs text-ink-400">
-          Processing never uploads on its own — you get a preview first, then an
-          explicit upload button.
+          Processing never uploads on its own — the result waits on the worker
+          until you press the upload button.
         </p>
       </div>
 
