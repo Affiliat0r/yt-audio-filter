@@ -350,6 +350,53 @@ def _link_video(item: CartoonItem) -> CatalogVideo:
     )
 
 
+#: What every render targets unless told otherwise.
+#:
+#: 720p rather than 1080p because of what YouTube actually gives us. Protected
+#: cartoons come down as format 18 — 360p combined — thanks to the SABR wall
+#: (see CLAUDE.md). Rendering those at 1080p does not add a pixel of detail; it
+#: just makes a bigger file out of the same picture. 720p is the honest ceiling
+#: for a 2x enlargement of a 360p source, and it is still a large step up from
+#: uploading 360p, because YouTube gives a 720p upload a noticeably better
+#: bitrate ladder than a 360p one.
+DEFAULT_HEIGHT = 720
+
+
+def resolution_for(height: int) -> Tuple[int, int]:
+    """A 16:9 resolution for the given height."""
+    return (round(height * 16 / 9 / 2) * 2, height)
+
+
+def scale_height_for(source_height: Optional[int], target: int) -> Optional[int]:
+    """The height to re-encode a music-removal output to, or None to copy.
+
+    Music removal copies the video stream untouched, which is lossless and
+    fast. Enlarging means re-encoding, so it is only worth it when the source
+    is genuinely smaller than the target: never downscale someone's good
+    source, and never re-encode when ffprobe could not tell us the height.
+    """
+    if not source_height or source_height >= target:
+        return None
+    return target
+
+
+def _probe_height(path: Path) -> Optional[int]:
+    """The source's pixel height, or None when ffprobe cannot say.
+
+    Never raises: a failed probe means "copy the stream", which is the safe
+    outcome, not a reason to abandon a render.
+    """
+    try:
+        from .ffmpeg import get_video_info
+
+        info = get_video_info(path)
+        height = info.get("height") if isinstance(info, dict) else None
+        return int(height) if height else None
+    except Exception as exc:  # noqa: BLE001 - falls back to copying
+        logger.debug("Could not probe %s: %s", path, exc)
+        return None
+
+
 def _quran_output_name(item: QuranItem, video: CatalogVideo) -> str:
     numbers = item.surah_numbers
     if len(numbers) > 3:
@@ -382,6 +429,7 @@ class _Run:
         metadata_path: Path,
         privacy: str,
         on_event: Optional[EventCallback],
+        target_height: int = DEFAULT_HEIGHT,
     ) -> None:
         self.dry_run = dry_run
         self.cache_dir = Path(cache_dir)
@@ -389,6 +437,7 @@ class _Run:
         self.state_path = Path(state_path)
         self.metadata_path = Path(metadata_path)
         self.privacy = privacy
+        self.target_height = target_height
         self.on_event = on_event
         self.state = load_state(self.state_path)
         self._uploaded: Optional[Dict[str, dict]] = None
@@ -591,11 +640,21 @@ class _Run:
         def progress(stage: str, percent: int) -> None:
             self.emit("progress", f"{stage} ({percent}%)", stage=stage, percent=percent)
 
-        self.emit("render", f"Removing background music from {video.title!r}")
+        source_height = _probe_height(Path(meta.file_path))
+        scale_height = scale_height_for(source_height, self.target_height)
+        if scale_height:
+            self.emit(
+                "render",
+                f"Removing background music from {video.title!r} "
+                f"(enlarging {source_height}p to {scale_height}p)",
+            )
+        else:
+            self.emit("render", f"Removing background music from {video.title!r}")
         rendered = pipeline.process_video(
             input_path=Path(meta.file_path),
             output_path=output_path,
             progress_callback=progress,
+            scale_height=scale_height,
         )
         return Path(rendered), meta
 
@@ -619,6 +678,7 @@ class _Run:
             metadata=self.metadata(),
             output_path=output_path,
             cache_dir=self.cache_dir,
+            resolution=resolution_for(self.target_height),
             # Never here. Publishing is a separate, explicit step below so a
             # render that succeeds but is wrong can still be caught.
             upload=False,
@@ -855,6 +915,7 @@ def run_workflow(
     on_event: Optional[EventCallback] = None,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     state_path: Path = DEFAULT_STATE_PATH,
+    target_height: int = DEFAULT_HEIGHT,
 ) -> WorkflowSummary:
     """Produce every item, and report what happened.
 
@@ -868,6 +929,8 @@ def run_workflow(
         on_event: ``(kind, message, data)`` progress callback.
         output_dir: Where rendered MP4s land.
         state_path: JSON record of sources already rendered from.
+        target_height: Output height. Overlay renders target it directly; a
+            music-removal source smaller than it is enlarged to match.
 
     Returns:
         A :class:`WorkflowSummary`; ``exit_code`` is non-zero if any item
@@ -881,6 +944,7 @@ def run_workflow(
         metadata_path=Path(metadata_path),
         privacy=privacy,
         on_event=on_event,
+        target_height=target_height,
     )
     summary = WorkflowSummary(dry_run=dry_run)
     for item in items:

@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Sequence
 from .exceptions import YTAudioFilterError
 from .logger import setup_logger
 from .workflow import QuranItem, WorkItem, WorkflowParseError, parse_request
+from . import workflow_runner
 from .workflow_runner import (
     DEFAULT_CACHE_DIR,
     DEFAULT_METADATA_PATH,
@@ -65,6 +66,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Resolve the sources and run the duplicate check, then stop before "
             "rendering, uploading, or writing anything."
+        ),
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=workflow_runner.DEFAULT_HEIGHT,
+        metavar="N",
+        help=(
+            "Output height (default: %(default)s). Overlay renders target it; "
+            "a music-removal source smaller than it is enlarged to match."
         ),
     )
     parser.add_argument(
@@ -265,6 +276,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             cache_dir=args.cache_dir,
             metadata_path=args.metadata,
             privacy=args.privacy,
+        target_height=args.height,
             on_event=make_printer(args.verbose),
         )
     except YTAudioFilterError as exc:
