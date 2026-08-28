@@ -59,6 +59,46 @@ SEO_KEYWORDS = [
 ]
 
 
+#: YouTube's hard limit. A longer title is rejected outright, which would waste
+#: an entire render — so trimming happens before the request, not at the API.
+MAX_TITLE_LENGTH = 100
+
+
+def resolve_upload_title(
+    source_title: str,
+    *,
+    explicit: Optional[str] = None,
+    fallback: str = "Untitled",
+) -> str:
+    """The title to publish under: the source video's own, by default.
+
+    Earlier versions minted a "transformative" title from keywords scraped out
+    of the original (``"Music Removed - word word word"``). People search for
+    the name the episode actually has, so the original is what gets published;
+    the description still records where it came from.
+
+    Note this makes the upload look more like the source to Content ID than a
+    reworded title does. That is a deliberate trade for discoverability.
+    """
+    title = (explicit if explicit is not None else source_title) or ""
+    # YouTube rejects these two characters outright.
+    title = title.replace("<", "").replace(">", "")
+    title = " ".join(title.split())
+    if not title:
+        title = " ".join(str(fallback).split()) or "Untitled"
+
+    if len(title) <= MAX_TITLE_LENGTH:
+        return title
+
+    # Trim on a word boundary where possible; the ellipsis makes it obvious the
+    # title was shortened rather than mysteriously cut.
+    cut = title[: MAX_TITLE_LENGTH - 1]
+    spaced = cut.rsplit(" ", 1)[0]
+    if len(spaced) >= MAX_TITLE_LENGTH // 2:
+        cut = spaced
+    return cut.rstrip() + "…"
+
+
 def generate_seo_title(original_title: str) -> str:
     """
     Generate a transformative title for musicless video.
@@ -655,7 +695,7 @@ def upload_to_youtube(
 
     # Generate SEO-optimized metadata
     if original_metadata:
-        title = generate_seo_title(original_metadata.title)
+        title = resolve_upload_title(original_metadata.title, fallback=video_path.stem)
         description = generate_seo_description(
             original_title=original_metadata.title,
             original_description=original_metadata.description,
