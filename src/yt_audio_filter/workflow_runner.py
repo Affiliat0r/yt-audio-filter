@@ -29,7 +29,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from . import cartoon_catalog, cartoon_search, overlay_pipeline, uploader, youtube, yt_metadata
 from .cartoon_catalog import CatalogVideo
@@ -44,6 +44,15 @@ DEFAULT_STATE_PATH = Path("state/workflow_sources.json")
 DEFAULT_METADATA_PATH = Path("examples/metadata-surah-arrahman.json")
 DEFAULT_CACHE_DIR = Path("cache")
 DEFAULT_OUTPUT_DIR = Path("output")
+
+#: Where a resolved-but-unapproved plan waits between the two halves of a
+#: run. Kept beside the state file because it is the same kind of thing: a
+#: small record of intent that outlives one invocation.
+DEFAULT_PLAN_PATH = Path("state/last_plan.json")
+
+#: Bumped whenever the on-disk plan shape changes. An older file is refused
+#: outright rather than half-read: a misread plan publishes the wrong video.
+PLAN_VERSION = 1
 
 #: A full episode rather than a clip or a ten-hour compilation. Outside this
 #: band the result is still usable, so it is a preference and not a filter —
@@ -61,6 +70,10 @@ EventCallback = Callable[[str, str, Dict[str, object]], None]
 
 class WorkflowRunError(YTAudioFilterError):
     """An item could not be produced."""
+
+
+class PlanError(YTAudioFilterError):
+    """A saved plan could not be read, or does not apply to this request."""
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +420,234 @@ def _quran_output_name(item: QuranItem, video: CatalogVideo) -> str:
 
 
 # ---------------------------------------------------------------------------
+# The plan: what a run intends to make, before it makes it
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PlannedPick:
+    """One video the run intends to produce, chosen but not yet produced.
+
+    Approval is given against this, so it has to survive a round trip through
+    JSON. That is why the whole ``CatalogVideo`` is carried rather than just an
+    id: a second search can legitimately rank different videos, and approving
+    pick #2 must produce *the video that was shown*, not whatever comes second
+    tomorrow.
+    """
+
+    #: Position of the originating item in the request, so a rejected pick can
+    #: be re-resolved from the same candidate pool.
+    item_index: int
+    item: WorkItem
+    kind: str  # "cartoon" | "quran"
+    label: str
+    playlist_name: Optional[str]
+    index: int  # 1-based repetition within the item
+    total: int  # the item's count
+    video: Optional[CatalogVideo] = None
+    skipped: List[SkippedSource] = field(default_factory=list)
+    #: Set when the pick was deliberately dropped (a pasted link already on the
+    #: channel). Not a failure, and nothing to approve.
+    skipped_reason: Optional[str] = None
+    error: Optional[str] = None
+
+    @property
+    def producible(self) -> bool:
+        """True when approving this pick would actually make something."""
+        return self.video is not None and self.error is None and self.skipped_reason is None
+
+    @property
+    def url(self) -> str:
+        """The canonical watch URL — what a human opens to check the pick.
+
+        Rebuilt from the id rather than reusing ``video.url``, because a pasted
+        link may be a ``youtu.be`` short form or drag a playlist query along,
+        and the point of printing it is that it is unambiguous and clickable.
+        """
+        if self.video is None:
+            return ""
+        return f"https://www.youtube.com/watch?v={self.video.video_id}"
+
+    def to_result(self) -> ItemResult:
+        """The summary row this pick starts from."""
+        result = ItemResult(
+            kind=self.kind,
+            label=self.label,
+            playlist_name=self.playlist_name,
+            index=self.index,
+            total=self.total,
+            skipped=list(self.skipped),
+            skipped_reason=self.skipped_reason,
+            error=self.error,
+        )
+        if self.video is not None:
+            result.source_id = self.video.video_id
+            result.source_title = self.video.title
+            result.source_url = self.video.url
+            result.source_duration = self.video.duration
+        return result
+
+
+@dataclass
+class WorkflowPlan:
+    """A resolved set of picks, waiting to be approved.
+
+    The request line and the timestamp are part of the record on purpose: an
+    approval that could be applied to a *different* request would publish
+    videos nobody looked at, which is exactly what this mechanism exists to
+    prevent.
+    """
+
+    request: str
+    picks: List[PlannedPick] = field(default_factory=list)
+    created_at: str = ""  # ISO-8601 UTC; filled in below when left blank
+    privacy: str = "public"
+    target_height: int = DEFAULT_HEIGHT
+    version: int = PLAN_VERSION
+
+    def __post_init__(self) -> None:
+        if not self.created_at:
+            self.created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    @property
+    def producible(self) -> List[PlannedPick]:
+        return [pick for pick in self.picks if pick.producible]
+
+    def matches(self, request: Optional[str]) -> bool:
+        """Whether ``request`` is the one this plan was resolved for.
+
+        ``None`` means the caller named no request at all (a bare ``yt-studio
+        --approve``), which cannot contradict the saved one.
+        """
+        if request is None:
+            return True
+        return request.strip() == self.request.strip()
+
+
+def _item_to_dict(item: WorkItem) -> Dict[str, Any]:
+    data: Dict[str, Any] = asdict(item)
+    data["type"] = _item_kind(item)
+    return data
+
+
+def _item_from_dict(data: Dict[str, Any]) -> WorkItem:
+    cls = QuranItem if data.get("type") == "quran" else CartoonItem
+    fields = set(cls.__dataclass_fields__)
+    try:
+        return cls(**{k: v for k, v in data.items() if k in fields})  # type: ignore[arg-type]
+    except TypeError as exc:
+        raise PlanError(f"Unreadable work item in the plan: {exc}") from exc
+
+
+def _pick_to_dict(pick: PlannedPick) -> Dict[str, Any]:
+    return {
+        "item_index": pick.item_index,
+        "item": _item_to_dict(pick.item),
+        "kind": pick.kind,
+        "label": pick.label,
+        "playlist_name": pick.playlist_name,
+        "index": pick.index,
+        "total": pick.total,
+        "video": asdict(pick.video) if pick.video is not None else None,
+        "skipped": [asdict(s) for s in pick.skipped],
+        "skipped_reason": pick.skipped_reason,
+        "error": pick.error,
+    }
+
+
+def _pick_from_dict(data: Dict[str, Any]) -> PlannedPick:
+    video = data.get("video")
+    try:
+        return PlannedPick(
+            item_index=int(data.get("item_index") or 0),
+            item=_item_from_dict(dict(data.get("item") or {})),
+            kind=str(data.get("kind") or ""),
+            label=str(data.get("label") or ""),
+            playlist_name=data.get("playlist_name") or None,
+            index=int(data.get("index") or 1),
+            total=int(data.get("total") or 1),
+            video=CatalogVideo(**video) if isinstance(video, dict) else None,
+            skipped=[
+                SkippedSource(**s) for s in (data.get("skipped") or []) if isinstance(s, dict)
+            ],
+            skipped_reason=data.get("skipped_reason") or None,
+            error=data.get("error") or None,
+        )
+    except TypeError as exc:
+        raise PlanError(f"Unreadable pick in the plan: {exc}") from exc
+
+
+def save_plan(plan: WorkflowPlan, path: Path = DEFAULT_PLAN_PATH) -> Path:
+    """Write the plan out so a later ``--approve`` can produce it verbatim."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "version": plan.version,
+                "request": plan.request,
+                "created_at": plan.created_at,
+                "privacy": plan.privacy,
+                "target_height": plan.target_height,
+                "picks": [_pick_to_dict(pick) for pick in plan.picks],
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def load_plan(path: Path = DEFAULT_PLAN_PATH) -> WorkflowPlan:
+    """Read a saved plan back.
+
+    Damage is fatal here, unlike in the state file. The state file is an
+    optimisation and ignoring it only costs a re-render; a plan file *is* the
+    approval, so anything short of reading it exactly has to stop the run.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise PlanError(
+            f"No plan is waiting at {path}",
+            "Run yt-studio with a request first: it resolves the picks, prints "
+            "their URLs, and saves the plan for --approve.",
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise PlanError(
+            f"Could not read the plan at {path}: {exc}",
+            "Re-run the request to resolve a fresh plan.",
+        ) from exc
+    if not isinstance(raw, dict) or raw.get("version") != PLAN_VERSION:
+        raise PlanError(
+            f"The plan at {path} was written by a different version of yt-studio",
+            "Re-run the request to resolve a fresh plan.",
+        )
+    return WorkflowPlan(
+        request=str(raw.get("request") or ""),
+        picks=[_pick_from_dict(p) for p in raw.get("picks") or [] if isinstance(p, dict)],
+        created_at=str(raw.get("created_at") or ""),
+        privacy=str(raw.get("privacy") or "public"),
+        target_height=int(raw.get("target_height") or DEFAULT_HEIGHT),
+    )
+
+
+def discard_plan(path: Path = DEFAULT_PLAN_PATH) -> None:
+    """Delete a plan that has been acted on.
+
+    An approval is good exactly once. Producing the same plan a second time
+    would render and publish the same sources again, because the duplicate
+    check ran when the plan was resolved, not now.
+    """
+    try:
+        Path(path).unlink()
+    except OSError:  # pragma: no cover - a plan we cannot delete is not fatal
+        logger.debug("Could not remove the plan file at %s", path)
+
+
+# ---------------------------------------------------------------------------
 # The run
 # ---------------------------------------------------------------------------
 
@@ -430,6 +671,7 @@ class _Run:
         privacy: str,
         on_event: Optional[EventCallback],
         target_height: int = DEFAULT_HEIGHT,
+        peek_links: Optional[bool] = None,
     ) -> None:
         self.dry_run = dry_run
         self.cache_dir = Path(cache_dir)
@@ -439,6 +681,11 @@ class _Run:
         self.privacy = privacy
         self.target_height = target_height
         self.on_event = on_event
+        # A pasted link has no title until something fetches it, which is fine
+        # for a render (the download brings one) but useless in a list someone
+        # is being asked to approve. Default to the old behaviour and let the
+        # approval path turn it on.
+        self.peek_links = dry_run if peek_links is None else peek_links
         self.state = load_state(self.state_path)
         self._uploaded: Optional[Dict[str, dict]] = None
         self._playlists: Optional[Dict[str, str]] = None
@@ -447,6 +694,16 @@ class _Run:
         # searches must not both render the same video, and a repetition must
         # not re-pick a source whose render just failed.
         self._claimed: set = set()
+        # Videos the user looked at and turned down. Held in memory for this
+        # run only: the state file records what has been *produced*, and
+        # writing a rejection there would hide the video from every future run
+        # as though it had already been published.
+        self._rejected: set = set()
+        # One candidate iterator per item, kept alive across repetitions and
+        # across re-resolves. That shared position is what makes "reject this
+        # one, give me the next" work without restarting the search.
+        self._pools: Dict[int, Iterator[CatalogVideo]] = {}
+        self._pool_errors: Dict[int, str] = {}
 
     # -- plumbing ---------------------------------------------------------
 
@@ -550,6 +807,9 @@ class _Run:
             if term is not None:
                 self._skip(result, video, f"title matches excluded term {term!r}")
                 continue
+            if video.video_id in self._rejected:
+                self._skip(result, video, "rejected during approval")
+                continue
             if video.video_id in self._claimed:
                 self._skip(result, video, "already picked earlier in this run")
                 continue
@@ -567,16 +827,19 @@ class _Run:
             "or clear the state file if this was intentional.",
         )
 
-    def resolve_link(self, item: CartoonItem, result: ItemResult) -> Optional[CatalogVideo]:
-        """The exact video a pasted link names, or None if it is already ours.
+    def resolve_link(
+        self, item: CartoonItem, result: ItemResult
+    ) -> Tuple[CatalogVideo, Optional[str]]:
+        """The exact video a pasted link names, and why it must not be redone.
 
         No search and no duration preference: the user has already chosen. The
         duplicate check still applies — a link is as easy to paste twice as it
         is to paste once — but a duplicate here is a deliberate skip rather than
-        a failure, because not republishing is the correct outcome.
+        a failure, because not republishing is the correct outcome. The video is
+        returned either way so the summary can name what was skipped.
         """
         video = _link_video(item)
-        if self.dry_run:
+        if self.peek_links:
             # A plan that only echoes the URL back is not worth reading, so
             # spend one cheap metadata lookup on the real title and channel.
             peeked = self.peek_link(video.url)
@@ -590,18 +853,16 @@ class _Run:
                     result.playlist_name = _title_case(peeked.channel)
 
         reason = self.duplicate_reason(video)
+        if reason is None and video.video_id in self._rejected:
+            reason = "rejected during approval"
         if reason is None and video.video_id in self._claimed:
             reason = "already picked earlier in this run"
         if reason is not None:
-            result.source_id = video.video_id
-            result.source_title = video.title
-            result.source_url = video.url
-            result.skipped_reason = reason
             self._skip(result, video, reason)
-            return None
+            return video, reason
 
         self._claimed.add(video.video_id)
-        return video
+        return video, None
 
     def peek_link(self, url: str) -> Optional["yt_metadata.YouTubeMetadata"]:
         """Best-effort title/channel for a link, without downloading it."""
@@ -749,80 +1010,129 @@ class _Run:
         index[key] = playlist_id
         return playlist_id, True
 
-    # -- item loop --------------------------------------------------------
+    # -- resolving --------------------------------------------------------
 
-    def run_item(self, item: WorkItem) -> List[ItemResult]:
+    def reject_video(self, video_id: str) -> None:
+        """Take a video out of the running for the rest of this run."""
+        self._rejected.add(video_id)
+
+    def pool_for(self, item: WorkItem, item_index: int) -> Tuple[Iterator[CatalogVideo], str]:
+        """The item's candidate iterator, created once and shared.
+
+        Returns the iterator and an error string (empty when fine). A search
+        that dies fails only its own item, and is remembered so a later
+        re-resolve does not retry a dead search per repetition.
+        """
+        if item_index in self._pool_errors:
+            return iter(()), self._pool_errors[item_index]
+        if item_index not in self._pools:
+            if is_link_item(item):
+                # A link names its own video, so there is nothing to search for.
+                self._pools[item_index] = iter(())
+            else:
+                try:
+                    self._pools[item_index] = iter(self.candidates(item))
+                except Exception as exc:  # noqa: BLE001 - a dead search fails one item
+                    label, message = describe_item(item), str(exc)
+                    self._pool_errors[item_index] = message
+                    self.emit("item-failed", f"{label}: {message}", label=label, error=message)
+                    return iter(()), message
+        return self._pools[item_index], ""
+
+    def blank_pick(self, item: WorkItem, item_index: int, index: int) -> PlannedPick:
+        return PlannedPick(
+            item_index=item_index,
+            item=item,
+            kind=_item_kind(item),
+            label=describe_item(item),
+            playlist_name=item.playlist_name,
+            index=index,
+            total=item.count,
+        )
+
+    def resolve_item(self, item: WorkItem, item_index: int) -> List[PlannedPick]:
+        """Choose a source for every repetition of one item, rendering nothing.
+
+        Everything read-only still happens for real — the search, the exclusion
+        terms, and the duplicate check — so the picks that come out are picks
+        against the channel as it actually is, not a guess.
+        """
         label = describe_item(item)
-        kind = _item_kind(item)
-        results: List[ItemResult] = []
-
-        def blank(index: int) -> ItemResult:
-            return ItemResult(
-                kind=kind,
-                label=label,
-                playlist_name=item.playlist_name,
-                index=index,
-                total=item.count,
-                dry_run=self.dry_run,
-            )
-
         # Announced before the search, so the transcript reads as "this item,
-        # then what it took to produce it" rather than the other way round.
+        # then what it took to source it" rather than the other way round.
         self.emit("item", f"{label} — {item.count} video(s)", label=label, count=item.count)
 
-        if is_link_item(item):
-            # A link names its own video, so there is nothing to search for.
-            pool: Iterator[CatalogVideo] = iter(())
-        else:
-            try:
-                pool = iter(self.candidates(item))
-            except Exception as exc:  # noqa: BLE001 - a dead search fails only this item
-                message = str(exc)
-                self.emit("item-failed", f"{label}: {message}", label=label, error=message)
-                return [replace(blank(i), error=message) for i in range(1, item.count + 1)]
-
-        exclude_terms = item.exclude_terms if isinstance(item, QuranItem) else []
+        pool, pool_error = self.pool_for(item, item_index)
+        picks: List[PlannedPick] = []
         for index in range(1, item.count + 1):
-            result = blank(index)
-            results.append(result)
+            pick = self.blank_pick(item, item_index, index)
+            picks.append(pick)
+            if pool_error:
+                pick.error = pool_error
+                continue
             if item.count > 1:
                 self.emit("item-step", f"{label} {index}/{item.count}", label=label, index=index)
-            try:
-                self.run_once(item, pool, exclude_terms, result)
-            except Exception as exc:  # noqa: BLE001 - the whole point: keep going
-                result.error = str(exc)
-                self.emit("item-failed", f"{label}: {exc}", label=label, error=str(exc))
-        return results
+            self.resolve_pick(pick, pool)
+        return picks
 
-    def run_once(
-        self,
-        item: WorkItem,
-        pool: Iterator[CatalogVideo],
-        exclude_terms: Sequence[str],
-        result: ItemResult,
-    ) -> None:
-        if is_link_item(item):
-            video = self.resolve_link(item, result)
-            if video is None:  # already on the channel; deliberately not redone
-                return
-        else:
-            video = self.pick(pool, result, exclude_terms)
-        result.source_id = video.video_id
-        result.source_title = video.title
-        result.source_url = video.url
-        result.source_duration = video.duration
+    def resolve_pick(self, pick: PlannedPick, pool: Iterator[CatalogVideo]) -> None:
+        """Fill in ``pick.video``, or record why no source could be chosen."""
+        item = pick.item
+        # ``pick`` and ``resolve_link`` both report through an ``ItemResult``;
+        # this scratch one carries their findings back onto the plan entry.
+        scratch = pick.to_result()
+        exclude_terms = item.exclude_terms if isinstance(item, QuranItem) else []
+        try:
+            if isinstance(item, CartoonItem) and is_link_item(item):
+                video, reason = self.resolve_link(item, scratch)
+            else:
+                video, reason = self.pick(pool, scratch, exclude_terms), None
+        except Exception as exc:  # noqa: BLE001 - the whole point: keep going
+            pick.skipped = list(scratch.skipped)
+            pick.error = str(exc)
+            self.emit("item-failed", f"{pick.label}: {exc}", label=pick.label, error=str(exc))
+            return
+
+        pick.skipped = list(scratch.skipped)
+        pick.playlist_name = scratch.playlist_name
+        pick.video = video
+        pick.skipped_reason = reason
+        if reason is not None:  # already ours; deliberately not redone
+            return
         self.emit(
             "pick",
             f"Picked {video.title!r} ({video.duration // 60} min)",
             video_id=video.video_id,
             title=video.title,
-            url=video.url,
+            url=pick.url,
         )
 
-        if self.dry_run:
-            self.plan_only(item, video, result)
-            return
+    # -- producing --------------------------------------------------------
 
+    def produce(self, pick: PlannedPick) -> ItemResult:
+        """Render, publish and file one approved pick.
+
+        Never raises: a failure is recorded against its own row so the next
+        approved pick still gets its turn.
+        """
+        result = pick.to_result()
+        if not pick.producible or pick.video is None:
+            return result
+        self.emit(
+            "produce",
+            f"{pick.label} ({pick.index}/{pick.total}) — {pick.video.title!r}",
+            label=pick.label,
+            video_id=pick.video.video_id,
+            url=pick.url,
+        )
+        try:
+            self.produce_once(pick.item, pick.video, result)
+        except Exception as exc:  # noqa: BLE001 - one bad item cannot end the run
+            result.error = str(exc)
+            self.emit("item-failed", f"{pick.label}: {exc}", label=pick.label, error=str(exc))
+        return result
+
+    def produce_once(self, item: WorkItem, video: CatalogVideo, result: ItemResult) -> None:
         if isinstance(item, CartoonItem):
             rendered, source_meta = self.render_cartoon(video, result)
             # An unlabelled link has no name of its own, so the channel it came
@@ -905,6 +1215,159 @@ class _Run:
         )
 
 
+# ---------------------------------------------------------------------------
+# Planning, approving, producing
+# ---------------------------------------------------------------------------
+
+
+class WorkflowPlanner:
+    """Resolve the picks, let them be approved, then produce them.
+
+    Approval sits between two halves that used to be one function: the sources
+    have to be chosen (and shown as URLs) before anything is downloaded, and
+    the *same* sources have to be produced afterwards. Keeping both halves on
+    one object keeps the candidate iterators alive between them, which is what
+    lets a rejected pick fall through to the next candidate rather than
+    restarting the search.
+    """
+
+    def __init__(self, items: Sequence[WorkItem], run: "_Run") -> None:
+        self.items = list(items)
+        self.run = run
+
+    def resolve(self) -> List[PlannedPick]:
+        """Every repetition of every item, sourced but untouched."""
+        picks: List[PlannedPick] = []
+        for item_index, item in enumerate(self.items):
+            picks.extend(self.run.resolve_item(item, item_index))
+        return picks
+
+    def reject(self, picks: Sequence[PlannedPick], positions: Sequence[int]) -> List[PlannedPick]:
+        """Swap the picks at ``positions`` (1-based) for the next candidates.
+
+        The rejection lasts for this run only, on purpose. It is deliberately
+        *not* written to the state file: that file records what has been
+        produced, and marking a merely-unwanted video as produced would hide it
+        from every future run too.
+        """
+        updated = list(picks)
+        for position in positions:
+            if not 1 <= position <= len(updated):
+                raise PlanError(
+                    f"There is no pick {position} to reject",
+                    f"The plan has {len(updated)} pick(s).",
+                )
+            old = updated[position - 1]
+            if old.video is not None:
+                self.run.reject_video(old.video.video_id)
+            fresh = self.run.blank_pick(old.item, old.item_index, old.index)
+            pool, pool_error = self.run.pool_for(old.item, old.item_index)
+            if pool_error:
+                fresh.error = pool_error
+            else:
+                self.run.resolve_pick(fresh, pool)
+            updated[position - 1] = fresh
+        return updated
+
+    def plan(self, picks: Sequence[PlannedPick], request: str) -> WorkflowPlan:
+        """Package the picks for the approval gate."""
+        return WorkflowPlan(
+            request=request,
+            picks=list(picks),
+            privacy=self.run.privacy,
+            target_height=self.run.target_height,
+        )
+
+    def report(self, picks: Sequence[PlannedPick]) -> WorkflowSummary:
+        """A dry run's summary: what each pick *would* produce, touching nothing."""
+        summary = WorkflowSummary(dry_run=True)
+        for pick in picks:
+            result = pick.to_result()
+            result.dry_run = True
+            if pick.producible and pick.video is not None:
+                try:
+                    self.run.plan_only(pick.item, pick.video, result)
+                except Exception as exc:  # noqa: BLE001 - a preview cannot fail a run
+                    result.error = str(exc)
+            summary.results.append(result)
+        return summary
+
+    def produce(self, picks: Sequence[PlannedPick]) -> WorkflowSummary:
+        """Make every producible pick, in order."""
+        summary = WorkflowSummary()
+        for pick in picks:
+            summary.results.append(self.run.produce(pick))
+        return summary
+
+
+def create_planner(
+    items: Sequence[WorkItem],
+    *,
+    dry_run: bool = False,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    metadata_path: Path = DEFAULT_METADATA_PATH,
+    privacy: str = "public",
+    on_event: Optional[EventCallback] = None,
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    state_path: Path = DEFAULT_STATE_PATH,
+    target_height: int = DEFAULT_HEIGHT,
+    peek_links: Optional[bool] = None,
+) -> WorkflowPlanner:
+    """A planner bound to one run's directories and settings.
+
+    ``peek_links`` defaults to ``dry_run``; pass ``True`` when the picks are
+    going to be shown to someone, so a pasted link is presented with its real
+    title instead of its own URL.
+    """
+    run = _Run(
+        dry_run=dry_run,
+        cache_dir=Path(cache_dir),
+        output_dir=Path(output_dir),
+        state_path=Path(state_path),
+        metadata_path=Path(metadata_path),
+        privacy=privacy,
+        on_event=on_event,
+        target_height=target_height,
+        peek_links=peek_links,
+    )
+    return WorkflowPlanner(items, run)
+
+
+def run_plan(
+    plan: WorkflowPlan,
+    *,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    metadata_path: Path = DEFAULT_METADATA_PATH,
+    privacy: Optional[str] = None,
+    on_event: Optional[EventCallback] = None,
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    state_path: Path = DEFAULT_STATE_PATH,
+    target_height: Optional[int] = None,
+) -> WorkflowSummary:
+    """Produce exactly the picks in ``plan``, resolving nothing again.
+
+    This is the far side of the approval gate. Nothing here searches: the
+    videos were chosen, shown as URLs and signed off, and re-resolving now
+    could quietly produce something the approver never saw. ``privacy`` and
+    ``target_height`` default to what the plan was resolved under, for the same
+    reason.
+    """
+    run = _Run(
+        dry_run=False,
+        cache_dir=Path(cache_dir),
+        output_dir=Path(output_dir),
+        state_path=Path(state_path),
+        metadata_path=Path(metadata_path),
+        privacy=privacy or plan.privacy,
+        on_event=on_event,
+        target_height=target_height or plan.target_height,
+    )
+    summary = WorkflowSummary()
+    for pick in plan.picks:
+        summary.results.append(run.produce(pick))
+    return summary
+
+
 def run_workflow(
     items: Sequence[WorkItem],
     *,
@@ -917,7 +1380,11 @@ def run_workflow(
     state_path: Path = DEFAULT_STATE_PATH,
     target_height: int = DEFAULT_HEIGHT,
 ) -> WorkflowSummary:
-    """Produce every item, and report what happened.
+    """Produce every item in one go, and report what happened.
+
+    Resolve and produce back to back, with no approval gate — the CLI uses this
+    for ``--yes`` and for ``--dry-run``. When someone is going to look at the
+    picks first, use :func:`create_planner` instead.
 
     Args:
         items: Work items from ``workflow.parse_request``.
@@ -936,17 +1403,16 @@ def run_workflow(
         A :class:`WorkflowSummary`; ``exit_code`` is non-zero if any item
         failed. Individual failures never abort the run.
     """
-    run = _Run(
+    planner = create_planner(
+        items,
         dry_run=dry_run,
-        cache_dir=Path(cache_dir),
-        output_dir=Path(output_dir),
-        state_path=Path(state_path),
-        metadata_path=Path(metadata_path),
+        cache_dir=cache_dir,
+        metadata_path=metadata_path,
         privacy=privacy,
         on_event=on_event,
+        output_dir=output_dir,
+        state_path=state_path,
         target_height=target_height,
     )
-    summary = WorkflowSummary(dry_run=dry_run)
-    for item in items:
-        summary.results.extend(run.run_item(item))
-    return summary
+    picks = planner.resolve()
+    return planner.report(picks) if dry_run else planner.produce(picks)

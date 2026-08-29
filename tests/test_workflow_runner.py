@@ -6,7 +6,9 @@ no YouTube API. What is exercised here is the runner's judgement:
 * it never publishes the same source twice,
 * it keeps going when one item fails,
 * a playlist problem does not undo a published video,
-* and ``--dry-run`` writes nothing at all while still saying what would happen.
+* ``--dry-run`` writes nothing at all while still saying what would happen,
+* and nothing is downloaded, rendered or published before the picks have been
+  shown as URLs and approved.
 """
 
 from __future__ import annotations
@@ -25,10 +27,16 @@ from yt_audio_filter.cartoon_catalog import CatalogVideo
 from yt_audio_filter.workflow import parse_request
 from yt_audio_filter.workflow_runner import (
     ItemResult,
+    PlanError,
+    WorkflowPlan,
+    create_planner,
     excluded_by,
+    load_plan,
     load_state,
     prefer_episode_length,
+    run_plan,
     run_workflow,
+    save_plan,
 )
 
 LINK = "https://youtu.be/U_EhMEOolI0"
@@ -74,6 +82,7 @@ class _Env:
         self.cache_dir = tmp_path / "cache"
         self.output_dir = tmp_path / "output"
         self.state_path = tmp_path / "state" / "workflow_sources.json"
+        self.plan_path = tmp_path / "state" / "last_plan.json"
         self.metadata_path = tmp_path / "metadata.json"
         self.metadata_path.write_text(
             json.dumps(
@@ -88,14 +97,18 @@ class _Env:
         )
 
     def run(self, request: str, **kwargs):
-        return run_workflow(
-            parse_request(request),
-            cache_dir=self.cache_dir,
-            output_dir=self.output_dir,
-            state_path=self.state_path,
-            metadata_path=self.metadata_path,
-            **kwargs,
-        )
+        return run_workflow(parse_request(request), **self.paths(), **kwargs)
+
+    def planner(self, request: str, **kwargs):
+        return create_planner(parse_request(request), **self.paths(), **kwargs)
+
+    def paths(self) -> dict:
+        return {
+            "cache_dir": self.cache_dir,
+            "output_dir": self.output_dir,
+            "state_path": self.state_path,
+            "metadata_path": self.metadata_path,
+        }
 
 
 @pytest.fixture
@@ -172,7 +185,9 @@ def mocks(env: _Env):
             authenticate=patch(
                 "yt_audio_filter.uploader.authenticate_youtube", return_value=mock.MagicMock()
             ),
-            peek=patch("yt_audio_filter.yt_metadata.fetch_yt_metadata"),
+            # Defaults to "could not read it" so a test that does not care
+            # never gets a MagicMock threaded into a title or a duration.
+            peek=patch("yt_audio_filter.yt_metadata.fetch_yt_metadata", return_value=None),
         )
         yield namespace
 
@@ -569,62 +584,478 @@ def test_events_are_reported_in_order(env, mocks) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI safety gate — this command publishes publicly and unattended
+# Planning and approval, at the runner level
+# ---------------------------------------------------------------------------
+
+
+def test_resolving_picks_touches_nothing(env, mocks) -> None:
+    """The gate is worthless if resolving already downloaded something."""
+    mocks.search.return_value = [_video("aaaaaaaaaa1", "Niloya Full Episode")]
+
+    picks = env.planner("niloya").resolve()
+
+    assert len(picks) == 1
+    assert picks[0].producible
+    assert picks[0].url == "https://www.youtube.com/watch?v=aaaaaaaaaa1"
+    mocks.download.assert_not_called()
+    mocks.process.assert_not_called()
+    mocks.upload.assert_not_called()
+    assert not env.state_path.exists()
+
+
+def test_rejecting_a_pick_advances_to_the_next_candidate(env, mocks) -> None:
+    mocks.search.return_value = [_video("first000001"), _video("second00001")]
+    planner = env.planner("niloya")
+    picks = planner.resolve()
+    assert picks[0].video is not None and picks[0].video.video_id == "first000001"
+
+    picks = planner.reject(picks, [1])
+
+    assert picks[0].video is not None
+    assert picks[0].video.video_id == "second00001"
+    # One search, not two: the candidate pool is shared, so pushing back moves
+    # down the list instead of asking YouTube again.
+    mocks.search.assert_called_once()
+
+
+def test_a_rejection_is_not_written_to_the_produced_record(env, mocks) -> None:
+    """``workflow_sources.json`` means "already made". A video the user merely
+    did not want must stay available to every future run."""
+    mocks.search.return_value = [_video("first000001"), _video("second00001")]
+    planner = env.planner("niloya")
+    picks = planner.produce(planner.reject(planner.resolve(), [1]))
+
+    assert picks.results[0].source_id == "second00001"
+    assert [s.source_id for s in load_state(env.state_path).sources] == ["second00001"]
+
+
+def test_rejecting_one_repetition_leaves_the_others_alone(env, mocks) -> None:
+    mocks.search.return_value = [
+        _video("first000001"),
+        _video("second00001"),
+        _video("third000001"),
+    ]
+    planner = env.planner("niloya x2")
+
+    picks = planner.reject(planner.resolve(), [1])
+
+    assert [p.video.video_id for p in picks if p.video] == ["third000001", "second00001"]
+
+
+def test_rejecting_a_pasted_link_does_not_re_offer_the_same_video(env, mocks) -> None:
+    """A link has no next candidate, so pushing back on one has to say so
+    rather than hand back the very video that was just refused."""
+    planner = env.planner(LINK)
+
+    picks = planner.reject(planner.resolve(), [1])
+
+    assert not picks[0].producible
+    assert picks[0].skipped_reason == "rejected during approval"
+
+
+def test_rejecting_a_pick_number_that_does_not_exist_is_refused(env, mocks) -> None:
+    mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    planner = env.planner("niloya")
+
+    with pytest.raises(PlanError):
+        planner.reject(planner.resolve(), [7])
+
+
+def test_a_plan_survives_a_round_trip_through_json(env, mocks) -> None:
+    """Approving must replay the exact video that was shown, so the whole
+    ``CatalogVideo`` has to come back — not just its id."""
+    mocks.search.return_value = [_video("aaaaaaaaaa1", "Niloya Full Episode", duration=1500)]
+    planner = env.planner("niloya")
+    save_plan(planner.plan(planner.resolve(), "niloya"), env.plan_path)
+
+    plan = load_plan(env.plan_path)
+
+    assert plan.request == "niloya"
+    assert plan.created_at  # a timestamp, so a stale approval is visible
+    assert len(plan.picks) == 1
+    restored = plan.picks[0]
+    assert restored.video == _video("aaaaaaaaaa1", "Niloya Full Episode", duration=1500)
+    assert restored.item == parse_request("niloya")[0]
+    assert restored.playlist_name == "Niloya"
+
+
+def test_a_quran_plan_round_trips_with_its_surahs_and_reciter(env, mocks) -> None:
+    mocks.search.return_value = [_video("visual00001", "Toy Factory Train")]
+    request = "Quran (An-Nas, Ghamdi, background: toy factory, not scary)"
+    planner = env.planner(request)
+    save_plan(planner.plan(planner.resolve(), request), env.plan_path)
+
+    item = load_plan(env.plan_path).picks[0].item
+
+    assert item == parse_request(request)[0]
+
+
+def test_running_a_plan_produces_it_without_searching_again(env, mocks) -> None:
+    mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    planner = env.planner("niloya")
+    save_plan(planner.plan(planner.resolve(), "niloya"), env.plan_path)
+    mocks.search.reset_mock()
+
+    summary = run_plan(load_plan(env.plan_path), **env.paths())
+
+    mocks.search.assert_not_called()
+    assert _only(summary).source_id == "aaaaaaaaaa1"
+    assert _only(summary).uploaded_video_id == "cartoon-upload"
+
+
+def test_a_plan_only_matches_the_request_it_was_resolved_for() -> None:
+    plan = WorkflowPlan(request="niloya")
+
+    assert plan.matches("niloya")
+    assert plan.matches("  niloya  ")  # the shell is allowed to be untidy
+    assert not plan.matches("riko")
+    assert plan.matches(None)  # a bare --approve contradicts nothing
+
+
+def test_a_missing_plan_file_says_so(tmp_path) -> None:
+    with pytest.raises(PlanError) as excinfo:
+        load_plan(tmp_path / "nope.json")
+
+    assert "No plan is waiting" in str(excinfo.value)
+
+
+def test_a_plan_from_another_version_is_refused_rather_than_half_read(env) -> None:
+    env.plan_path.parent.mkdir(parents=True, exist_ok=True)
+    env.plan_path.write_text(json.dumps({"version": 999, "picks": []}), encoding="utf-8")
+
+    with pytest.raises(PlanError):
+        load_plan(env.plan_path)
+
+
+# ---------------------------------------------------------------------------
+# CLI approval gate — this command publishes publicly and unattended
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def cli(env):
-    """``workflow_cli`` with the runner stubbed and a terminal on stdin."""
-    from yt_audio_filter import workflow_cli
+def cli(env, mocks):
+    """``workflow_cli`` driven for real, against the stubbed externals.
 
-    summary = SimpleNamespace(results=[], dry_run=False, skipped=[], failures=[], exit_code=0)
+    Only the directories are redirected: the planner, the plan file and the
+    approval logic all run, because they are what these tests are about.
+    stdin claims to be a terminal by default; the non-interactive tests turn
+    that off.
+    """
+    from yt_audio_filter import workflow_cli, workflow_runner
+
+    def with_paths(kwargs: dict) -> dict:
+        kwargs.update(output_dir=env.output_dir, state_path=env.state_path)
+        return kwargs
+
     with ExitStack() as stack:
-        run = stack.enter_context(
-            mock.patch("yt_audio_filter.workflow_cli.run_workflow", return_value=summary)
+
+        def patch(target: str, **kwargs):
+            return stack.enter_context(mock.patch(target, **kwargs))
+
+        run = patch(
+            "yt_audio_filter.workflow_cli.run_workflow",
+            side_effect=lambda items, **kw: workflow_runner.run_workflow(items, **with_paths(kw)),
         )
-        stack.enter_context(mock.patch("sys.stdin.isatty", return_value=True))
-        prompt = stack.enter_context(mock.patch("builtins.input", return_value=""))
-        yield SimpleNamespace(main=workflow_cli.main, run=run, prompt=prompt, env=env)
+        planner = patch(
+            "yt_audio_filter.workflow_cli.create_planner",
+            side_effect=lambda items, **kw: workflow_runner.create_planner(
+                items, **with_paths(kw)
+            ),
+        )
+        approve = patch(
+            "yt_audio_filter.workflow_cli.run_plan",
+            side_effect=lambda plan, **kw: workflow_runner.run_plan(plan, **with_paths(kw)),
+        )
+        isatty = patch("sys.stdin.isatty", return_value=True)
+        prompt = patch("builtins.input", return_value="")
+
+        def main(argv):
+            return workflow_cli.main(
+                list(argv)
+                + [
+                    "--metadata",
+                    str(env.metadata_path),
+                    "--cache-dir",
+                    str(env.cache_dir),
+                    "--plan-file",
+                    str(env.plan_path),
+                ]
+            )
+
+        yield SimpleNamespace(
+            main=main,
+            run=run,
+            planner=planner,
+            approve=approve,
+            prompt=prompt,
+            isatty=isatty,
+            env=env,
+            mocks=mocks,
+        )
 
 
-def test_a_real_run_asks_before_publishing(cli) -> None:
+def _assert_nothing_was_produced(mocks) -> None:
+    mocks.download.assert_not_called()
+    mocks.process.assert_not_called()
+    mocks.overlay.assert_not_called()
+    mocks.upload.assert_not_called()
+    mocks.upload_rendered.assert_not_called()
+
+
+# ------------------------------------------------------- what the user sees
+
+
+def test_every_pick_is_printed_as_an_openable_url(cli, capsys) -> None:
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1", "Niloya Full Episode")]
     cli.prompt.return_value = "n"
 
-    code = cli.main(["niloya"])
+    cli.main(["niloya"])
 
-    cli.prompt.assert_called_once()
-    cli.run.assert_not_called()
-    assert code == 1
-
-
-def test_yes_skips_the_prompt(cli) -> None:
-    assert cli.main(["--yes", "niloya"]) == 0
-
-    cli.prompt.assert_not_called()
-    cli.run.assert_called_once()
+    out = capsys.readouterr().out
+    assert "https://www.youtube.com/watch?v=aaaaaaaaaa1" in out
+    assert "Niloya Full Episode" in out
 
 
-def test_a_dry_run_never_prompts(cli) -> None:
-    assert cli.main(["--dry-run", "niloya"]) == 0
+def test_a_quran_pick_shows_its_surahs_reciter_and_background_url(cli, capsys) -> None:
+    cli.mocks.search.return_value = [_video("visual00001", "Toy Factory Train")]
+    cli.prompt.return_value = "n"
 
-    cli.prompt.assert_not_called()
-    assert cli.run.call_args.kwargs["dry_run"] is True
+    cli.main(["Quran (An-Nas, Ghamdi, background: toy factory)"])
+
+    out = capsys.readouterr().out
+    assert "An-Nas" in out
+    assert "Saad Al-Ghamdi" in out
+    assert "https://www.youtube.com/watch?v=visual00001" in out
 
 
-def test_confirming_goes_ahead(cli) -> None:
+# ------------------------------------------------------- interactive gate
+
+
+def test_approving_produces_every_pick(cli) -> None:
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
     cli.prompt.return_value = "y"
 
     assert cli.main(["niloya"]) == 0
 
+    cli.mocks.upload.assert_called_once()
+
+
+def test_rejecting_everything_produces_nothing(cli) -> None:
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    cli.prompt.return_value = "n"
+
+    assert cli.main(["niloya"]) == 1
+
+    _assert_nothing_was_produced(cli.mocks)
+    assert not cli.env.state_path.exists()
+
+
+def test_pushing_back_on_one_pick_offers_the_next_candidate(cli, capsys) -> None:
+    """The push-back the whole gate exists for: the URL turned out to be the
+    wrong episode, and the run should carry on with a different one."""
+    cli.mocks.search.return_value = [_video("wrong000001"), _video("right000001")]
+    cli.prompt.side_effect = ["1", "y"]
+
+    assert cli.main(["niloya"]) == 0
+
+    out = capsys.readouterr().out
+    assert "https://www.youtube.com/watch?v=right000001" in out
+    assert cli.mocks.download.call_args.args[0].endswith("right000001")
+    assert [s.source_id for s in load_state(cli.env.state_path).sources] == ["right000001"]
+
+
+def test_an_answer_that_makes_no_sense_never_counts_as_approval(cli) -> None:
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    cli.prompt.return_value = "maybe"
+
+    assert cli.main(["niloya"]) == 1
+
+    _assert_nothing_was_produced(cli.mocks)
+
+
+def test_a_terminal_that_cannot_be_read_saves_the_plan_instead(cli) -> None:
+    """Windows calls a console handle a terminal even when nothing will ever be
+    typed into it, so the prompt itself is the only honest test. Falling back
+    to the saved plan beats throwing the resolved picks away."""
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    cli.prompt.side_effect = EOFError
+
+    assert cli.main(["niloya"]) == 10
+
+    _assert_nothing_was_produced(cli.mocks)
+    assert load_plan(cli.env.plan_path).picks[0].video.video_id == "aaaaaaaaaa1"
+
+
+# ------------------------------------------------------- non-interactive
+
+
+def test_without_a_terminal_the_plan_is_saved_and_nothing_runs(cli, capsys) -> None:
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1", "Niloya Full Episode")]
+
+    assert cli.main(["niloya"]) == 10
+
+    _assert_nothing_was_produced(cli.mocks)
+    cli.prompt.assert_not_called()
+    assert cli.env.plan_path.exists()
+    out = capsys.readouterr().out
+    assert "https://www.youtube.com/watch?v=aaaaaaaaaa1" in out
+    assert "--approve" in out
+
+    plan = load_plan(cli.env.plan_path)
+    assert plan.request == "niloya"
+    assert plan.created_at
+    assert plan.picks[0].video is not None
+    assert plan.picks[0].video.video_id == "aaaaaaaaaa1"
+
+
+def test_approve_runs_the_saved_picks_without_searching_again(cli) -> None:
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    assert cli.main(["niloya"]) == 10
+    cli.mocks.search.reset_mock()
+
+    assert cli.main(["--approve", "niloya"]) == 0
+
+    cli.mocks.search.assert_not_called()
+    cli.mocks.upload.assert_called_once()
+    assert cli.mocks.download.call_args.args[0].endswith("aaaaaaaaaa1")
+
+
+def test_approve_is_refused_when_the_request_has_changed(cli) -> None:
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    assert cli.main(["niloya"]) == 10
+
+    assert cli.main(["--approve", "riko"]) == 1
+
+    _assert_nothing_was_produced(cli.mocks)
+    assert cli.env.plan_path.exists()  # still there, still approvable
+
+
+def test_force_applies_a_saved_plan_to_a_different_request(cli) -> None:
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    assert cli.main(["niloya"]) == 10
+
+    assert cli.main(["--approve", "--force", "riko"]) == 0
+
+    cli.mocks.upload.assert_called_once()
+
+
+def test_a_bare_approve_needs_no_request(cli) -> None:
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    assert cli.main(["niloya"]) == 10
+
+    assert cli.main(["--approve"]) == 0
+
+    cli.mocks.upload.assert_called_once()
+
+
+def test_an_approval_is_good_exactly_once(cli) -> None:
+    """The duplicate check ran when the plan was resolved, so replaying the
+    same file would render and publish the same source again."""
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+    assert cli.main(["niloya"]) == 10
+    assert cli.main(["--approve", "niloya"]) == 0
+
+    assert not cli.env.plan_path.exists()
+    assert cli.main(["--approve", "niloya"]) == 1
+    cli.mocks.upload.assert_called_once()
+
+
+def test_a_missing_plan_file_is_reported_clearly(cli, capsys) -> None:
+    assert cli.main(["--approve"]) == 1
+
+    _assert_nothing_was_produced(cli.mocks)
+    assert "No plan is waiting" in capsys.readouterr().err
+
+
+# ------------------------------------------------------- the other switches
+
+
+def test_yes_skips_the_gate_entirely(cli) -> None:
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+
+    assert cli.main(["--yes", "niloya"]) == 0
+
+    cli.prompt.assert_not_called()
     cli.run.assert_called_once()
+    cli.planner.assert_not_called()
+    cli.mocks.upload.assert_called_once()
+    assert not cli.env.plan_path.exists()
+
+
+def test_yes_still_works_without_a_terminal(cli) -> None:
+    """The cron case: no TTY, but the decision was made when the job was set up."""
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+
+    assert cli.main(["--yes", "niloya"]) == 0
+
+    cli.mocks.upload.assert_called_once()
+    assert not cli.env.plan_path.exists()
+
+
+def test_a_dry_run_never_prompts_and_writes_no_plan_file(cli) -> None:
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+
+    assert cli.main(["--dry-run", "niloya"]) == 0
+
+    cli.prompt.assert_not_called()
+    assert cli.run.call_args.kwargs["dry_run"] is True
+    _assert_nothing_was_produced(cli.mocks)
+    assert not cli.env.plan_path.exists()
+    assert not cli.env.state_path.exists()
+
+
+def test_a_dry_run_writes_no_plan_file_without_a_terminal_either(cli) -> None:
+    cli.isatty.return_value = False
+    cli.mocks.search.return_value = [_video("aaaaaaaaaa1")]
+
+    assert cli.main(["--dry-run", "niloya"]) == 0
+
+    assert not cli.env.plan_path.exists()
+
+
+def test_an_already_published_pick_never_reaches_the_gate(cli, capsys) -> None:
+    """Duplicate checking happens before the plan is shown, so nobody is asked
+    to approve something the channel already has."""
+    cli.isatty.return_value = False
+    cli.mocks.uploaded_ids.return_value = {
+        LINK_ID: {"uploaded_id": "yt9", "url": "https://youtube.com/watch?v=yt9"}
+    }
+
+    assert cli.main([LINK]) == 0
+
+    cli.prompt.assert_not_called()
+    _assert_nothing_was_produced(cli.mocks)
+    assert not cli.env.plan_path.exists()
+    assert "already published" in capsys.readouterr().out
 
 
 def test_an_unreadable_request_exits_without_running_anything(cli) -> None:
-    code = cli.main(["Quran (nonsense-surah, Ghamdi)"])
+    assert cli.main(["Quran (nonsense-surah, Ghamdi)"]) == 2
 
-    assert code == 2
     cli.run.assert_not_called()
+    cli.planner.assert_not_called()
+
+
+def test_force_without_approve_is_rejected(cli) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["--force", "niloya"])
+
+
+def test_approve_cannot_be_a_dry_run(cli) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["--approve", "--dry-run"])
+
+
+def test_a_request_is_required_when_not_approving(cli) -> None:
+    with pytest.raises(SystemExit):
+        cli.main([])
 
 
 # ------------------------------------------------------- 720p by default
