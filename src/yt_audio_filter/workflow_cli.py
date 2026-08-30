@@ -144,12 +144,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--upscale",
         "--sharp",
+        dest="upscale",
         action="store_true",
+        default=True,
         help=(
-            "Reconstruct detail with Real-ESRGAN instead of stretching. Runs "
-            f"before music removal and targets {workflow_runner.MIN_HEIGHT}p "
-            "unless --height says otherwise. Needs a Vulkan GPU, is slow, and "
-            "is refused for long videos — those fall back to a plain scale."
+            "Reconstruct detail with Real-ESRGAN rather than stretching (the "
+            "default). Runs before music removal and targets "
+            f"{workflow_runner.MIN_HEIGHT}p unless --height says otherwise. "
+            "Long sources are upscaled in chunks; a machine without a Vulkan "
+            "GPU falls back to a plain scale rather than failing."
+        ),
+    )
+    parser.add_argument(
+        "--no-upscale",
+        dest="upscale",
+        action="store_false",
+        help=(
+            "Scale instead of reconstructing. Minutes rather than most of an "
+            "hour per episode, at the cost of interpolated detail."
         ),
     )
     parser.add_argument(

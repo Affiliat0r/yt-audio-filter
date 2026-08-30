@@ -1061,13 +1061,16 @@ def test_a_request_is_required_when_not_approving(cli) -> None:
 # ------------------------------------------------------- 720p by default
 
 
-def test_renders_target_1080p_without_being_asked() -> None:
-    """1080p is not about recovering detail — the sources are 360p and those
-    pixels are interpolated. It is about YouTube's encoding ladder, which is
-    chosen by uploaded resolution and gives 1080p a markedly higher bitrate."""
+def test_renders_target_720p_without_being_asked() -> None:
+    """720p, because that is what the sources can actually become.
+
+    They arrive at 360p — the SABR wall leaves only format 18 — so a 1080p
+    render was 360p stretched threefold, not recovered detail. Real-ESRGAN
+    reconstructs instead, and its cartoon model is 2x, landing exactly on 720.
+    ``tests/test_workflow_quality.py`` carries the rest of the reasoning."""
     from yt_audio_filter import workflow_runner as wr
 
-    assert wr.DEFAULT_HEIGHT == 1080
+    assert wr.DEFAULT_HEIGHT == 720
     assert wr.resolution_for(1080) == (1920, 1080)
     assert wr.resolution_for(720) == (1280, 720)
 

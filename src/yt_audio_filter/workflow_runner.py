@@ -365,18 +365,24 @@ def _link_video(item: CartoonItem) -> CatalogVideo:
 
 #: What every render targets unless told otherwise.
 #:
-#: 1080p, and it is worth being precise about what that does and does not buy.
-#: Protected cartoons come down as format 18 — 360p combined — because of the
-#: SABR wall (see CLAUDE.md), so rendering at 1080p invents no detail: those are
-#: interpolated pixels, not recovered ones.
+#: 720p, and it is worth being precise about why that is not a downgrade from
+#: the 1080p this used to default to.
 #:
-#: The gain is real but sits elsewhere. YouTube assigns its encoding ladder by
-#: uploaded resolution, so a 1080p upload is given a markedly higher bitrate
-#: than the same picture at 720p, and survives YouTube's own re-encode with
-#: visibly fewer artefacts. It is also what the platform's own recommendation
-#: assumes. Uploading small and letting YouTube upscale on playback gives the
-#: worst of both.
-DEFAULT_HEIGHT = 1080
+#: Sources come down at 640x360. The SABR wall means YouTube only serves
+#: format 18 for this content — measured across nine real sources, every
+#: adaptive format 403s on a full download (see ``youtube.YTDLP_CLIENT_ATTEMPTS``).
+#: So a 1080p render was never 1080p worth of detail; it was 360p stretched
+#: three times over.
+#:
+#: Real-ESRGAN reconstructs detail instead of interpolating it, and the
+#: cartoon-tuned model is 2x — which lands a 360p source on exactly 720p.
+#: Rendering the sharpened picture at 1080 would add a second, interpolating
+#: scale on top and give back part of what the GPU time just bought.
+#:
+#: A real 720p also still clears the bar that made 1080p attractive: YouTube
+#: assigns its encoding ladder by uploaded resolution, and 720p is where that
+#: stops actively hurting.
+DEFAULT_HEIGHT = 720
 
 #: The floor no render may go under, whatever was asked for.
 #:

@@ -277,12 +277,6 @@ def _cli_kwargs(argv: list) -> dict:
     return seen
 
 
-def test_by_default_the_cli_renders_at_1080p_without_sharpening() -> None:
-    kwargs = _cli_kwargs([])
-    assert kwargs["target_height"] == 1080
-    assert kwargs["upscale"] is False
-
-
 def test_upscale_targets_the_floor_because_the_model_is_2x() -> None:
     """360p doubled is exactly 720p.
 
@@ -304,3 +298,34 @@ def test_the_cli_applies_the_floor() -> None:
 
 def test_sharp_is_accepted_as_an_alias() -> None:
     assert _cli_kwargs(["--sharp"])["upscale"] is True
+
+
+# ------------------------------------------------- sharpening is the default
+
+
+def test_the_default_output_is_720p() -> None:
+    """The user's call: reconstructed 720p beats stretched 1080p.
+
+    Sources come down at 360p because of the SABR wall, so 1080p was only ever
+    interpolation. Real-ESRGAN is a 2x model, which lands exactly on 720.
+    """
+    assert wr.DEFAULT_HEIGHT == 720
+
+
+def test_sharpening_is_on_by_default_from_the_cli() -> None:
+    kwargs = _cli_kwargs([])
+    assert kwargs["upscale"] is True
+    assert kwargs["target_height"] == 720
+
+
+def test_it_can_be_turned_off() -> None:
+    """A plain scale is minutes; Real-ESRGAN is most of an hour per episode."""
+    assert _cli_kwargs(["--no-upscale"])["upscale"] is False
+
+
+def test_turning_it_off_still_respects_the_floor() -> None:
+    assert _cli_kwargs(["--no-upscale"])["target_height"] == 720
+
+
+def test_a_higher_height_is_still_available(tmp_path) -> None:
+    assert _cli_kwargs(["--height", "1080"])["target_height"] == 1080

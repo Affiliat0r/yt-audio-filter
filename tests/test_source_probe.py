@@ -363,16 +363,18 @@ def test_measure_cached_survives_an_unreadable_file(tmp_path, monkeypatch) -> No
 # ------------------------------------------------- upscale length guard
 
 
-def test_upscale_refuses_a_video_that_would_take_hours(tmp_path, monkeypatch) -> None:
+def test_a_full_episode_is_chunked_rather_than_refused(tmp_path, monkeypatch) -> None:
     """Real-ESRGAN runs frame by frame and writes every frame to disk twice.
 
     A 30-minute 360p cartoon is ~44,000 frames: roughly 11 GB of input PNG and
-    40 GB of output. One such render, auto-enabled, ground for twenty hours
-    before failing with a nonsense negative timeout. Refuse immediately and say
-    why instead.
+    40 GB of output, which is why this was once refused outright. The
+    constraint is peak disk, though, not total work — so the source is split
+    into chunks and fed through one at a time, and an episode this long now
+    goes through instead of being turned away.
     """
+    from pathlib import Path as _Path
+
     from yt_audio_filter import upscale as up
-    from yt_audio_filter.exceptions import OverlayError
 
     src = tmp_path / "video_long.mp4"
     src.write_bytes(b"\x00" * 64)
@@ -382,11 +384,54 @@ def test_upscale_refuses_a_video_that_would_take_hours(tmp_path, monkeypatch) ->
     monkeypatch.setattr(up, "_probe_framerate", lambda p: 24.0)
     monkeypatch.setattr(up, "_expected_frame_count", lambda p, fps: 44_078)
 
+    seen = []
+
+    def fake_segment(source, workdir, seconds):
+        _Path(workdir).mkdir(parents=True, exist_ok=True)
+        made = [_Path(workdir) / f"chunk_{i:04d}.mp4" for i in range(3)]
+        for chunk in made:
+            chunk.write_bytes(b"\x00")
+        return made
+
+    def fake_single(source, target, **kwargs):
+        seen.append(source)
+        _Path(target).parent.mkdir(parents=True, exist_ok=True)
+        _Path(target).write_bytes(b"\x00" * 8)
+        return _Path(target)
+
+    monkeypatch.setattr(up, "_segment_video", fake_segment)
+    monkeypatch.setattr(up, "_upscale_single_pass", fake_single)
+    monkeypatch.setattr(
+        up, "_concat_segments", lambda segs, dst: _Path(dst).write_bytes(b"\x00" * 32)
+    )
+
+    up.upscale_video(src, tmp_path / "out.mp4")
+
+    assert len(seen) == 3, "every chunk must be upscaled, not just the first"
+
+
+def test_upscale_still_refuses_what_the_clock_rules_out(tmp_path, monkeypatch) -> None:
+    """Chunking removes the disk wall; four hours of GPU is still a no."""
+    from yt_audio_filter import upscale as up
+    from yt_audio_filter.exceptions import OverlayError
+
+    src = tmp_path / "video_endless.mp4"
+    src.write_bytes(b"\x00" * 64)
+
+    monkeypatch.setattr(up, "ensure_ffmpeg_available", lambda: None)
+    monkeypatch.setattr(up, "ensure_realesrgan_available", lambda: None)
+    monkeypatch.setattr(up, "_probe_framerate", lambda p: 24.0)
+    monkeypatch.setattr(
+        up, "_expected_frame_count", lambda p, fps: up.MAX_TOTAL_UPSCALE_FRAMES + 1
+    )
+
     with pytest.raises(OverlayError) as excinfo:
         up.upscale_video(src, tmp_path / "out.mp4")
 
     assert "too long to upscale" in str(excinfo.value)
-    assert "44,078" in str(excinfo.value)
+    # The message names both the count and the limit, so the refusal is
+    # actionable rather than just a wall.
+    assert f"{up.MAX_TOTAL_UPSCALE_FRAMES:,}" in str(excinfo.value)
 
 
 def test_upscale_allows_a_short_clip(tmp_path, monkeypatch) -> None:

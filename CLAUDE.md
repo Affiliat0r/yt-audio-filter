@@ -235,24 +235,43 @@ with no audio stream is legal, and a hard map would abort the render over it.
 Handing the *overlay* cache file to music removal publishes a silent episode,
 which is why the names differ.
 
-**`MAX_UPSCALE_FRAMES = 10_000` rules out full episodes.** That is ~6.7 minutes
-at 25 fps, against a typical 20-45 minute cartoon. The limit is real (every
-frame is written to disk twice as PNG; one run ground for twenty hours), so
-`yt-studio --upscale` treats sharpening as best-effort: on refusal it emits an
-`upscale-skipped` event and falls back to a plain scale rather than failing
-the item. Lifting this needs chunked processing, not a bigger number.
+**Long sources are chunked, not refused.** `MAX_UPSCALE_FRAMES = 10_000` still
+bounds one pass — that is peak disk, since every frame is written twice as PNG.
+Anything longer is split into `UPSCALE_CHUNK_SECONDS` (60 s) chunks with
+`-c copy -f segment`, upscaled one at a time, and rejoined with the concat
+demuxer. Peak disk stays at one chunk; only the clock still bounds it, via
+`MAX_TOTAL_UPSCALE_FRAMES = 200_000` (~4 h of GPU at ~14 fps; a 25-minute
+episode is ~37,000 frames).
+
+Frame count is preserved exactly through split → upscale → concat, which is
+what keeps the audio muxed on afterwards in sync. Verified end to end: a 507-
+frame clip comes back as 507 frames at 1280×720 with its audio intact. The one
+real caveat is a genuinely variable-frame-rate source — reassembly is at a
+constant `avg_frame_rate`, so VFR input would be retimed. These cartoons are
+all CFR.
+
+Sharpening stays best-effort regardless: a machine with no Vulkan GPU, or a
+source past the total budget, emits an `upscale-skipped` event and falls back
+to a plain scale rather than failing the item.
 
 ### yt-studio output quality
 
-`workflow_runner.MIN_HEIGHT = 720` is a floor applied to every render, and
-`clamp_height()` enforces it — `--height 360` silently becomes 720. YouTube
-picks its encoding ladder from the uploaded resolution, so a 360p upload gets
-a bitrate that makes an already-soft source look worse again on playback.
+**Default: sharpened 720p.** `DEFAULT_HEIGHT = 720` and `--upscale` is on
+unless `--no-upscale` says otherwise.
 
-`DEFAULT_HEIGHT` is 1080. `--upscale` (alias `--sharp`) targets 720 instead
-unless `--height` says otherwise, because the model is 2× and a 360p source
-doubles to exactly 720p; scaling that to 1080 would interpolate away part of
-what the GPU hour bought.
+The reasoning, because "we lowered the default from 1080p" looks wrong at a
+glance: sources arrive at 640×360 (the SABR wall leaves only format 18), so a
+1080p render was 360p stretched threefold — not recovered detail. Real-ESRGAN
+reconstructs instead, and the cartoon model is 2×, landing a 360p source on
+exactly 720p. Rendering that at 1080 would add a second, interpolating scale on
+top and give back part of what the GPU time bought.
+
+`MIN_HEIGHT = 720` is a hard floor enforced by `clamp_height()` — `--height
+360` silently becomes 720 — because YouTube picks its encoding ladder from the
+uploaded resolution, and below 720p that actively hurts.
+
+`--no-upscale` is minutes instead of most of an hour per episode, at the cost
+of interpolated detail. `--height 1080` still works if you want it.
 
 Sharpening runs **before** music removal — see the table above for why.
 

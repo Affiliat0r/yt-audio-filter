@@ -72,10 +72,25 @@ def _encoder_args() -> list:
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "18"]
 
 
-#: Above this, the frame-by-frame pipeline stops being viable: ~10,000 frames
-#: at 360p is already several GB of PNG in and several more out. Roughly seven
-#: minutes at 24 fps, which comfortably covers the short visuals this is for.
+#: Frames one pass may hold on disk at once. Every frame is written twice —
+#: once at source size, once upscaled — so ~10,000 frames at 360p is already
+#: several GB in and several more out.
+#:
+#: This is a *peak disk* bound, not a limit on how long a video may be. Longer
+#: sources are split into chunks and fed through one at a time, so the disk
+#: never holds more than one chunk's worth.
 MAX_UPSCALE_FRAMES = 10_000
+
+#: Seconds of source per chunk. At 30 fps that is 1,800 frames, comfortably
+#: inside a single pass even when the segment muxer overshoots to reach the
+#: next keyframe.
+UPSCALE_CHUNK_SECONDS = 60
+
+#: The one length that is still refused. Chunking removes the disk wall but
+#: not the clock: at roughly 14 fps of GPU throughput this is about four hours
+#: of upscaling, which is past the point where anyone wants it to have started
+#: silently. A 25-minute episode is ~37,000 frames, well inside it.
+MAX_TOTAL_UPSCALE_FRAMES = 200_000
 
 
 def _expected_frame_count(src: Path, fps: float) -> int:
@@ -97,43 +112,30 @@ def _expected_frame_count(src: Path, fps: float) -> int:
     return int(duration * fps)
 
 
-def upscale_video(
+def _upscale_single_pass(
     src: Path,
     dst: Path,
     model: str = DEFAULT_MODEL,
     scale: int = DEFAULT_SCALE,
     timeout_per_stage: int = 7200,
 ) -> Path:
-    """Upscale `src` into `dst` using Real-ESRGAN.
+    """Upscale one video short enough to hold every frame on disk at once.
+
+    The caller is responsible for keeping the input inside
+    ``MAX_UPSCALE_FRAMES`` — :func:`upscale_video` does that by chunking.
 
     Raises:
-        OverlayError if the source is missing or dst exists.
+        OverlayError if the source is missing.
         FFmpegError / PrerequisiteError on extract/assemble/bin issues.
     """
     src = Path(src)
     dst = Path(dst)
     if not src.exists():
         raise OverlayError(f"Source video not found: {src}")
-    ensure_ffmpeg_available()
-    ensure_realesrgan_available()
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     fps = _probe_framerate(src)
-
-    # Refuse jobs that cannot finish in a sane time or fit on disk. This
-    # pipeline writes every frame to disk twice — once at source size, once
-    # upscaled — so a 30-minute 360p cartoon is ~44,000 frames and roughly
-    # 50 GB of PNG. One such render ground for twenty hours before anyone
-    # noticed. Better to say no immediately and explain why.
     n_expected_frames = _expected_frame_count(src, fps)
-    if n_expected_frames and n_expected_frames > MAX_UPSCALE_FRAMES:
-        raise OverlayError(
-            f"{src.name} is too long to upscale "
-            f"({n_expected_frames:,} frames, limit {MAX_UPSCALE_FRAMES:,})",
-            "Real-ESRGAN works frame by frame and writes every frame to disk "
-            "twice, so a video this long would need tens of gigabytes and many "
-            "hours. Render without sharpening, or use a shorter visual.",
-        )
     logger.info(f"Upscaling {src.name} @ {fps:.3f} fps with model={model} scale={scale}...")
 
     with tempfile.TemporaryDirectory(prefix="upscale_", dir=str(dst.parent)) as workdir:
@@ -219,6 +221,151 @@ def upscale_video(
     if not dst.exists() or dst.stat().st_size == 0:
         raise OverlayError(f"Upscaled output missing or empty: {dst}")
     logger.info(f"Upscaled → {dst.name} ({dst.stat().st_size / 1024 / 1024:.1f} MB)")
+    return dst
+
+
+def _segment_video(src: Path, workdir: Path, seconds: int) -> list:
+    """Split ``src`` into chunk files of roughly ``seconds`` each.
+
+    A stream copy, so the source is never re-encoded on the way in — degrading
+    the picture before Real-ESRGAN sees it would defeat the point. That does
+    mean the muxer can only cut on keyframes, so chunks come out uneven; the
+    chunk length is chosen with enough headroom that an overshoot still fits a
+    single pass.
+
+    Audio is dropped deliberately. The chunks are reassembled from PNG frames
+    and would lose it anyway; :func:`upscale_preserving_audio` puts the
+    original track back on the finished video.
+    """
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    pattern = str(workdir / "chunk_%04d.mp4")
+    cmd = [
+        "ffmpeg", "-hide_banner", "-y",
+        "-i", str(src),
+        "-map", "0:v:0",
+        "-c", "copy",
+        "-f", "segment",
+        "-segment_time", str(seconds),
+        "-reset_timestamps", "1",
+        pattern,
+    ]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600
+    )
+    if result.returncode != 0:
+        raise FFmpegError("Splitting the video into chunks failed", returncode=result.returncode, stderr=result.stderr)
+    chunks = sorted(workdir.glob("chunk_*.mp4"))
+    if not chunks:
+        raise FFmpegError(f"Splitting produced no chunks for {src}")
+    return chunks
+
+
+def _concat_segments(segments: list, dst: Path) -> Path:
+    """Join upscaled chunks back into one video, in the order given.
+
+    A stream copy again: each chunk was just rebuilt frame by frame with
+    identical encoder settings, so re-encoding here would be a second lossy
+    pass over work that has already been paid for.
+    """
+    dst = Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    listfile = dst.parent / f".concat_{dst.stem}.txt"
+    # The concat demuxer reads paths relative to the list file's own location
+    # unless they are absolute, so absolute is what goes in.
+    listfile.write_text(
+        "\n".join(f"file '{Path(s).resolve().as_posix()}'" for s in segments) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        cmd = [
+            "ffmpeg", "-hide_banner", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(listfile),
+            "-c", "copy",
+            "-movflags", "+faststart",
+            str(dst),
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600
+        )
+        if result.returncode != 0:
+            raise FFmpegError("Rejoining the upscaled chunks failed", returncode=result.returncode, stderr=result.stderr)
+    finally:
+        listfile.unlink(missing_ok=True)
+    return dst
+
+
+def upscale_video(
+    src: Path,
+    dst: Path,
+    model: str = DEFAULT_MODEL,
+    scale: int = DEFAULT_SCALE,
+    timeout_per_stage: int = 7200,
+) -> Path:
+    """Upscale ``src`` into ``dst``, splitting it up if it is long.
+
+    Real-ESRGAN goes through the filesystem: every frame is written as PNG at
+    source size and again upscaled. A 25-minute cartoon is ~37,000 frames and
+    tens of gigabytes all at once, which is why this used to refuse anything
+    over ``MAX_UPSCALE_FRAMES``.
+
+    Refusing was the wrong fix. Peak disk is the constraint, not total work, so
+    a long source is split into ``UPSCALE_CHUNK_SECONDS`` chunks, upscaled one
+    at a time, and rejoined with a stream copy. Only the clock still bounds it:
+    see ``MAX_TOTAL_UPSCALE_FRAMES``.
+
+    Raises:
+        OverlayError if the source is missing, or is past the total budget.
+        FFmpegError / PrerequisiteError on split/extract/assemble/bin issues.
+    """
+    src = Path(src)
+    dst = Path(dst)
+    if not src.exists():
+        raise OverlayError(f"Source video not found: {src}")
+    ensure_ffmpeg_available()
+    ensure_realesrgan_available()
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    fps = _probe_framerate(src)
+    n_frames = _expected_frame_count(src, fps)
+
+    if n_frames > MAX_TOTAL_UPSCALE_FRAMES:
+        raise OverlayError(
+            f"{src.name} is too long to upscale "
+            f"({n_frames:,} frames, limit {MAX_TOTAL_UPSCALE_FRAMES:,})",
+            "Real-ESRGAN runs at roughly 14 frames per second, so this would "
+            "take many hours. Render without sharpening, or use a shorter "
+            "source.",
+        )
+
+    # 0 means ffprobe would not give a duration. Treat that as short: one pass
+    # either works or fails quickly, which beats splitting on a guess.
+    if n_frames <= MAX_UPSCALE_FRAMES:
+        return _upscale_single_pass(
+            src, dst, model=model, scale=scale, timeout_per_stage=timeout_per_stage
+        )
+
+    logger.info(
+        f"{src.name} is {n_frames:,} frames; upscaling in "
+        f"{UPSCALE_CHUNK_SECONDS}s chunks to bound disk use"
+    )
+    with tempfile.TemporaryDirectory(prefix="chunks_", dir=str(dst.parent)) as workdir:
+        raw = _segment_video(src, Path(workdir) / "in", UPSCALE_CHUNK_SECONDS)
+        done = []
+        for index, chunk in enumerate(raw, start=1):
+            target = Path(workdir) / "out" / chunk.name
+            logger.info(f"Upscaling chunk {index}/{len(raw)}: {chunk.name}")
+            done.append(
+                _upscale_single_pass(
+                    chunk, target, model=model, scale=scale, timeout_per_stage=timeout_per_stage
+                )
+            )
+        _concat_segments(done, dst)
+
+    if not dst.exists() or dst.stat().st_size == 0:
+        raise OverlayError(f"Upscaled output missing or empty: {dst}")
+    logger.info(f"Upscaled -> {dst.name} ({dst.stat().st_size / 1024 / 1024:.1f} MB)")
     return dst
 
 
