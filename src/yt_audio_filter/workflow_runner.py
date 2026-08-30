@@ -410,6 +410,56 @@ def _probe_height(path: Path) -> Optional[int]:
         return None
 
 
+#: Turkish letters that ASCII typing flattens. NFKD handles the ones built from
+#: a base letter plus a mark, but the dotless i and the soft g have no such
+#: decomposition, so they are mapped by hand.
+_TURKISH_FOLD = str.maketrans({
+    "ı": "i", "İ": "i", "ş": "s", "Ş": "s", "ğ": "g", "Ğ": "g",
+    "ç": "c", "Ç": "c", "ö": "o", "Ö": "o", "ü": "u", "Ü": "u",
+})
+
+
+def playlist_key(name: str) -> str:
+    """Fold a playlist name so spelling differences stop splitting a series.
+
+    Exact matching meant ``hophop baykus`` never found the existing
+    ``hop hop baykus``, so a second playlist appeared for the same show. The
+    channel writes its titles in Turkish (``Hop Hop Baykuş``) while requests get
+    typed in ASCII, so case, spacing, punctuation and Turkish letters all fold
+    away.
+
+    Deliberately *not* the vowel-collapsing ``workflow.normalise_name``: that is
+    right for surah names, where ``AnNaas`` and ``An-Nas`` are one word, but
+    here it would merge ``Quran`` with ``Quraan`` — two playlists someone may
+    well have meant to keep apart.
+    """
+    import re
+    import unicodedata
+
+    folded = unicodedata.normalize("NFKD", name.translate(_TURKISH_FOLD))
+    folded = "".join(c for c in folded if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", folded.lower())
+
+
+def pick_playlist(existing: Sequence[dict], name: str) -> Optional[dict]:
+    """The playlist to use for ``name``, or None to create one.
+
+    An exact title wins; otherwise the fullest of the folded matches, because
+    duplicates already exist on the channel and adding to the emptier one would
+    only deepen the split.
+    """
+    wanted = playlist_key(name)
+    if not wanted:
+        return None
+    for playlist in existing:
+        if str(playlist.get("title", "")).strip() == name.strip():
+            return playlist
+    matches = [p for p in existing if playlist_key(str(p.get("title", ""))) == wanted]
+    if not matches:
+        return None
+    return max(matches, key=lambda p: int(p.get("itemCount") or 0))
+
+
 def _quran_output_name(item: QuranItem, video: CatalogVideo) -> str:
     numbers = item.surah_numbers
     if len(numbers) > 3:
@@ -688,7 +738,7 @@ class _Run:
         self.peek_links = dry_run if peek_links is None else peek_links
         self.state = load_state(self.state_path)
         self._uploaded: Optional[Dict[str, dict]] = None
-        self._playlists: Optional[Dict[str, str]] = None
+        self._playlists: Optional[List[dict]] = None
         self._metadata: Optional[OverlayMetadata] = None
         # Sources handed out during this run. Two items with overlapping
         # searches must not both render the same video, and a repetition must
@@ -727,18 +777,19 @@ class _Run:
                 self._uploaded = {}
         return self._uploaded
 
-    def playlist_index(self) -> Dict[str, str]:
-        """Lower-cased playlist title → id."""
+    def playlist_index(self) -> List[dict]:
+        """The channel's playlists, kept whole.
+
+        The record rather than a title→id map, because choosing between two
+        playlists that fold to the same name needs their item counts.
+        """
         if self._playlists is None:
-            index: Dict[str, str] = {}
+            found: List[dict] = []
             try:
-                for playlist in uploader.list_playlists():
-                    title = str(playlist.get("title", "")).strip().lower()
-                    if title:
-                        index[title] = str(playlist["id"])
+                found = [dict(p) for p in uploader.list_playlists()]
             except Exception as exc:  # noqa: BLE001 - playlists never fail an item
                 logger.warning(f"Could not list playlists: {exc}")
-            self._playlists = index
+            self._playlists = found
         return self._playlists
 
     def metadata(self) -> OverlayMetadata:
@@ -996,10 +1047,9 @@ class _Run:
     def resolve_playlist(self, name: str) -> Tuple[str, bool]:
         """Playlist id for ``name``, creating it if the channel has none."""
         index = self.playlist_index()
-        key = name.strip().lower()
-        existing = index.get(key)
-        if existing:
-            return existing, False
+        match = pick_playlist(index, name)
+        if match is not None:
+            return str(match["id"]), False
         playlist_id = uploader.create_playlist(
             title=name,
             description=f"Auto-created by yt-studio for {name}.",
@@ -1007,7 +1057,9 @@ class _Run:
         )
         if not playlist_id:
             raise WorkflowRunError(f"Could not create playlist {name!r}")
-        index[key] = playlist_id
+        # Remember it so a second item in the same run reuses it rather than
+        # creating a third.
+        index.append({"id": playlist_id, "title": name, "itemCount": 0})
         return playlist_id, True
 
     # -- resolving --------------------------------------------------------
@@ -1198,10 +1250,12 @@ class _Run:
             )
 
         if result.playlist_name:
-            key = result.playlist_name.strip().lower()
-            index = self.playlist_index()
-            result.playlist_id = index.get(key)
-            result.playlist_created = key not in index  # i.e. *would* be created
+            # Same folded lookup the real run uses, so the dry run predicts
+            # "would create" correctly instead of promising a new playlist that
+            # a spelling variant would actually have matched.
+            match = pick_playlist(self.playlist_index(), result.playlist_name)
+            result.playlist_id = str(match["id"]) if match else None
+            result.playlist_created = match is None  # i.e. *would* be created
             playlist = repr(result.playlist_name)
         else:
             # Only reachable for an unlabelled link whose metadata lookup
