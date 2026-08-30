@@ -111,6 +111,18 @@ empirically-tested state of available downloaders. None bypass SABR:
 | `Cobalt v11` self-hosted with Firefox cookies | `error.api.youtube.api_error` on every URL — Google rejects cookies from container IP |
 | `Cobalt v11` + `YOUTUBE_SESSION_SERVER` (bgutil) | Format extraction succeeds (1080p h264 filename), tunnel still returns 0 bytes — SABR blocks the actual stream even with PO Tokens |
 
+**Re-measured 2026-08-30 — unchanged, and the retest has a trap in it.**
+With yt-dlp's *default* clients, `yt-dlp -F` now lists 1080p (137/399) and
+`yt-dlp -f 137 --test` even succeeds. Both are misleading: `--test` stops after
+10 KB and YouTube serves the first range request. A real download of the same
+format returns `403 Forbidden`, sometimes at once and sometimes after ~10 MB.
+Confirmed across nine sources from this channel, with and without the bgutil
+plugin. `youtube.YTDLP_CLIENT_ATTEMPTS` therefore keeps the pinned
+`tv_embedded/ios/web_embedded/android` cascade **first** — it is what returns
+bytes — with the defaults behind it as a fallback. Move `None` to the front on
+the day yt-dlp ships SABR; nothing else needs to change. pytubefix is dead as a
+path in the meantime: every client raises on current YouTube.
+
 The realistic path forward is to wait for yt-dlp's native SABR support
 (active development on [#12482](https://github.com/yt-dlp/yt-dlp/issues/12482))
 or accept format 18 (360p combined) for the heavily-protected subset of

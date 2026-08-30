@@ -3,7 +3,7 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Literal, Optional
+from typing import Callable, List, Literal, Optional, Tuple
 
 from .exceptions import YouTubeDownloadError, PrerequisiteError, ValidationError
 from .logger import get_logger
@@ -282,6 +282,40 @@ _STREAM_PREFIX = {
     "video+audio": "full",
 }
 
+#: yt-dlp client configurations, tried in order until one delivers a file.
+#: ``None`` means "let yt-dlp pick its own defaults".
+#:
+#: The pinned ``tv_embedded/ios/web_embedded/android`` cascade comes first
+#: because it is the one that actually returns bytes. It is tempting to put the
+#: defaults first — they *list* far more, up to 1080p and 4K — but that listing
+#: is a mirage, and the trap is worth spelling out so nobody re-runs the
+#: experiment:
+#:
+#: * ``yt-dlp -F`` with the default clients shows formats 137/399 (1080p).
+#: * ``yt-dlp -f 137 --test`` even succeeds — ``--test`` stops after 10 KB, and
+#:   the *first* range request is served.
+#: * A real download of the same format returns ``HTTP Error 403`` — sometimes
+#:   immediately, sometimes after ~10 MB. That is SABR (yt-dlp issue #12482).
+#:
+#: Measured 2026-08-30 across nine real sources from this channel
+#: (U_EhMEOolI0, itBhCjx-6fc, ezmsrB59mj8, _EJXu4QMSew, MIXk4TzlQ48,
+#: So5UzYxD2so, Xin8YQzI1dM, nnRF1MGrysI, w1k8szKtdWs): every adaptive format
+#: 403'd on a full download, on all nine. Verified with and without the bgutil
+#: PO Token plugin — it makes no difference. Format 18 (combined 640x360) is
+#: what is genuinely downloadable.
+#:
+#: So putting the defaults first would cost one failed attempt, and a partial
+#: download thrown away, on every single render — for nothing. They stay as a
+#: *fallback*, so that if the pinned clients ever stop being served the
+#: downloader tries something else rather than failing outright.
+#:
+#: Revisit when yt-dlp ships native SABR support: then ``None`` moves first
+#: and this project gets real 1080p sources without any other change.
+YTDLP_CLIENT_ATTEMPTS: Tuple[Optional[List[str]], ...] = (
+    ["tv_embedded", "ios", "web_embedded", "android"],
+    None,
+)
+
 
 def _extract_stream_with_ffmpeg(source: Path, dest: Path, mode: StreamMode) -> Path:
     """Extract video-only or audio-only stream from a full media file via FFmpeg copy."""
@@ -372,129 +406,131 @@ def download_stream(
         else:
             logger.debug("pytubefix not installed, skipping to yt-dlp")
 
-    # Stage 2: yt-dlp with client + format cascade
+    # Stage 2: yt-dlp, trying each client configuration in turn.
     ensure_ytdlp_available()
     import yt_dlp
 
     output_template = str(output_dir / f"{prefix}_%(id)s.%(ext)s")
-    ydl_opts: dict = {
-        "format": _STREAM_FORMAT_MAP[mode],
-        "outtmpl": output_template,
-        "quiet": False,
-        "no_warnings": False,
-        "noprogress": False,
-        "merge_output_format": "mp4" if mode == "video+audio" else None,
-        # Client cascade: yt-dlp tries in order, picks the first that yields
-        # usable formats. tv_embedded/ios/web_embedded avoid n-challenge JS
-        # deobfuscation; the format string also accepts `18` (360p combined)
-        # as a final fallback for videos where higher-quality formats are
-        # PO-Token-locked under YouTube's SABR streaming.
-        # NB: an optional bgutil PO Token provider plugin can be running on
-        # :4416, but as of yt-dlp issue #12482 (April 2026), the high-quality
-        # web/ios/android formats it unlocks are SABR-protected and yield
-        # 403/empty downloads. Pointing script mode at a nonexistent path
-        # neutralizes its slow Deno cold-start. The HTTP plugin auto-uses
-        # the server when present; if it makes things worse for a class of
-        # video, stop the server.
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tv_embedded", "ios", "web_embedded", "android"]
-            },
-            "youtubepot-bgutilscript": {"script_path": ["__disabled__"]},
-        },
-    }
-    if cookies_from_browser:
-        ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
-    if proxy:
-        ydl_opts["proxy"] = proxy
-    ydl_opts = {k: v for k, v in ydl_opts.items() if v is not None}
+
+    def _options_for(clients: Optional[List[str]]) -> dict:
+        """yt-dlp options for one attempt.
+
+        ``clients`` of ``None`` leaves ``player_client`` unset, so yt-dlp uses
+        its own defaults — which is what makes 1080p reachable. See
+        ``YTDLP_CLIENT_ATTEMPTS`` for why that is not simply hard-coded.
+
+        The bgutil PO Token provider plugin, if installed, runs a Deno script
+        per token request and times out at 15 s on a cold start. Pointing it at
+        a nonexistent path neutralises that; the separate HTTP plugin still
+        auto-uses a server on :4416 when one is running.
+        """
+        extractor_args: dict = {"youtubepot-bgutilscript": {"script_path": ["__disabled__"]}}
+        if clients:
+            extractor_args["youtube"] = {"player_client": list(clients)}
+        options: dict = {
+            "format": _STREAM_FORMAT_MAP[mode],
+            "outtmpl": output_template,
+            "quiet": False,
+            "no_warnings": False,
+            "noprogress": False,
+            "merge_output_format": "mp4" if mode == "video+audio" else None,
+            "extractor_args": extractor_args,
+        }
+        if cookies_from_browser:
+            options["cookiesfrombrowser"] = (cookies_from_browser,)
+        if proxy:
+            options["proxy"] = proxy
+        return {k: v for k, v in options.items() if v is not None}
 
     logger.info(f"Downloading {mode} stream from YouTube: {url}")
 
     ytdlp_error: Optional[Exception] = None
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if info is None:
-                raise YouTubeDownloadError(f"yt-dlp returned no info for {url}")
-            downloaded = ydl.prepare_filename(info)
+    for clients in YTDLP_CLIENT_ATTEMPTS:
+        ydl_opts = _options_for(clients)
+        logger.debug(f"yt-dlp attempt with player_client={clients or 'default'}")
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if info is None:
+                    raise YouTubeDownloadError(f"yt-dlp returned no info for {url}")
+                downloaded = ydl.prepare_filename(info)
 
-        result_path = Path(downloaded)
-        if not result_path.exists():
-            for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
-                fallback = output_dir / f"{prefix}_{video_id}.{ext}"
-                if fallback.exists():
-                    result_path = fallback
-                    break
-            else:
-                raise YouTubeDownloadError(
-                    f"yt-dlp reported success but no file at expected path: {downloaded}"
-                )
-
-        # If yt-dlp fell back to a combined format (e.g. 18) for a stream-only
-        # request, strip the unneeded stream so downstream stages see a clean
-        # video-only or audio-only file.
-        if mode in ("video-only", "audio-only"):
-            from .ffmpeg import get_audio_info
-            import subprocess as _sp
-
-            probe = _sp.run(
-                [
-                    "ffprobe", "-v", "error",
-                    "-show_entries", "stream=codec_type",
-                    "-of", "default=nw=1",
-                    str(result_path),
-                ],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
-            )
-            stream_types = {line.split("=", 1)[-1].strip() for line in probe.stdout.splitlines()}
-            wanted_only = "video" if mode == "video-only" else "audio"
-            needs_strip = (
-                ("video" in stream_types and "audio" in stream_types)
-                or wanted_only not in stream_types
-            )
-            if needs_strip and wanted_only in stream_types:
-                desired_ext = "mp4" if mode == "video-only" else "m4a"
-                # Temp file keeps the real extension so ffmpeg can infer format;
-                # dot-prefix marks it as in-flight.
-                stripped = output_dir / f".strip_{prefix}_{video_id}.{desired_ext}"
-                try:
-                    _extract_stream_with_ffmpeg(result_path, stripped, mode)
-                except Exception as strip_err:
-                    logger.warning(f"Post-download stream strip failed: {strip_err}")
+            result_path = Path(downloaded)
+            if not result_path.exists():
+                for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
+                    fallback = output_dir / f"{prefix}_{video_id}.{ext}"
+                    if fallback.exists():
+                        result_path = fallback
+                        break
                 else:
-                    final = output_dir / f"{prefix}_{video_id}.{desired_ext}"
-                    if final.exists() and final != result_path:
-                        final.unlink()
-                    stripped.replace(final)
-                    if result_path != final and result_path.exists():
-                        try:
-                            result_path.unlink()
-                        except OSError:
-                            pass
-                    result_path = final
-                    logger.info(f"Extracted {mode} from combined download -> {final.name}")
+                    raise YouTubeDownloadError(
+                        f"yt-dlp reported success but no file at expected path: {downloaded}"
+                    )
 
-        logger.info(f"Downloaded {mode}: {result_path.name}")
-        return result_path
+            # If yt-dlp fell back to a combined format (e.g. 18) for a stream-only
+            # request, strip the unneeded stream so downstream stages see a clean
+            # video-only or audio-only file.
+            if mode in ("video-only", "audio-only"):
+                from .ffmpeg import get_audio_info
+                import subprocess as _sp
 
-    except Exception as e:
-        ytdlp_error = e
-        logger.warning(f"yt-dlp stream-selective download failed: {e}")
-        # Clean up any partial file so a future retry doesn't see stale state
-        for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
-            partial = output_dir / f"{prefix}_{video_id}.{ext}.part"
-            if partial.exists():
-                try:
-                    partial.unlink()
-                except OSError:
-                    pass
-            stale = output_dir / f"{prefix}_{video_id}.{ext}"
-            if stale.exists() and stale.stat().st_size == 0:
-                try:
-                    stale.unlink()
-                except OSError:
-                    pass
+                probe = _sp.run(
+                    [
+                        "ffprobe", "-v", "error",
+                        "-show_entries", "stream=codec_type",
+                        "-of", "default=nw=1",
+                        str(result_path),
+                    ],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+                )
+                stream_types = {line.split("=", 1)[-1].strip() for line in probe.stdout.splitlines()}
+                wanted_only = "video" if mode == "video-only" else "audio"
+                needs_strip = (
+                    ("video" in stream_types and "audio" in stream_types)
+                    or wanted_only not in stream_types
+                )
+                if needs_strip and wanted_only in stream_types:
+                    desired_ext = "mp4" if mode == "video-only" else "m4a"
+                    # Temp file keeps the real extension so ffmpeg can infer format;
+                    # dot-prefix marks it as in-flight.
+                    stripped = output_dir / f".strip_{prefix}_{video_id}.{desired_ext}"
+                    try:
+                        _extract_stream_with_ffmpeg(result_path, stripped, mode)
+                    except Exception as strip_err:
+                        logger.warning(f"Post-download stream strip failed: {strip_err}")
+                    else:
+                        final = output_dir / f"{prefix}_{video_id}.{desired_ext}"
+                        if final.exists() and final != result_path:
+                            final.unlink()
+                        stripped.replace(final)
+                        if result_path != final and result_path.exists():
+                            try:
+                                result_path.unlink()
+                            except OSError:
+                                pass
+                        result_path = final
+                        logger.info(f"Extracted {mode} from combined download -> {final.name}")
+
+            logger.info(f"Downloaded {mode}: {result_path.name}")
+            return result_path
+
+        except Exception as e:
+            ytdlp_error = e
+            logger.warning(f"yt-dlp stream-selective download failed: {e}")
+            # Clean up any partial file so a future retry doesn't see stale state
+            for ext in ("mp4", "m4a", "webm", "mkv", "opus"):
+                partial = output_dir / f"{prefix}_{video_id}.{ext}.part"
+                if partial.exists():
+                    try:
+                        partial.unlink()
+                    except OSError:
+                        pass
+                stale = output_dir / f"{prefix}_{video_id}.{ext}"
+                if stale.exists() and stale.stat().st_size == 0:
+                    try:
+                        stale.unlink()
+                    except OSError:
+                        pass
 
     # No further fallback. The YTDownloader.exe GUI path was removed because
     # the user wants application-less downloads. For videos that resist both
