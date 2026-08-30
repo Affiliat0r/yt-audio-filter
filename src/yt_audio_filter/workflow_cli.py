@@ -47,6 +47,7 @@ from .workflow_runner import (
     PlanError,
     PlannedPick,
     WorkflowSummary,
+    clamp_height,
     create_planner,
     describe_item,
     discard_plan,
@@ -135,9 +136,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="N",
         help=(
-            f"Output height (default: {workflow_runner.DEFAULT_HEIGHT}). Overlay "
-            "renders target it; a music-removal source smaller than it is "
-            "enlarged to match."
+            f"Output height (default: {workflow_runner.DEFAULT_HEIGHT}, floor: "
+            f"{workflow_runner.MIN_HEIGHT}). Overlay renders target it; a "
+            "music-removal source smaller than it is enlarged to match."
+        ),
+    )
+    parser.add_argument(
+        "--upscale",
+        "--sharp",
+        action="store_true",
+        help=(
+            "Reconstruct detail with Real-ESRGAN instead of stretching. Runs "
+            f"before music removal and targets {workflow_runner.MIN_HEIGHT}p "
+            "unless --height says otherwise. Needs a Vulkan GPU, is slow, and "
+            "is refused for long videos — those fall back to a plain scale."
         ),
     )
     parser.add_argument(
@@ -491,7 +503,7 @@ def _approve_saved_plan(args: argparse.Namespace, logger) -> int:
             cache_dir=args.cache_dir,
             metadata_path=args.metadata,
             privacy=args.privacy,
-            target_height=args.height,
+            target_height=clamp_height(args.height) if args.height else None,
             on_event=make_printer(args.verbose),
         )
     except YTAudioFilterError as exc:
@@ -546,7 +558,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         parser.error("a request is required (or --approve to produce a saved plan)")
 
     privacy = args.privacy or "public"
-    height = args.height or workflow_runner.DEFAULT_HEIGHT
+    try:
+        height = _target_height(args)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     try:
         items = parse_request(args.request)
@@ -568,6 +583,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         metadata_path=args.metadata,
         privacy=privacy,
         target_height=height,
+        upscale=args.upscale,
         # The picks are about to be shown to a person, so a pasted link is
         # worth one cheap metadata lookup: "https://youtu.be/xyz" tells the
         # approver nothing that the URL underneath it does not.
@@ -606,6 +622,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     return _await_approval(args, planner, picks)
 
 
+def _target_height(args: argparse.Namespace) -> int:
+    """The height this run renders at.
+
+    ``--upscale`` without an explicit height targets the floor rather than the
+    default, because Real-ESRGAN is a 2x model: a 360p source becomes exactly
+    720p. Asking for 1080p on top of that would add a second, interpolating
+    scale over the reconstructed picture — paying for the GPU hour and then
+    partly undoing what it bought.
+    """
+    if args.height is None and args.upscale:
+        return workflow_runner.MIN_HEIGHT
+    return clamp_height(args.height)
+
+
 def _run_in_one_go(
     args: argparse.Namespace, items: Sequence[WorkItem], privacy: str, height: int, logger
 ) -> int:
@@ -618,6 +648,7 @@ def _run_in_one_go(
             metadata_path=args.metadata,
             privacy=privacy,
             target_height=height,
+            upscale=args.upscale,
             on_event=make_printer(args.verbose),
         )
     except YTAudioFilterError as exc:

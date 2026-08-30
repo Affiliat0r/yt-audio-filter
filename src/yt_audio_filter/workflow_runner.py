@@ -378,6 +378,27 @@ def _link_video(item: CartoonItem) -> CatalogVideo:
 #: worst of both.
 DEFAULT_HEIGHT = 1080
 
+#: The floor no render may go under, whatever was asked for.
+#:
+#: YouTube chooses its encoding ladder from the uploaded resolution, so a 360p
+#: upload is handed a bitrate that makes an already-soft cartoon look worse
+#: again on playback. 720p is the point where that stops happening, and it is
+#: also what a 2x Real-ESRGAN pass over a 360p source produces — so it is
+#: reachable with reconstructed detail rather than only by stretching.
+MIN_HEIGHT = 720
+
+
+def clamp_height(height: Optional[int]) -> int:
+    """The height to render at: what was asked for, but never below the floor.
+
+    ``None`` means nothing was asked for, so the default applies.
+    """
+    if height is None:
+        return DEFAULT_HEIGHT
+    if height <= 0:
+        raise ValueError(f"Height must be positive, got {height}")
+    return max(int(height), MIN_HEIGHT)
+
 
 def resolution_for(height: int) -> Tuple[int, int]:
     """A 16:9 resolution for the given height."""
@@ -557,6 +578,10 @@ class WorkflowPlan:
     created_at: str = ""  # ISO-8601 UTC; filled in below when left blank
     privacy: str = "public"
     target_height: int = DEFAULT_HEIGHT
+    #: Whether the approved picks were resolved for a Real-ESRGAN render. Part
+    #: of the plan because approval is given against what was shown, and a
+    #: sharpened render is a materially different piece of work.
+    upscale: bool = False
     version: int = PLAN_VERSION
 
     def __post_init__(self) -> None:
@@ -643,6 +668,7 @@ def save_plan(plan: WorkflowPlan, path: Path = DEFAULT_PLAN_PATH) -> Path:
                 "created_at": plan.created_at,
                 "privacy": plan.privacy,
                 "target_height": plan.target_height,
+                "upscale": plan.upscale,
                 "picks": [_pick_to_dict(pick) for pick in plan.picks],
             },
             indent=2,
@@ -685,6 +711,7 @@ def load_plan(path: Path = DEFAULT_PLAN_PATH) -> WorkflowPlan:
         created_at=str(raw.get("created_at") or ""),
         privacy=str(raw.get("privacy") or "public"),
         target_height=int(raw.get("target_height") or DEFAULT_HEIGHT),
+        upscale=bool(raw.get("upscale")),
     )
 
 
@@ -726,8 +753,10 @@ class _Run:
         on_event: Optional[EventCallback],
         target_height: int = DEFAULT_HEIGHT,
         peek_links: Optional[bool] = None,
+        upscale: bool = False,
     ) -> None:
         self.dry_run = dry_run
+        self.upscale = upscale
         self.cache_dir = Path(cache_dir)
         self.output_dir = Path(output_dir)
         self.state_path = Path(state_path)
@@ -939,6 +968,34 @@ class _Run:
 
     # -- rendering --------------------------------------------------------
 
+    def sharpen(self, source: Path, video_id: str) -> Optional[Path]:
+        """A Real-ESRGAN upscale of the downloaded source, or None.
+
+        Best-effort by design. Sharpening needs a Vulkan GPU and refuses videos
+        over ``upscale.MAX_UPSCALE_FRAMES`` — which a full 25-minute episode
+        comfortably exceeds — so failing the item here would mean the long
+        cartoons could never be produced at all. Falling back to a plain scale
+        still clears the 720p floor; it just interpolates instead of
+        reconstructing, and says so rather than letting the difference pass
+        unnoticed.
+        """
+        try:
+            from . import upscale as upscale_module
+
+            return Path(
+                upscale_module.get_or_create_sharpened(
+                    source, video_id=video_id, cache_dir=self.cache_dir
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - see docstring
+            self.emit(
+                "upscale-skipped",
+                f"Real-ESRGAN sharpening skipped ({exc}); scaling the source instead",
+                video_id=video_id,
+                error=str(exc),
+            )
+            return None
+
     def render_cartoon(self, video: CatalogVideo, result: ItemResult):
         """Download the episode and strip its background music.
 
@@ -956,7 +1013,15 @@ class _Run:
         def progress(stage: str, percent: int) -> None:
             self.emit("progress", f"{stage} ({percent}%)", stage=stage, percent=percent)
 
-        source_height = _probe_height(Path(meta.file_path))
+        # Sharpening comes first: it rebuilds the picture from PNG frames, so
+        # it has to happen while the file still carries the original audio that
+        # Demucs is about to separate.
+        source_path = Path(meta.file_path)
+        if self.upscale:
+            self.emit("upscale", f"Sharpening {video.title!r} with Real-ESRGAN")
+            source_path = self.sharpen(source_path, video.video_id) or source_path
+
+        source_height = _probe_height(source_path)
         scale_height = scale_height_for(source_height, self.target_height)
         if scale_height:
             self.emit(
@@ -967,7 +1032,7 @@ class _Run:
         else:
             self.emit("render", f"Removing background music from {video.title!r}")
         rendered = pipeline.process_video(
-            input_path=Path(meta.file_path),
+            input_path=source_path,
             output_path=output_path,
             progress_callback=progress,
             scale_height=scale_height,
@@ -1334,6 +1399,7 @@ class WorkflowPlanner:
             picks=list(picks),
             privacy=self.run.privacy,
             target_height=self.run.target_height,
+            upscale=self.run.upscale,
         )
 
     def report(self, picks: Sequence[PlannedPick]) -> WorkflowSummary:
@@ -1370,6 +1436,7 @@ def create_planner(
     state_path: Path = DEFAULT_STATE_PATH,
     target_height: int = DEFAULT_HEIGHT,
     peek_links: Optional[bool] = None,
+    upscale: bool = False,
 ) -> WorkflowPlanner:
     """A planner bound to one run's directories and settings.
 
@@ -1387,6 +1454,7 @@ def create_planner(
         on_event=on_event,
         target_height=target_height,
         peek_links=peek_links,
+        upscale=upscale,
     )
     return WorkflowPlanner(items, run)
 
@@ -1401,6 +1469,7 @@ def run_plan(
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     state_path: Path = DEFAULT_STATE_PATH,
     target_height: Optional[int] = None,
+    upscale: Optional[bool] = None,
 ) -> WorkflowSummary:
     """Produce exactly the picks in ``plan``, resolving nothing again.
 
@@ -1419,6 +1488,7 @@ def run_plan(
         privacy=privacy or plan.privacy,
         on_event=on_event,
         target_height=target_height or plan.target_height,
+        upscale=plan.upscale if upscale is None else upscale,
     )
     summary = WorkflowSummary()
     for pick in plan.picks:
@@ -1437,6 +1507,7 @@ def run_workflow(
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     state_path: Path = DEFAULT_STATE_PATH,
     target_height: int = DEFAULT_HEIGHT,
+    upscale: bool = False,
 ) -> WorkflowSummary:
     """Produce every item in one go, and report what happened.
 
@@ -1456,6 +1527,9 @@ def run_workflow(
         state_path: JSON record of sources already rendered from.
         target_height: Output height. Overlay renders target it directly; a
             music-removal source smaller than it is enlarged to match.
+        upscale: Run Real-ESRGAN over a music-removal source before separating
+            it, so the extra pixels are reconstructed rather than stretched.
+            Best-effort: a source too long to sharpen is scaled instead.
 
     Returns:
         A :class:`WorkflowSummary`; ``exit_code`` is non-zero if any item
@@ -1471,6 +1545,7 @@ def run_workflow(
         output_dir=output_dir,
         state_path=state_path,
         target_height=target_height,
+        upscale=upscale,
     )
     picks = planner.resolve()
     return planner.report(picks) if dry_run else planner.produce(picks)

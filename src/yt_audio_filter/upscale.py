@@ -234,3 +234,76 @@ def get_or_create_upscaled(
         logger.info(f"Using cached upscaled visual: {dst.name}")
         return dst
     return upscale_video(visual_path, dst)
+
+
+def upscale_preserving_audio(
+    src: Path,
+    dst: Path,
+    model: str = DEFAULT_MODEL,
+    scale: int = DEFAULT_SCALE,
+) -> Path:
+    """Upscale ``src`` into ``dst``, carrying its audio track across.
+
+    :func:`upscale_video` rebuilds the picture from PNG frames, so what it
+    writes is silent. That is exactly right for an overlay visual, whose sound
+    comes from a recitation — and exactly wrong ahead of music removal, where
+    Demucs needs the original audio to separate. So the upscale runs into a
+    scratch file and the source's audio is copied back on top of it.
+
+    Both streams are copied, never re-encoded: the video was just reconstructed
+    frame by frame, and putting it through another lossy pass would spend the
+    GPU hour and then throw away what it bought.
+    """
+    src, dst = Path(src), Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    silent = dst.with_name(f"{dst.stem}_silent{dst.suffix}")
+
+    try:
+        upscale_video(src, silent, model=model, scale=scale)
+        cmd = [
+            "ffmpeg", "-hide_banner", "-y",
+            "-i", str(silent),
+            "-i", str(src),
+            "-map", "0:v:0",
+            # Optional on purpose: a source with no audio stream is unusual but
+            # legal, and a hard map would abort the whole render over it.
+            "-map", "1:a?",
+            "-c", "copy",
+            "-movflags", "+faststart",
+            str(dst),
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=3600,
+        )
+        if result.returncode != 0:
+            raise FFmpegError(
+                "Could not put the audio back onto the upscaled video",
+                returncode=result.returncode,
+                stderr=result.stderr,
+            )
+    finally:
+        silent.unlink(missing_ok=True)
+
+    if not dst.exists() or dst.stat().st_size == 0:
+        raise OverlayError(f"Upscaled output missing or empty: {dst}")
+    return dst
+
+
+def get_or_create_sharpened(
+    src: Path,
+    video_id: str,
+    cache_dir: Path,
+) -> Path:
+    """A cached upscale of ``src`` that still has its sound, built on first call.
+
+    Deliberately a different cache name from :func:`get_or_create_upscaled`.
+    That one holds the *silent* visual the overlay pipeline wants; handing it to
+    music removal instead would publish an episode with no audio at all.
+    """
+    cache_dir = Path(cache_dir)
+    dst = cache_dir / f"sharp_{video_id}.mp4"
+    if dst.exists() and dst.stat().st_size > 0:
+        logger.info(f"Using cached sharpened source: {dst.name}")
+        return dst
+    return upscale_preserving_audio(Path(src), dst)

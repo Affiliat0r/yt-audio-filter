@@ -209,6 +209,41 @@ when available).
 that would discard detail. Override with `--resolution 1920x1080` if you
 want 1080p output (render will upscale the 720p upscaled source back up).
 
+**Two cache names, and they are not interchangeable:**
+
+| File | Has audio? | Built by | For |
+|---|---|---|---|
+| `cache/upscaled_<id>.mp4` | **no** | `get_or_create_upscaled` | overlay visuals (sound comes from the recitation) |
+| `cache/sharp_<id>.mp4` | yes | `get_or_create_sharpened` | music removal (Demucs needs the original audio) |
+
+`upscale_video()` rebuilds the picture from PNG frames, so what it writes is
+silent. `upscale_preserving_audio()` wraps it and copies the source's audio
+back on with `-map 0:v:0 -map 1:a? -c copy`. The `?` is load-bearing: a source
+with no audio stream is legal, and a hard map would abort the render over it.
+Handing the *overlay* cache file to music removal publishes a silent episode,
+which is why the names differ.
+
+**`MAX_UPSCALE_FRAMES = 10_000` rules out full episodes.** That is ~6.7 minutes
+at 25 fps, against a typical 20-45 minute cartoon. The limit is real (every
+frame is written to disk twice as PNG; one run ground for twenty hours), so
+`yt-studio --upscale` treats sharpening as best-effort: on refusal it emits an
+`upscale-skipped` event and falls back to a plain scale rather than failing
+the item. Lifting this needs chunked processing, not a bigger number.
+
+### yt-studio output quality
+
+`workflow_runner.MIN_HEIGHT = 720` is a floor applied to every render, and
+`clamp_height()` enforces it — `--height 360` silently becomes 720. YouTube
+picks its encoding ladder from the uploaded resolution, so a 360p upload gets
+a bitrate that makes an already-soft source look worse again on playback.
+
+`DEFAULT_HEIGHT` is 1080. `--upscale` (alias `--sharp`) targets 720 instead
+unless `--height` says otherwise, because the model is 2× and a 360p source
+doubles to exactly 720p; scaling that to 1080 would interpolate away part of
+what the GPU hour bought.
+
+Sharpening runs **before** music removal — see the table above for why.
+
 ### NVENC GPU encoding
 
 `ffmpeg_overlay._video_encoder_args()` auto-detects NVENC via
