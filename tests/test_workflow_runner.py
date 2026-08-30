@@ -1061,36 +1061,39 @@ def test_a_request_is_required_when_not_approving(cli) -> None:
 # ------------------------------------------------------- 720p by default
 
 
-def test_quran_renders_at_720p_without_being_asked() -> None:
-    """The backgrounds YouTube actually hands us are 360p (format 18, the SABR
-    wall), so rendering at 1080p only stretches. 720p is the honest target."""
+def test_renders_target_1080p_without_being_asked() -> None:
+    """1080p is not about recovering detail — the sources are 360p and those
+    pixels are interpolated. It is about YouTube's encoding ladder, which is
+    chosen by uploaded resolution and gives 1080p a markedly higher bitrate."""
     from yt_audio_filter import workflow_runner as wr
 
-    assert wr.DEFAULT_HEIGHT == 720
+    assert wr.DEFAULT_HEIGHT == 1080
+    assert wr.resolution_for(1080) == (1920, 1080)
     assert wr.resolution_for(720) == (1280, 720)
 
 
-def test_a_small_source_is_scaled_up_to_720() -> None:
-    """A 360p upload gets a much worse bitrate ladder from YouTube than a 720p
+def test_a_small_source_is_scaled_up_to_the_target() -> None:
+    """A 360p upload gets a much worse bitrate ladder from YouTube than a 1080p
     one, so enlarging is worth the re-encode even though no detail is added."""
     from yt_audio_filter.workflow_runner import scale_height_for
 
-    assert scale_height_for(source_height=360, target=720) == 720
+    assert scale_height_for(source_height=360, target=1080) == 1080
+    assert scale_height_for(source_height=720, target=1080) == 1080
 
 
 def test_a_source_already_at_or_above_the_target_is_left_alone() -> None:
     """Never re-encode for nothing, and never downscale someone's good source."""
     from yt_audio_filter.workflow_runner import scale_height_for
 
-    assert scale_height_for(source_height=720, target=720) is None
-    assert scale_height_for(source_height=1080, target=720) is None
+    assert scale_height_for(source_height=1080, target=1080) is None
+    assert scale_height_for(source_height=2160, target=1080) is None
 
 
 def test_an_unknown_source_height_is_left_alone() -> None:
     """If ffprobe could not tell us, copying beats a guessed re-encode."""
     from yt_audio_filter.workflow_runner import scale_height_for
 
-    assert scale_height_for(source_height=None, target=720) is None
+    assert scale_height_for(source_height=None, target=1080) is None
 
 
 def test_the_target_height_is_overridable() -> None:

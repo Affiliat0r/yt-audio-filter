@@ -365,14 +365,18 @@ def _link_video(item: CartoonItem) -> CatalogVideo:
 
 #: What every render targets unless told otherwise.
 #:
-#: 720p rather than 1080p because of what YouTube actually gives us. Protected
-#: cartoons come down as format 18 — 360p combined — thanks to the SABR wall
-#: (see CLAUDE.md). Rendering those at 1080p does not add a pixel of detail; it
-#: just makes a bigger file out of the same picture. 720p is the honest ceiling
-#: for a 2x enlargement of a 360p source, and it is still a large step up from
-#: uploading 360p, because YouTube gives a 720p upload a noticeably better
-#: bitrate ladder than a 360p one.
-DEFAULT_HEIGHT = 720
+#: 1080p, and it is worth being precise about what that does and does not buy.
+#: Protected cartoons come down as format 18 — 360p combined — because of the
+#: SABR wall (see CLAUDE.md), so rendering at 1080p invents no detail: those are
+#: interpolated pixels, not recovered ones.
+#:
+#: The gain is real but sits elsewhere. YouTube assigns its encoding ladder by
+#: uploaded resolution, so a 1080p upload is given a markedly higher bitrate
+#: than the same picture at 720p, and survives YouTube's own re-encode with
+#: visibly fewer artefacts. It is also what the platform's own recommendation
+#: assumes. Uploading small and letting YouTube upscale on playback gives the
+#: worst of both.
+DEFAULT_HEIGHT = 1080
 
 
 def resolution_for(height: int) -> Tuple[int, int]:
