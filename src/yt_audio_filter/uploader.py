@@ -180,6 +180,7 @@ Great for:
 • Reduced audio distractions
 
 📺 From: {original_channel}
+📺 Original: https://youtube.com/watch?v={original_video_id}
 
 #NoBackgroundMusic #Musicless #AccessibleContent #SensoryFriendly #NoMusic"""
 
@@ -666,6 +667,126 @@ def authenticate_youtube():
     return build("youtube", "v3", credentials=credentials)
 
 
+#: Thumbnail sizes on YouTube's CDN, largest first. ``maxresdefault`` is
+#: 1280x720 and ``hqdefault`` is 480x360, so the order is the difference
+#: between republishing the original's picture and republishing a soft copy of
+#: it. Not every video has every size - older uploads often lack maxres.
+THUMBNAIL_PREFERENCE = ("maxresdefault", "sddefault", "hqdefault")
+
+#: The API rejects anything larger, and finding that out at upload time wastes
+#: the round trip.
+MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024
+
+
+def fetch_source_thumbnail(
+    source_video_id: str,
+    dest_dir: Path,
+    opener=None,
+    timeout: int = 20,
+) -> Optional[Path]:
+    """Download the best available thumbnail for a source video.
+
+    Taken from YouTube's thumbnail CDN rather than derived from the video file,
+    so what comes back is the picture the original channel chose.
+
+    Returns None when nothing usable is available. That is a normal outcome,
+    not an error: the caller then leaves YouTube's auto-generated thumbnail in
+    place, which is what would have happened anyway.
+    """
+    from urllib.request import urlopen
+
+    open_url = opener or urlopen
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in THUMBNAIL_PREFERENCE:
+        url = f"https://i.ytimg.com/vi/{source_video_id}/{name}.jpg"
+        try:
+            with open_url(url, timeout=timeout) as response:
+                data = response.read()
+        except Exception as exc:  # noqa: BLE001 - a missing size is expected
+            logger.debug(f"No {name} for {source_video_id}: {exc}")
+            continue
+        # YouTube answers 200 with an empty body for some absent sizes rather
+        # than 404, so length is the real test.
+        if not data:
+            logger.debug(f"{name} for {source_video_id} came back empty")
+            continue
+        if len(data) > MAX_THUMBNAIL_BYTES:
+            logger.debug(f"{name} for {source_video_id} is over the 2 MB limit")
+            continue
+        path = dest_dir / f"thumb_{source_video_id}.jpg"
+        path.write_bytes(data)
+        logger.info(f"Fetched {name} thumbnail for {source_video_id} ({len(data) / 1024:.0f} KB)")
+        return path
+
+    logger.info(f"No usable thumbnail found for {source_video_id}")
+    return None
+
+
+def set_thumbnail(youtube, video_id: str, image_path: Path, strict: bool = False) -> bool:
+    """Set a custom thumbnail on a published video. True when it took.
+
+    Non-raising by default. On the upload path this runs after the video is
+    already public, so a failure is cosmetic and must not be allowed to look
+    like a failed upload. Two causes account for nearly all of them:
+
+    * **403** - the channel is not verified for custom thumbnails.
+    * **429 uploadRateLimitExceeded** - YouTube caps how many thumbnails a
+      channel may set in a short window. Around ten in a row is enough to hit
+      it. This one is temporary and worth retrying, which is why ``strict``
+      exists: a batch caller needs to tell it apart from a permanent refusal.
+    """
+    image_path = Path(image_path)
+    if not image_path.exists() or image_path.stat().st_size == 0:
+        logger.warning(f"No thumbnail image to set for {video_id}")
+        if strict:
+            raise YouTubeUploadError(f"No thumbnail image to set for {video_id}")
+        return False
+    try:
+        from googleapiclient.http import MediaFileUpload
+
+        youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=MediaFileUpload(str(image_path), mimetype="image/jpeg"),
+        ).execute()
+        logger.info(f"Thumbnail set on {video_id}")
+        return True
+    except Exception as exc:  # noqa: BLE001 - see docstring
+        if strict:
+            raise
+        logger.warning(
+            f"Could not set the thumbnail on {video_id}: {exc}. "
+            "A 403 here usually means the channel is not verified for custom "
+            "thumbnails; a 429 means too many were set too quickly."
+        )
+        return False
+
+
+def apply_source_thumbnail(
+    youtube,
+    uploaded_video_id: str,
+    source_video_id: str,
+    cache_dir: Path,
+    strict: bool = False,
+) -> bool:
+    """Give a published video the same thumbnail as the source it came from.
+
+    Fetch then set, with every failure swallowed: an upload that has already
+    succeeded must not be undone by a missing JPEG.
+    """
+    try:
+        image = fetch_source_thumbnail(source_video_id, Path(cache_dir))
+        if image is None:
+            return False
+        return set_thumbnail(youtube, uploaded_video_id, image, strict=strict)
+    except Exception as exc:  # noqa: BLE001 - see docstring
+        if strict:
+            raise
+        logger.warning(f"Could not carry the thumbnail across to {uploaded_video_id}: {exc}")
+        return False
+
+
 def upload_to_youtube(
     video_path: Path,
     original_metadata: Optional["VideoMetadata"] = None,
@@ -787,6 +908,21 @@ This video has been processed to remove background music while preserving speech
         video_id = response["id"]
         logger.info(f"Upload complete! Video ID: {video_id}")
         logger.info(f"Video URL: https://youtube.com/watch?v={video_id}")
+
+        # Republish the source's own thumbnail. Without this YouTube picks a
+        # frame from the middle of the video, which for a cartoon is usually an
+        # unreadable smear of motion. Swallowed on failure for the same reason
+        # as the playlist add below: the video is already public.
+        if original_metadata and getattr(original_metadata, "video_id", ""):
+            try:
+                apply_source_thumbnail(
+                    youtube,
+                    video_id,
+                    original_metadata.video_id,
+                    Path(video_path).parent,
+                )
+            except Exception as e:  # noqa: BLE001 - cosmetic, never fatal
+                logger.warning("Upload succeeded but thumbnail failed: %s", e)
 
         # Add to playlist if specified. Failures here MUST NOT roll back the
         # upload — log and continue.

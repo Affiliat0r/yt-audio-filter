@@ -275,6 +275,37 @@ of interpolated detail. `--height 1080` still works if you want it.
 
 Sharpening runs **before** music removal — see the table above for why.
 
+### Thumbnails and the source-id round trip
+
+Uploads carry the **source video's own thumbnail**, fetched from YouTube's CDN
+(`i.ytimg.com/vi/<id>/maxresdefault.jpg`, falling back through `sddefault` and
+`hqdefault`). Without it YouTube picks a frame from the middle of the episode,
+which for a cartoon is an unreadable smear of motion.
+`uploader.apply_source_thumbnail` runs at the end of `upload_to_youtube` and
+swallows every failure — the video is already public by then.
+
+**YouTube rate-limits thumbnails per channel.** About ten set back to back
+earns `429 uploadRateLimitExceeded`; the window is undocumented. Hence
+`set_thumbnail(..., strict=True)`, which lets a batch caller tell a temporary
+429 from a permanent 403, and `scripts/backfill_thumbnails.py`, which paces
+itself, backs off, and records each success to `state/thumbnail_backfill.json`
+so a rerun resumes rather than restarting.
+
+**The `Original:` line is load-bearing.** `_extract_source_video_id` recovers
+which source an upload came from by reading `Original: https://youtube.com/watch?v=<id>`
+back out of its description, and `get_uploaded_source_ids` — the duplicate
+check the whole workflow depends on — is built entirely on that. For a long
+time `generate_seo_description` wrote only `📺 From: <channel>` and no URL, so
+every music-removal upload was invisible to it: 60 of 83 videos on the channel
+have no recoverable source, and the only thing preventing a republish was
+`state/workflow_sources.json`, which is local to one machine while the user
+runs several. Fixed, but it does not apply retroactively — those 60 stay
+untraceable, which also bounds what the thumbnail backfill can reach.
+
+If you ever change the description template, keep that line and keep
+`tests/test_thumbnails.py::test_the_description_records_the_source_video`
+passing. It is the round trip, not decoration.
+
 ### NVENC GPU encoding
 
 `ffmpeg_overlay._video_encoder_args()` auto-detects NVENC via
