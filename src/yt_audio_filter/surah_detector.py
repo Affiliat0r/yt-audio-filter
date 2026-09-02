@@ -135,13 +135,13 @@ _SURAHS: List[Tuple[str, Optional[int], List[str]]] = [
     ("Al-Fil",         105,[r"al\W*fi[i]?l"]),
     ("Quraysh",        106,[r"quraa?ysh"]),
     ("Al-Maun",        107,[r"al\W*maa?[’']?uu?n"]),
-    ("Al-Kawthar",     108,[r"al\W*kawthar", r"al\W*kauthar"]),
+    ("Al-Kawthar",     108,[r"al\W*ka[uw]t[hs]?[ae]r"]),
     ("Al-Kafirun",     109,[r"al\W*ka+firu+n"]),
-    ("An-Nasr",        110,[r"an\W*nasr"]),
+    ("An-Nasr",        110,[r"an\W*nash?r"]),
     ("Al-Masad",       111,[r"al\W*masad", r"al\W*lahab"]),
     ("Al-Ikhlas",      112,[r"al\W*ikhlaa?s"]),
     ("Al-Falaq",       113,[r"al\W*falaq"]),
-    ("An-Nas",         114,[r"an\W*naa?s"]),
+    ("An-Nas",         114,[r"an\W*na+s(?![a-z])"]),
     # Well-known named passages (not whole surahs)
     ("Ayatul Kursi",   None, [r"aya[ht]u?l\W*kurs[ei]", r"aya[ht]\W*al\W*kurs[ei]"]),
     ("Ayat al-Kursi",  None, []),  # alias resolved to Ayatul Kursi by regex above

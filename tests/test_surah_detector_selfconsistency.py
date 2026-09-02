@@ -67,3 +67,34 @@ def test_takathur_survives_the_th_versus_s_transliteration(written: str) -> None
     """Arabic ث is romanised as both *th* and *s*, and the sources use both."""
     found = detect_surah(written)
     assert found is not None and found.number == 102
+
+
+# ------------------------------------------- one surah shadowing another
+
+
+@pytest.mark.parametrize(
+    "written,expected",
+    [
+        ("Surah An Nashr", 110),     # a misspelling of An-Nasr...
+        ("Surah An-Nasr", 110),
+        ("An Nasr", 110),
+        ("Surah An Naas", 114),      # ...which used to claim An-Nas's answer
+        ("Surah An-Nas", 114),
+        ("An Nas", 114),
+    ],
+)
+def test_an_nas_and_an_nasr_are_told_apart(written: str, expected: int) -> None:
+    """`an\W*naa?s` matched the "nas" inside "nashr", so a video of An-Nasr
+    was labelled An-Nas — a confidently wrong surah in a public title."""
+    found = detect_surah(written)
+    assert found is not None and found.number == expected
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["Al-Kawthar", "Al Kauthar", "Surah Al Kautsar", "Al Kauther", "al kawther"],
+)
+def test_kawthar_survives_the_indonesian_romanisation(written: str) -> None:
+    """These reciters are largely Indonesian, where it is spelled "Kautsar"."""
+    found = detect_surah(written)
+    assert found is not None and found.number == 108

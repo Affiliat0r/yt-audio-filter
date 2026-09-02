@@ -321,7 +321,10 @@ def _build_surah_auto_vars(
     canonical_names = [m.name if m else c.title for m, c in zip(matches, resolved)]
     canonical_tags = [m.tag if m else _slug_tag(c.title.split()[0]) for m, c in zip(matches, resolved)]
 
-    detected_surah = " + ".join(canonical_names)
+    # Same rule as the numbers path: thirteen names joined with " + " is a
+    # ~190-character title that fit_title then truncates mid-name.
+    canonical_numbers = [m.number if m else None for m in matches]
+    detected_surah = collapse_surah_label(canonical_names, canonical_numbers)
     surah_tag = "".join(canonical_tags)
 
     reciter = detect_reciter(audio_meta_first.title) or detect_reciter(audio_meta_first.description)
@@ -584,6 +587,32 @@ def _surah_numbers_output_filename(surah_numbers: List[int], video_id: str) -> s
 #: is roughly 60 characters, which leaves room for a typical suffix.
 _MAX_SPELLED_OUT_SURAHS = 4
 
+
+def collapse_surah_label(names, numbers):
+    """How a set of surahs is named in a title.
+
+    Spelling every name out overflows YouTube's 100-character limit, and it
+    does so *after* the render: the ten closing surahs came to 148 characters
+    and the upload was refused with the GPU time already spent. So beyond
+    ``_MAX_SPELLED_OUT_SURAHS`` a consecutive run collapses to a range, which
+    stays informative - you can see which stretch of the Qur'an it is - and
+    anything scattered names the first and counts the rest.
+
+    ``numbers`` may contain None, for a pasted URL whose surah could not be
+    detected. Then the list is spelled out rather than collapsed: inventing a
+    range from a partial list would put a stretch in the title that the video
+    does not actually contain.
+    """
+    names = list(names)
+    if len(names) <= _MAX_SPELLED_OUT_SURAHS:
+        return " + ".join(names)
+    if any(n is None for n in numbers) or len(numbers) != len(names):
+        return " + ".join(names)
+    if _is_consecutive_run(list(numbers)):
+        return f"{names[0]} → {names[-1]} ({len(names)} surahs)"
+    return f"{names[0]} + {len(names) - 1} more"
+
+
 #: YouTube rejects anything longer. Enforced by the uploader too; this is the
 #: value we aim under so it never gets that far.
 YOUTUBE_TITLE_LIMIT = 100
@@ -667,17 +696,7 @@ def _build_surah_numbers_auto_vars(
         # closing surahs (105-114) came to 148 characters and the upload was
         # refused *after* the render had already finished. The duplicate
         # compactor above cannot help — every entry there is a different surah.
-        if len(name_parts) <= _MAX_SPELLED_OUT_SURAHS:
-            detected_surah = " + ".join(name_parts)
-        elif _is_consecutive_run(surah_numbers):
-            # A run reads naturally as a range and stays informative: the user
-            # can see exactly which stretch of the Qur'an this is.
-            first = get_surah_info(surah_numbers[0]).name
-            last = get_surah_info(surah_numbers[-1]).name
-            detected_surah = f"{first} → {last} ({len(surah_numbers)} surahs)"
-        else:
-            # No range to describe, so name the first and count the rest.
-            detected_surah = f"{name_parts[0]} + {len(name_parts) - 1} more"
+        detected_surah = collapse_surah_label(name_parts, surah_numbers)
     surah_number_str = (
         str(surah_numbers[0]) if len(surah_numbers) == 1 else ""
     )
