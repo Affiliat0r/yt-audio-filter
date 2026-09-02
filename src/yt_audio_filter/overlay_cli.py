@@ -35,6 +35,41 @@ def _parse_resolution(value: str) -> tuple[int, int]:
     return (width, height)
 
 
+def resolve_playlist_id(name):
+    """Playlist id for ``name``, creating the playlist if there is none.
+
+    Returns None when there is no name, or when the lookup fails. Filing an
+    upload is worth doing but never worth failing a finished render over, so
+    every error here degrades to "leave it unfiled" and says so in the log.
+
+    Matching reuses ``workflow_runner.pick_playlist``, which folds case,
+    spacing and Turkish letters - that is what stops a second "Quran"
+    appearing beside the real one.
+    """
+    if not name or not str(name).strip():
+        return None
+    from . import uploader
+    from .logger import get_logger
+    from .workflow_runner import pick_playlist
+
+    logger = get_logger()
+
+    name = str(name).strip()
+    try:
+        existing = [dict(p) for p in uploader.list_playlists()]
+        match = pick_playlist(existing, name)
+        if match is not None:
+            return str(match["id"])
+        return uploader.create_playlist(
+            title=name,
+            description=f"Auto-created by yt-quran-overlay for {name}.",
+            privacy="public",
+        ) or None
+    except Exception as exc:  # noqa: BLE001 - see docstring
+        logger.warning(f"Could not resolve playlist {name!r}: {exc}. Leaving it unfiled.")
+        return None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="yt-quran-overlay",
@@ -165,6 +200,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--upload", action="store_true", help="Upload to YouTube after render")
     parser.add_argument(
+        "--playlist",
+        default="Quran",
+        metavar="NAME",
+        help=(
+            "Playlist to file the upload under, created if the channel has "
+            "none (default: Quran). Matching folds case and spacing, so it "
+            "will not add a second playlist beside an existing one. Pass an "
+            "empty string to leave the video unfiled."
+        ),
+    )
+    parser.add_argument(
         "--upscale",
         action="store_true",
         help=(
@@ -273,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
                 upscale=args.upscale,
+                playlist_id=resolve_playlist_id(args.playlist) if args.upload else None,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:

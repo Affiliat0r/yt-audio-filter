@@ -361,6 +361,7 @@ def run_overlay_surahs(
     proxy: Optional[str] = None,
     max_candidates_per_channel: int = 200,
     upscale: bool = False,
+    playlist_id: Optional[str] = None,
 ) -> OverlayResult:
     """Resolve surah names → audio URLs, concat audios, render against the longest visual.
 
@@ -491,6 +492,7 @@ def run_overlay_surahs(
             tags=metadata.tags,
             category_id=metadata.category_id,
             privacy=metadata.privacy_status,
+            playlist_id=playlist_id,
         )
     else:
         logger.info("Upload skipped (no --upload flag)")
