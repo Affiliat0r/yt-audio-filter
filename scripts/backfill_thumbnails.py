@@ -11,11 +11,15 @@ Dry run by default; ``--apply`` is what actually changes anything::
     python scripts/backfill_thumbnails.py
     python scripts/backfill_thumbnails.py --apply
 
-**YouTube rate-limits thumbnails per channel.** Around ten set back to back is
-enough to earn a ``429 uploadRateLimitExceeded``, and the window is not
-documented. So the pass paces itself (``--delay``), waits out a 429 with a
-doubling backoff, and records each success to ``--state`` the moment it lands —
-rerunning the same command resumes rather than starting over.
+**YouTube rate-limits thumbnails per channel, and it does not forgive.**
+Around ten set back to back earns a ``429 uploadRateLimitExceeded``. The window
+is undocumented and turns out to be long: after a run that retried every one to
+eight minutes, the channel was still refusing three days later. Retrying
+appears to extend the lockout.
+
+So this pass **stops at the first 429** rather than backing off, paces itself
+between videos (``--delay``), and records each success to ``--state`` as it
+lands. Rerun it a day later and it resumes where it stopped.
 """
 
 from __future__ import annotations
@@ -30,10 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from yt_audio_filter import uploader  # noqa: E402
 
-#: How long to wait out a 429, doubling each time. YouTube does not say how
-#: long its thumbnail window is, so this starts around a minute and gives up
-#: after four tries rather than blocking forever.
-BACKOFF_SECONDS = (60, 120, 240, 480)
+class RateLimited(Exception):
+    """YouTube is refusing thumbnail uploads for this channel right now."""
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -131,27 +133,25 @@ def is_rate_limit(exc: Exception) -> bool:
     return "429" in text or "uploadRateLimitExceeded" in text
 
 
-def set_with_backoff(youtube, uploaded_id: str, source_id: str, cache_dir: Path) -> bool:
-    """Set one thumbnail, waiting out YouTube's rate limit rather than failing.
+def set_one(youtube, uploaded_id: str, source_id: str, cache_dir: Path) -> bool:
+    """Set one thumbnail. Raises :class:`RateLimited` if YouTube says no.
 
-    A 429 is temporary and says nothing about whether the request was valid, so
-    it is the one error worth sitting through. Everything else — a 403, a
-    missing image — is reported at once, because retrying will not help.
+    **Do not add a retry loop here.** An earlier version backed off and retried
+    for up to fifteen minutes per video. It set nothing, and the channel was
+    still refusing three days later — YouTube appears to extend the lockout
+    when it keeps being asked, so persistence made the situation worse rather
+    than better. On a 429 the only useful move is to stop and come back much
+    later.
     """
-    for wait in (0, *BACKOFF_SECONDS):
-        if wait:
-            print(f"     rate limited; waiting {wait}s", flush=True)
-            time.sleep(wait)
-        try:
-            return uploader.apply_source_thumbnail(
-                youtube, uploaded_id, source_id, cache_dir, strict=True
-            )
-        except Exception as exc:  # noqa: BLE001 - reported to the caller
-            if not is_rate_limit(exc):
-                print(f"     {str(exc)[:140]}", flush=True)
-                return False
-    print("     still rate limited after every retry; rerun later to resume", flush=True)
-    return False
+    try:
+        return uploader.apply_source_thumbnail(
+            youtube, uploaded_id, source_id, cache_dir, strict=True
+        )
+    except Exception as exc:  # noqa: BLE001 - classified for the caller
+        if is_rate_limit(exc):
+            raise RateLimited(str(exc)) from exc
+        print(f"     {str(exc)[:140]}", flush=True)
+        return False
 
 
 def has_maxres(youtube, video_id: str) -> bool:
@@ -210,7 +210,21 @@ def main(argv=None) -> int:
         if index and args.delay:
             time.sleep(args.delay)
 
-        if set_with_backoff(youtube, uploaded_id, source_id, args.cache_dir):
+        try:
+            ok = set_one(youtube, uploaded_id, source_id, args.cache_dir)
+        except RateLimited:
+            # Stop the whole pass, not just this video. Continuing would keep
+            # asking a channel that has already said no, which is what turned a
+            # short refusal into a multi-day one.
+            print(
+                f"\nYouTube is rate-limiting thumbnail uploads on this channel.\n"
+                f"{done} set this pass; {len(pending) - index} still to do.\n"
+                "Stop here and rerun tomorrow - retrying sooner extends the block.",
+                flush=True,
+            )
+            return 2
+
+        if ok:
             print(f"  OK {title:<52}  {source_id} -> {uploaded_id}", flush=True)
             done += 1
             already.add(uploaded_id)
