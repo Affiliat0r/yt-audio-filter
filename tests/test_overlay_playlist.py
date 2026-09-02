@@ -108,3 +108,55 @@ def test_the_default_can_be_turned_off() -> None:
          "--metadata", "m.json", "--playlist", ""]
     )
     assert args.playlist == ""
+
+
+# ------------------------------------------------- every mode, not just one
+
+
+@pytest.mark.parametrize(
+    "argv,target",
+    [
+        (
+            ["--surah", "https://youtu.be/aaaaaaaaaaa", "--video-channel", "@v",
+             "--audio-channel", "@a"],
+            "run_overlay_surahs",
+        ),
+        (
+            ["--surah-number", "114", "--reciter", "ghamdi", "--video-id", "vid11chars"],
+            "run_overlay_from_surah_numbers",
+        ),
+        (
+            ["--video-url", "https://youtu.be/bbbbbbbbbbb",
+             "--audio-url", "https://youtu.be/ccccccccccc"],
+            "run_overlay",
+        ),
+    ],
+    ids=["surah", "numbers", "manual"],
+)
+def test_every_mode_files_its_upload(argv, target, tmp_path) -> None:
+    """The wiring was added to one branch and quietly missing from the others.
+
+    A 13-surah render published and stayed unfiled, because the call that got
+    the argument was the manual-mode one three branches above it. Asserting per
+    mode is the only thing that catches that.
+    """
+    from types import SimpleNamespace
+    from unittest import mock
+
+    metadata = tmp_path / "m.json"
+    metadata.write_text(
+        '{"title": "t", "description_template": "d", "tags": [], "privacy_status": "private"}',
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def capture(*args, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(output_path=tmp_path / "o.mp4", uploaded_video_id="up-id")
+
+    with mock.patch.object(overlay_cli, target, side_effect=capture), mock.patch.object(
+        overlay_cli, "resolve_playlist_id", return_value="PL-quran"
+    ):
+        overlay_cli.main(argv + ["--metadata", str(metadata), "--upload"])
+
+    assert seen.get("playlist_id") == "PL-quran", f"{target} was not given a playlist"

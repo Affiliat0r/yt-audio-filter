@@ -339,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
                 upload=args.upload,
+                playlist_id=resolve_playlist_id(args.playlist) if args.upload else None,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:
@@ -360,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
                 cookies_from_browser=args.cookies_from_browser,
                 proxy=args.proxy,
                 upscale=args.upscale,
+                playlist_id=resolve_playlist_id(args.playlist) if args.upload else None,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:
