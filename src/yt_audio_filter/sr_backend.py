@@ -52,6 +52,23 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = REPO_ROOT / "tools" / "realesrgan" / "models"
 MODEL_NAME = "realesr-animevideov3-x2"
 
+#: INT8 was tried and is *slower*: 64.9 fps against fp16's 118.8, i.e. 0.55x.
+#:
+#: On paper it was the one route left to a 10-minute render — Ampere INT8
+#: tensor throughput is nominally twice fp16, which would have put the required
+#: 41.65 TOP/s at 48% of sustained peak instead of fp16's impossible 97%. In
+#: practice the QDQ graph wraps every convolution in a quantise/dequantise
+#: pair, and for a model this small at 640x360 that conversion costs more than
+#: the tensor cores give back: 18.5 TOP/s achieved against fp16's 33.9.
+#:
+#: Getting there took two TRT-specific fixes worth recording, since neither is
+#: in the obvious path: onnxruntime emits INT32 bias dequantise nodes (TRT 11
+#: accepts only Int8/Int4/FP8/FP4), and it defaults to asymmetric activations
+#: (TRT requires a zero point of 0). With QuantizeBias off and both
+#: *Symmetric options on, the engine builds in 10s — and is not worth using.
+#:
+#: TensorRT 11 has no INT8 BuilderFlag at all; precision comes from the graph.
+
 #: One frame at a time.
 #:
 #: Batching was the obvious hypothesis and the measurements killed it:
