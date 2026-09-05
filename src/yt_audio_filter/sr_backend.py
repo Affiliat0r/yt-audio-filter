@@ -451,3 +451,83 @@ def make_upscaler(width: int, height: int, cache_dir: Path,
         except Exception as exc:  # noqa: BLE001 - see docstring
             logger.warning(f"{backend} upscaler unavailable ({exc}); trying the next backend.")
     return None
+
+
+# ---------------------------------------------------------------------------
+# Temporal reuse: not running the network on a frame that did not change
+# ---------------------------------------------------------------------------
+
+#: Mean absolute difference, 0-255, under which two frames are the same cel.
+#:
+#: Animation is drawn on twos or threes, so the same picture is held for two or
+#: three video frames. Measured on a real episode, 62% of consecutive pairs sit
+#: under 1.0 — they are not bit-identical only because h264 re-quantises each
+#: frame, so an equality test would find almost nothing.
+REUSE_THRESHOLD = 1.0
+
+#: Mean absolute difference within any 8x8 block, over which the frames differ
+#: however small the whole-frame mean is.
+#:
+#: This is the guard that makes the mean safe to use. A 5x5 highlight moving
+#: across a 640x360 frame shifts the frame mean by 0.028/255 — invisible to a
+#: mean test — while being exactly the motion the viewer is watching. Blinking
+#: eyes and moving mouths are that shape. Pooling first localises the change so
+#: a small fast object cannot hide inside a large still frame.
+REUSE_BLOCK_THRESHOLD = 8.0
+
+#: Off, and measured rather than merely cautious — this lead was killed by its
+#: own numbers.
+#:
+#: It looked like the one remaining route to a 10-minute render: an earlier
+#: measurement put 62% of consecutive frame pairs under 1.0/255. That figure
+#: does not survive a change detector that is actually safe. Measured over
+#: 6,000 frames of a real episode, reuse against block threshold:
+#:
+#:      4      5.8%      47.8 min
+#:      8      9.3%      46.3 min      <- REUSE_BLOCK_THRESHOLD
+#:     16     12.6%      44.9 min
+#:     32     16.9%      43.0 min
+#:     64     25.7%      39.2 min
+#:   mean only 32.2%     36.4 min      <- unsafe; drops small fast motion
+#:
+#: Against 50.3 min today, and 10 min asked for. Worse, the comparison itself
+#: costs 2.6 ms/frame on CPU — about 3.8 min over 87,737 frames, which at the
+#: safe setting cancels the ~4 min it saves. Net zero.
+#:
+#: Kept because the tests encode *why* the cheap version is unsafe, and because
+#: on a source with longer holds the arithmetic could differ. Do not switch it
+#: on expecting a win without re-measuring the reuse rate for that source.
+REUSE_DEFAULT = False
+
+_BLOCK = 8
+
+
+def frames_match(previous, current) -> bool:
+    """Whether ``current`` is the same drawing as ``previous``.
+
+    Two tests, because either alone has a blind spot. The whole-frame mean
+    catches broad change and is cheap; the block maximum catches a small region
+    changing a lot, which the mean averages away to nothing.
+
+    ``None`` for ``previous`` — the first frame of a render — is never a match.
+    """
+    import numpy as np
+
+    if previous is None or current is None:
+        return False
+    if previous.shape != current.shape:
+        return False
+
+    diff = np.abs(previous.astype(np.int16) - current.astype(np.int16))
+    if diff.mean() >= REUSE_THRESHOLD:
+        return False
+
+    # Mean-pool into 8x8 blocks and take the worst one. Trim the ragged edge
+    # rather than padding it, since a partial block would dilute its own mean
+    # and could hide a change sitting against the frame border.
+    height, width = diff.shape[0] // _BLOCK * _BLOCK, diff.shape[1] // _BLOCK * _BLOCK
+    if height == 0 or width == 0:
+        return True
+    trimmed = diff[:height, :width].astype(np.float32)
+    blocks = trimmed.reshape(height // _BLOCK, _BLOCK, width // _BLOCK, _BLOCK, -1)
+    return float(blocks.mean(axis=(1, 3, 4)).max()) < REUSE_BLOCK_THRESHOLD
