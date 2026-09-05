@@ -33,6 +33,22 @@ export const MIN = Object.freeze({
 export const REPEAT_SECONDS = 2.2;
 
 /**
+ * What the voice is actually handed for a line.
+ *
+ * A bare syllable gives a TTS no sentence to hang an intonation contour on,
+ * which is most of why the first pass sounded mechanical -- "bi" comes back as
+ * a flat token however good the model is. A trailing full stop buys a falling
+ * contour for the price of one character. Lines that already end in
+ * punctuation are left alone.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function spokenForm(text) {
+  return /[!?.,;:]$/.test(text) ? text : `${text}.`;
+}
+
+/**
  * @param {number|undefined} spoken  measured length of the line, seconds
  * @param {'title'|'letter'|'harakat'|'prompt'} kind
  */
@@ -66,12 +82,16 @@ export function buildTimeline(lesson, letterIds, spoken, opts = {}) {
     t += seg.duration;
   };
 
+  // Every beat shows the card now that nothing is written in Latin, so the
+  // opening one holds the lesson's first letter while the title is spoken.
   push({
     kind: 'title',
+    glyph: byId.get(letterIds[0]).glyph,
+    mark: '',
     text: title,
     say: null,
-    speak: title,
-    duration: beatLength(spoken.get(title), 'title'),
+    speak: spokenForm(title),
+    duration: beatLength(spoken.get(spokenForm(title)), 'title'),
     accent: '#B08968',
   });
 
@@ -85,9 +105,9 @@ export function buildTimeline(lesson, letterIds, spoken, opts = {}) {
       mark: '',
       harakatName: '',
       say: letter.name,
-      speak: letter.name,
+      speak: spokenForm(letter.name),
       step: 0,
-      duration: beatLength(spoken.get(letter.name), 'letter'),
+      duration: beatLength(spoken.get(spokenForm(letter.name)), 'letter'),
       accent: '#B08968',
     });
 
@@ -101,9 +121,9 @@ export function buildTimeline(lesson, letterIds, spoken, opts = {}) {
         mark: h.mark,
         harakatName: h.name,
         say: syllable,
-        speak: syllable,
+        speak: spokenForm(syllable),
         step: i + 1,
-        duration: beatLength(spoken.get(syllable), 'harakat'),
+        duration: beatLength(spoken.get(spokenForm(syllable)), 'harakat'),
         accent: h.accent,
       });
     });
@@ -116,8 +136,8 @@ export function buildTimeline(lesson, letterIds, spoken, opts = {}) {
       mark: '',
       text: lesson.prompt,
       say: null,
-      speak: lesson.prompt,
-      duration: beatLength(spoken.get(lesson.prompt), 'prompt'),
+      speak: spokenForm(lesson.prompt),
+      duration: beatLength(spoken.get(spokenForm(lesson.prompt)), 'prompt'),
       accent: '#B08968',
     });
 
@@ -152,7 +172,8 @@ export function spokenLines(lesson, letterIds, opts = {}) {
   const byId = new Map(lesson.letters.map((l) => [l.id, l]));
   const seen = new Set();
   const out = [];
-  const add = (text) => {
+  const add = (raw) => {
+    const text = raw ? spokenForm(raw) : raw;
     if (text && !seen.has(text)) {
       seen.add(text);
       out.push(text);

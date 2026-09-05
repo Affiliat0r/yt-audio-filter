@@ -4,7 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { MIN, REPEAT_SECONDS, TAIL, buildTimeline, spokenLines } from '../timeline.mjs';
+import { MIN, REPEAT_SECONDS, TAIL, buildTimeline, spokenForm, spokenLines } from '../timeline.mjs';
 
 const ELIFBA_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const lesson = JSON.parse(readFileSync(path.join(ELIFBA_DIR, 'lesson.json'), 'utf8'));
@@ -83,8 +83,22 @@ test('spokenLines deduplicates syllables shared between letters', () => {
   // cost six clips.
   const lines = spokenLines(lesson, ['se', 'sin']);
   assert.equal(new Set(lines).size, lines.length, 'lines should be unique');
-  assert.ok(lines.includes('Se') && lines.includes('Sin'));
-  assert.equal(lines.filter((l) => l === 'se').length, 1);
+  assert.ok(lines.includes('Se.') && lines.includes('Sin.'));
+  assert.equal(lines.filter((l) => l === 'se.').length, 1);
+});
+
+test('lines reach the voice with terminal punctuation, exactly once', () => {
+  // The full stop is what gives a bare syllable a falling contour instead of a
+  // flat one; adding a second to a line that already ends in "!" would be
+  // read aloud as a stumble.
+  assert.equal(spokenForm('be'), 'be.');
+  assert.equal(spokenForm('Şimdi sen söyle!'), 'Şimdi sen söyle!');
+  assert.equal(spokenForm(spokenForm('be')), 'be.');
+
+  for (const line of spokenLines(lesson, ['be'])) {
+    assert.match(line, /[!?.]$/, `${JSON.stringify(line)} has no terminal punctuation`);
+    assert.doesNotMatch(line, /\.\.$/, `${JSON.stringify(line)} was punctuated twice`);
+  }
 });
 
 test('a segment is the spoken line plus its tail, or the floor if that is longer', () => {
@@ -111,6 +125,23 @@ test('the prompt beat still carries a letter to point at', () => {
   assert.equal(prompt.glyph, 'ب');
   assert.equal(prompt.mark, '');
   assert.equal(prompt.text, lesson.prompt);
+});
+
+test('the opening beat carries a letter, since every beat shows the card', () => {
+  // Nothing is written in Latin any more, so a title beat with no glyph would
+  // open the video on an empty card.
+  const tl = timelineFor(['te', 'be']);
+  const title = tl.segments[0];
+  assert.equal(title.kind, 'title');
+  assert.equal(title.glyph, 'ت', "should be the lesson's first letter");
+  assert.equal(title.mark, '');
+});
+
+test('every segment has a glyph for the card to show', () => {
+  const tl = timelineFor(['elif', 'be', 'te']);
+  for (const seg of tl.segments) {
+    assert.ok(seg.glyph, `${seg.kind} at ${seg.start}s has no glyph`);
+  }
 });
 
 test('an unknown letter id is rejected before anything is rendered', () => {

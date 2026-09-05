@@ -21,8 +21,12 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-/** Slower than default: a three-year-old needs the gap between syllables. */
-export const DEFAULT_RATE = '-20%';
+/*
+ * Slowed a little for a three-year-old, but only a little. The first pass ran
+ * at -20% and the drag was most of what made it sound like a machine; the
+ * clarity that buys is not worth the voice it costs. Override with --rate.
+ */
+export const DEFAULT_RATE = '-8%';
 
 export function clipKey(text, voice, rate) {
   return createHash('sha1').update([voice, rate, text].join('\u0000')).digest('hex').slice(0, 16);

@@ -4,16 +4,24 @@
  * Implements the `window.__movie` contract from visuals/CONTRACT.md, so the
  * existing capture harness drives it unchanged. The one rule that matters
  * here: renderAt(t) is a pure function of t. No CSS transitions, no CSS
- * animations, no rAF, no Date.now() -- every animated value below is computed
- * from the frame's own timestamp. A CSS transition would tie the frame to how
- * long the machine took to get there, which is exactly the bug that makes a
- * re-render disagree with the first one.
+ * animations, no rAF, no Date.now() -- every animated value below, the whole
+ * garden included, is computed from the frame's own timestamp. A CSS
+ * animation would tie the frame to how long the machine took to reach it,
+ * which is exactly the bug that makes a re-render disagree with the first one.
+ *
+ * Nothing on screen is written in Latin script. A three-year-old cannot read
+ * it, and a transliteration under the letter invites reading that instead of
+ * the letter. What those words used to carry is now carried by the voice, by
+ * the accent colour, and by the four dots.
  */
 (function () {
   'use strict';
 
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
   var el = {};
   var timeline = null;
+  var flowers = [];
 
   // -- easing (pure) --------------------------------------------------------
 
@@ -25,9 +33,15 @@
     return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
   }
 
-  /** Fade in at the head of a segment and back out at its tail. */
-  function envelope(lt, dur, inDur, outDur) {
-    return Math.min(easeOutCubic(lt / inDur), easeOutCubic((dur - lt) / outDur));
+  /** mulberry32 -- small, seeded, and identical on every machine. */
+  function makeRng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) >>> 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
   }
 
   // -- segment lookup -------------------------------------------------------
@@ -44,6 +58,98 @@
       if (t < segs[i].start + segs[i].duration) return segs[i];
     }
     return segs[segs.length - 1];
+  }
+
+  // -- the garden -----------------------------------------------------------
+
+  /*
+   * Flowers are placed once, down the two margins either side of the card,
+   * and only transformed afterwards. Positions come from a fixed seed, so the
+   * arrangement is identical in every render -- a garden that reshuffled
+   * between letters would become its own distraction.
+   */
+  function buildGarden(viewWidth, cardHalfWidth) {
+    var rng = makeRng(0x5eed);
+    var built = [];
+    var margin = 3;
+    var cols = 3;
+    var rows = 3;
+
+    // A jittered grid rather than free random placement. Pure random clumps --
+    // it put five blooms in one corner and left the opposite margin bare --
+    // and a clump beside the card competes with the letter for attention,
+    // which is the one thing the background must never do.
+    var regions = [
+      { x0: margin, x1: viewWidth / 2 - cardHalfWidth - 3 },
+      { x0: viewWidth / 2 + cardHalfWidth + 3, x1: viewWidth - margin },
+    ];
+
+    for (var s = 0; s < regions.length; s++) {
+      var region = regions[s];
+      var cellW = (region.x1 - region.x0) / cols;
+      var cellH = 88 / rows;
+      for (var c = 0; c < cols; c++) {
+        for (var r = 0; r < rows; r++) {
+          // Small on purpose: at a radius of 6 the bloom is about a tenth of
+          // the frame height, which reads as pattern. Much larger and it reads
+          // as subject.
+          var rad = 2.2 + rng() * 3.8;
+          built.push({
+            x: region.x0 + cellW * (c + 0.5) + (rng() - 0.5) * cellW * 0.55,
+            y: 6 + cellH * (r + 0.5) + (rng() - 0.5) * cellH * 0.55,
+            r: rad,
+            petals: rng() < 0.5 ? 5 : 6,
+            spin: (rng() < 0.5 ? -1 : 1) * (5 + rng() * 9),
+            phase: rng(),
+            breathe: 0.4 + rng() * 0.35,
+            bob: 0.5 + rng() * 1.2,
+            bobSpeed: 0.25 + rng() * 0.3,
+            alpha: 0.13 + (rad / 6) * 0.14,
+          });
+        }
+      }
+    }
+    return built;
+  }
+
+  function makeFlowerNode(f) {
+    var g = document.createElementNS(SVG_NS, 'g');
+    for (var i = 0; i < f.petals; i++) {
+      var petal = document.createElementNS(SVG_NS, 'ellipse');
+      petal.setAttribute('cx', '0');
+      petal.setAttribute('cy', String(-f.r * 0.54));
+      petal.setAttribute('rx', String(f.r * 0.27));
+      petal.setAttribute('ry', String(f.r * 0.54));
+      petal.setAttribute('transform', 'rotate(' + (i * 360) / f.petals + ')');
+      g.appendChild(petal);
+    }
+    // The centre keeps its own warm colour, so a bloom still reads as a flower
+    // when the petals take the harakat's accent.
+    var core = document.createElementNS(SVG_NS, 'circle');
+    core.setAttribute('r', String(f.r * 0.26));
+    core.setAttribute('fill', '#E8B455');
+    g.appendChild(core);
+    return g;
+  }
+
+  function paintGarden(t, accent) {
+    // One slow bloom as the video opens, then the garden simply lives.
+    var intro = easeOutCubic(t / 1.8);
+    for (var i = 0; i < flowers.length; i++) {
+      var f = flowers[i];
+      var turn = f.spin * t + f.phase * 360;
+      var breathe = 1 + 0.07 * Math.sin(t * f.breathe + f.phase * 6.283);
+      var dy = f.bob * Math.sin(t * f.bobSpeed + f.phase * 6.283);
+      var scale = breathe * (0.55 + 0.45 * intro);
+
+      f.node.setAttribute(
+        'transform',
+        'translate(' + f.x.toFixed(3) + ' ' + (f.y + dy).toFixed(3) + ') ' +
+          'rotate(' + turn.toFixed(3) + ') scale(' + scale.toFixed(4) + ')',
+      );
+      f.node.setAttribute('fill', accent);
+      f.node.setAttribute('opacity', (f.alpha * intro).toFixed(4));
+    }
   }
 
   // -- painting -------------------------------------------------------------
@@ -65,42 +171,20 @@
       var dot = el.dots.children[j];
       var on = allLit || j <= activeIndex;
       var isActive = j === activeIndex;
-      dot.style.background = on ? accent : '#E3D2BC';
+      dot.style.background = on ? accent : '#E6D6C1';
       dot.style.opacity = on && !isActive ? '0.45' : '1';
       dot.style.transform = isActive ? 'scale(1.45)' : 'scale(1)';
     }
   }
 
-  function paint(seg, lt) {
+  function paint(seg, lt, t) {
     var accent = seg.accent || '#B08968';
     var dur = seg.duration;
 
-    // Everything off by default; each branch turns on only what it needs.
-    el.card.style.opacity = '0';
-    el.letterName.style.opacity = '0';
-    el.harakatName.style.opacity = '0';
-    el.say.style.opacity = '0';
-    el.prompt.style.opacity = '0';
+    paintGarden(t, accent);
 
     el.glowInner.setAttribute('stop-color', accent);
     el.glowOuter.setAttribute('stop-color', accent);
-
-    if (seg.kind === 'title') {
-      var tv = envelope(lt, dur, 0.4, 0.35);
-      // A gentle breathe so a held beat does not read as a frozen frame.
-      var breathe = 1 + 0.02 * Math.sin((lt / dur) * Math.PI);
-      el.prompt.style.opacity = String(tv);
-      el.prompt.style.top = 'calc(var(--u) * 36.5)';
-      el.prompt.style.fontSize = 'calc(var(--u) * 8.5)';
-      el.prompt.style.transform =
-        'scale(' + (0.94 + 0.06 * easeOutBack(lt / 0.45)) * breathe + ')';
-      setText(el.prompt, seg.text || '');
-      el.glowInner.setAttribute('stop-opacity', String(0.16 * tv));
-      paintDots(-1, 4, accent, false);
-      return;
-    }
-
-    // -- letter / harakat / repeat: the card is on screen --------------------
 
     var vis = Math.min(easeOutCubic(lt / 0.32), easeOutCubic((dur - lt) / 0.22));
 
@@ -122,47 +206,18 @@
     el.glyphMark.style.opacity = String(markT * vis);
     el.glyphBase.style.opacity = String(vis);
 
-    el.glowInner.setAttribute('stop-opacity', String((0.08 + 0.14 * markT) * vis));
+    el.glowInner.setAttribute('stop-opacity', String((0.08 + 0.16 * markT) * vis));
 
-    if (seg.letterName) {
-      // On a harakat beat `say` holds the syllable, so the letter's own name
-      // would otherwise vanish from the screen just as it is being combined.
-      el.letterName.style.opacity = String(easeOutCubic((lt - 0.28) / 0.34) * vis);
-      setText(el.letterName, seg.letterName);
-    }
-
-    if (seg.harakatName) {
-      var hv = easeOutCubic((lt - 0.34) / 0.36) * vis;
-      el.harakatName.style.opacity = String(hv);
-      el.harakatName.style.color = accent;
-      el.harakatName.style.transform = 'translateY(' + (1 - hv) * 1.6 + 'vh)';
-      setText(el.harakatName, seg.harakatName);
-    }
-
-    if (seg.kind === 'prompt') {
-      // Sits where the syllable would be and at a smaller size, so handing
-      // the turn over does not push the letter off the screen.
-      var qv = envelope(lt, dur, 0.35, 0.3);
-      el.prompt.style.opacity = String(qv);
-      el.prompt.style.top = 'calc(var(--u) * 75.5)';
-      el.prompt.style.fontSize = 'calc(var(--u) * 5.8)';
-      el.prompt.style.transform = 'scale(' + (1 + 0.02 * Math.sin((lt / dur) * Math.PI)) + ')';
-      setText(el.prompt, seg.text || '');
-    } else if (seg.kind === 'repeat') {
-      // The child's turn. The syllable is shown faintly and pulsing rather
-      // than plainly, so a reading parent can prompt without the child simply
-      // being handed the answer.
-      var pulse = 0.30 + 0.16 * (0.5 + 0.5 * Math.sin((lt / dur) * Math.PI * 4));
-      el.say.style.opacity = String(pulse * vis);
-      el.say.style.transform = 'translateY(0)';
-      el.say.style.color = accent;
-      setText(el.say, seg.say || '');
-    } else if (seg.say) {
-      var sv = easeOutCubic((lt - 0.42) / 0.36) * vis;
-      el.say.style.opacity = String(sv);
-      el.say.style.color = '#2A2018';
-      el.say.style.transform = 'translateY(' + (1 - sv) * 1.8 + 'vh)';
-      setText(el.say, seg.say);
+    // "Your turn" has to be said without words now, so it is said with light:
+    // the card's outline breathes for exactly the beats the child should be
+    // speaking over.
+    if (seg.kind === 'prompt' || seg.kind === 'repeat') {
+      var pulse = 0.5 + 0.5 * Math.sin(lt * Math.PI * 2 - Math.PI / 2);
+      el.ring.style.opacity = String((0.15 + 0.4 * pulse) * vis);
+      el.ring.style.borderColor = accent;
+      el.ring.style.transform = 'translateX(-50%) scale(' + (0.985 + 0.02 * pulse) + ')';
+    } else {
+      el.ring.style.opacity = '0';
     }
 
     paintDots(seg.step === undefined ? -1 : seg.step, 4, accent,
@@ -180,8 +235,8 @@
         throw new Error('elifba scene: window.__timeline has no segments');
       }
 
-      var ids = ['stage', 'glowInner', 'glowOuter', 'title', 'card',
-                 'glyphBase', 'glyphMark', 'letterName', 'harakatName', 'say', 'prompt', 'dots'];
+      var ids = ['stage', 'garden', 'glowInner', 'glowOuter', 'ring', 'card',
+                 'glyphBase', 'glyphMark', 'dots'];
       for (var i = 0; i < ids.length; i++) {
         el[ids[i]] = document.getElementById(ids[i]);
         if (!el[ids[i]]) throw new Error('elifba scene: missing #' + ids[i]);
@@ -190,7 +245,18 @@
       el.stage.style.width = cfg.width + 'px';
       el.stage.style.height = cfg.height + 'px';
       el.stage.style.setProperty('--u', cfg.height / 100 + 'px');
-      setText(el.title, timeline.title || '');
+
+      // The garden works in the same 1%-of-height units as the CSS, so a
+      // flower at x=20 lands where `calc(var(--u) * 20)` would put it. Taking
+      // the viewBox width from the real aspect ratio keeps circles circular at
+      // any output size instead of stretching them.
+      var viewWidth = (cfg.width / cfg.height) * 100;
+      el.garden.setAttribute('viewBox', '0 0 ' + viewWidth.toFixed(4) + ' 100');
+      flowers = buildGarden(viewWidth, 34);
+      for (var j = 0; j < flowers.length; j++) {
+        flowers[j].node = makeFlowerNode(flowers[j]);
+        el.garden.appendChild(flowers[j].node);
+      }
 
       // A frame captured before the Arabic face has loaded silently ships
       // system-font letterforms, so block on it and fail loudly if it is
@@ -206,7 +272,7 @@
 
     renderAt: async function (t) {
       var seg = segmentAt(t);
-      paint(seg, t - seg.start);
+      paint(seg, t - seg.start, t);
       // Force a synchronous layout flush so the screenshot that follows sees
       // the values written above rather than the previous frame's.
       void el.stage.getBoundingClientRect();

@@ -15,23 +15,21 @@
 
   html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
 
-  /* Every size below is in --u, which init() sets to 1% of the stage height,
-     so 720p is a pure scale of 1080p and nothing needs a second set of
-     numbers. Vertical positions are `top` in --u rather than percentages:
-     the layout is a fixed rhythm down the frame, and reading it as absolute
-     units is what makes it obvious that nothing runs off the bottom. */
+  /* Every size is in --u, which init() sets to 1% of the stage height, so
+     720p is a pure scale of 1080p and nothing needs a second set of numbers.
+     There is deliberately no Latin text anywhere on screen: a three-year-old
+     cannot read it, and a transliteration sitting under the letter invites
+     reading that instead of the letter itself. Everything the words used to
+     carry is now carried by the voice, by the accent colour, and by the dots. */
   #stage {
     position: relative;
     overflow: hidden;
     display: block;
     background: linear-gradient(168deg, #FFFAF2 0%, #FDF1DF 52%, #F7E4CB 100%);
     font-family: 'Segoe UI', system-ui, sans-serif;
-    color: #2A2018;
   }
 
-  /* Static background shapes. They give the frame some depth without adding
-     anything that moves -- a three-year-old should be looking at the letter,
-     not at the decoration. */
+  /* Soft depth behind everything. Static -- the flowers do the moving. */
   .blob {
     position: absolute; border-radius: 50%; pointer-events: none;
     filter: blur(calc(var(--u) * 5));
@@ -47,29 +45,38 @@
     background: rgba(214, 168, 106, 0.09);
   }
 
+  /* The garden. Flowers are built once in init() and only transformed per
+     frame, so the DOM never churns during a render. */
+  #garden {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
   /* Accent wash behind the card; colour and strength are set per frame. */
   #glow {
-    position: absolute; left: 50%; top: calc(var(--u) * 37);
-    width: 130%; height: calc(var(--u) * 110);
+    position: absolute; left: 50%; top: calc(var(--u) * 45);
+    width: 130%; height: calc(var(--u) * 115);
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
 
-  #title {
-    position: absolute; top: calc(var(--u) * 5.5); left: 0; right: 0;
-    text-align: center;
-    font-size: calc(var(--u) * 2.7);
-    letter-spacing: calc(var(--u) * 0.4);
-    text-transform: uppercase;
-    font-weight: 600;
-    color: #B08968;
+  /* Pulsing outline that means "your turn" without saying so. */
+  #ring {
+    position: absolute; left: 50%; top: calc(var(--u) * 13);
+    transform: translateX(-50%);
+    width: calc(var(--u) * 74);
+    height: calc(var(--u) * 64);
+    border-radius: calc(var(--u) * 7);
+    border: calc(var(--u) * 0.7) solid #D64545;
+    opacity: 0;
   }
 
   #card {
-    position: absolute; left: 50%; top: calc(var(--u) * 13);
+    position: absolute; left: 50%; top: calc(var(--u) * 16);
     transform: translateX(-50%);
-    width: calc(var(--u) * 56);
-    height: calc(var(--u) * 47);
+    width: calc(var(--u) * 68);
+    height: calc(var(--u) * 58);
     border-radius: calc(var(--u) * 5);
     background: #FFFFFF;
     box-shadow: 0 calc(var(--u) * 1.5) calc(var(--u) * 4.2) rgba(96, 66, 34, 0.15),
@@ -87,8 +94,8 @@
     transform: translateY(-50%);
     text-align: center;
     font-family: 'ElifbaArabic', 'Amiri', 'Scheherazade New', serif;
-    font-size: calc(var(--u) * 25);
-    line-height: 1.45;
+    font-size: calc(var(--u) * 32);
+    line-height: 1.5;
     direction: rtl;
     /* Kill every optional shaping feature that could make the two layers
        disagree about where the base letter sits. */
@@ -98,48 +105,14 @@
   #glyphMark { color: #D64545; }
   #glyphBase { color: #2A2018; }
 
-  #letterName {
-    position: absolute; top: calc(var(--u) * 63); left: 0; right: 0;
-    text-align: center;
-    font-size: calc(var(--u) * 3.0);
-    letter-spacing: calc(var(--u) * 0.25);
-    text-transform: uppercase;
-    font-weight: 600;
-    color: #BA9A76;
-  }
-
-  #harakatName {
-    position: absolute; top: calc(var(--u) * 68.5); left: 0; right: 0;
-    text-align: center;
-    font-size: calc(var(--u) * 4.6);
-    font-weight: 600;
-    color: #D64545;
-  }
-
-  #say {
-    position: absolute; top: calc(var(--u) * 76); left: 0; right: 0;
-    text-align: center;
-    font-size: calc(var(--u) * 9);
-    line-height: 1.15;
-    font-weight: 700;
-    color: #2A2018;
-  }
-
-  #prompt {
-    position: absolute; left: 0; right: 0;
-    text-align: center;
-    font-weight: 700;
-    color: #2A2018;
-  }
-
   #dots {
-    position: absolute; top: calc(var(--u) * 91); left: 0; right: 0;
+    position: absolute; top: calc(var(--u) * 87); left: 0; right: 0;
     display: flex; align-items: center; justify-content: center;
-    gap: calc(var(--u) * 2.2);
+    gap: calc(var(--u) * 2.4);
     height: calc(var(--u) * 3);
   }
   .dot {
-    width: calc(var(--u) * 1.7); height: calc(var(--u) * 1.7);
+    width: calc(var(--u) * 1.8); height: calc(var(--u) * 1.8);
     border-radius: 50%;
     background: #E6D6C1;
   }
@@ -148,6 +121,8 @@
 <div id="stage">
   <div class="blob" id="blobA"></div>
   <div class="blob" id="blobB"></div>
+
+  <svg id="garden" xmlns="http://www.w3.org/2000/svg"></svg>
 
   <svg id="glow" viewBox="0 0 100 100" preserveAspectRatio="none">
     <defs>
@@ -159,17 +134,13 @@
     <rect x="0" y="0" width="100" height="100" fill="url(#glowGrad)"/>
   </svg>
 
-  <div id="title"></div>
+  <div id="ring"></div>
 
   <div id="card">
     <div class="glyph" id="glyphMark"></div>
     <div class="glyph" id="glyphBase"></div>
   </div>
 
-  <div id="letterName"></div>
-  <div id="harakatName"></div>
-  <div id="say"></div>
-  <div id="prompt"></div>
   <div id="dots"></div>
 </div>
 

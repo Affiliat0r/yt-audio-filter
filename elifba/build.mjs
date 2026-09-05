@@ -22,7 +22,7 @@ import { promisify } from 'node:util';
 import capture from '../visuals/capture/capture.mjs';
 import encode from '../visuals/encode/encode.mjs';
 import { buildTimeline, spokenLines } from './timeline.mjs';
-import { buildTrack, normaliseTrack, synthesise } from './voice.mjs';
+import { DEFAULT_RATE, buildTrack, normaliseTrack, synthesise } from './voice.mjs';
 
 const execFileAsync = promisify(execFile);
 const ELIFBA_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +33,8 @@ const DEFAULTS = Object.freeze({
   height: 1080,
   out: path.join(ELIFBA_DIR, 'out', 'lesson.mp4'),
   keepFrames: false,
+  voice: null,
+  rate: null,
 });
 
 const USAGE = `Build an elifba lesson video (letters + ustun/esre/otre).
@@ -44,7 +46,9 @@ Usage: node elifba/build.mjs [options]
   --height N       output height; width is 16:9   (default ${DEFAULTS.height})
   --fps N          frames per second              (default ${DEFAULTS.fps})
   --out PATH       output MP4                     (default elifba/out/lesson.mp4)
-  --title TEXT     override the on-screen/spoken lesson title
+  --title TEXT     override the spoken lesson title
+  --voice NAME     edge-tts voice        (default: lesson.json's "voice")
+  --rate PCT       speech rate, e.g. -8% (default ${DEFAULT_RATE})
   --keep-frames    keep the PNG scratch directory
   -h, --help       show this message
 `;
@@ -65,6 +69,8 @@ function parseArgs(argv) {
       case '--fps': opts.fps = Number(next()); break;
       case '--out': opts.out = next(); break;
       case '--title': opts.title = next(); break;
+      case '--voice': opts.voice = next(); break;
+      case '--rate': opts.rate = next(); break;
       case '--keep-frames': opts.keepFrames = true; break;
       default: throw new Error(`unknown option ${arg}`);
     }
@@ -107,7 +113,8 @@ async function main() {
 
   const { files, durations } = await synthesise(lines, {
     cacheDir: path.join(ELIFBA_DIR, 'voice'),
-    voice: lesson.voice,
+    voice: opts.voice || lesson.voice,
+    ...(opts.rate ? { rate: opts.rate } : {}),
     onProgress: (done, total, text, cached) =>
       console.log(`[voice] ${done}/${total} ${cached ? 'cached ' : 'synth  '} ${JSON.stringify(text)}`),
   });
