@@ -5,10 +5,25 @@ and "looks the same to me" is not evidence — the differences that matter here
 are exactly the ones that survive a glance: softened line art, smeared flat
 areas, ringing around subtitles.
 
-Two metrics, because they fail differently. SSIM is structural and cheap, and
-catches gross geometry or scaling mistakes. VMAF is perceptual and trained on
-human scores, and is the one that reflects whether a viewer would notice. A
-candidate has to hold both.
+Three metrics, because they fail differently — and in this particular
+comparison one of them lies.
+
+**SSIM is the authoritative one here.** It is structural, so it notices when a
+candidate stops being the same picture.
+
+**VMAF is reported but must not be trusted alone against an ESRGAN reference.**
+Measured on this content: VMAF does not penalise *excess* sharpness, so a
+candidate that cranks unsharp closes the acutance gap and scores 92.4 while its
+SSIM falls to 0.888 — visibly haloed and blotchy, and 78% larger at the same
+CQ. Meanwhile a clean lanczos scores 75 on VMAF at SSIM 0.959. Sorted by VMAF,
+SSIM moves the *opposite* way. VMAF also cannot separate any sharpened
+candidate from plain stretching (all score 99.4-100 against a bicubic
+baseline), while it rates real ESRGAN at 92.3 against that same baseline.
+
+**PSNR is the tie-breaker**, because it is unforgiving of exactly the
+amplified-noise failure VMAF rewards.
+
+A candidate has to hold all three. Where they disagree, SSIM and PSNR win.
 
 Comparing against the *current pipeline's output* rather than the source is
 deliberate. The source is 640x360; every candidate "loses" to it in the trivial
@@ -47,6 +62,11 @@ VMAF_FLOOR = 95.0
 #: SSIM is far less forgiving of scale/alignment errors, which is what we want
 #: it for. Two encodes of the same frames sit at ~0.99.
 SSIM_FLOOR = 0.98
+
+#: dB. Two encodes of the same frames sit near 50; a clean but genuinely
+#: different upscale lands around 35, and an over-sharpened one around 26.
+#: 45 keeps the gate on "same picture" rather than "arguably similar".
+PSNR_FLOOR = 45.0
 
 
 class ComparisonError(RuntimeError):
@@ -104,6 +124,26 @@ def score_ssim(candidate: Path, reference: Path) -> float:
     return float(match.group(1))
 
 
+def score_psnr(candidate: Path, reference: Path) -> float:
+    """PSNR in dB — the tie-breaker when SSIM and VMAF disagree.
+
+    Included because VMAF rewards the one failure mode this content is prone
+    to: amplifying the source's compression mottling into "detail". PSNR does
+    not. On this material a clean candidate sits near 35 dB against the ESRGAN
+    reference and an over-sharpened one falls to 26 dB, while VMAF ranks the
+    over-sharpened one higher.
+    """
+    result = _run([
+        "ffmpeg", "-hide_banner", "-nostats",
+        "-i", str(candidate), "-i", str(reference),
+        "-lavfi", "[0:v][1:v]psnr", "-f", "null", "-",
+    ])
+    match = re.search(r"average:([0-9.]+)", result.stderr)
+    if not match:
+        raise ComparisonError(f"No PSNR in ffmpeg output: {result.stderr[-400:]}")
+    return float(match.group(1))
+
+
 def has_libvmaf() -> bool:
     """Whether this FFmpeg was built with libvmaf at all."""
     result = _run(["ffmpeg", "-hide_banner", "-filters"], timeout=60)
@@ -150,6 +190,7 @@ def compare(candidate: Path, reference: Path) -> dict:
         "same_resolution": (cand["width"], cand["height"]) == (ref["width"], ref["height"]),
         "same_frame_count": cand["frames"] == ref["frames"],
         "ssim": None,
+        "psnr": None,
         "vmaf": None,
     }
     drift = None
@@ -162,6 +203,7 @@ def compare(candidate: Path, reference: Path) -> dict:
     # compares different pictures and reports a meaningless number.
     if report["same_resolution"] and report["same_frame_count"]:
         report["ssim"] = score_ssim(candidate, reference)
+        report["psnr"] = score_psnr(candidate, reference)
         report["vmaf"] = score_vmaf(candidate, reference)
     return report
 
@@ -183,6 +225,8 @@ def verdict(report: dict) -> tuple:
         reasons.append(f"audio drifts from video by {report['av_drift']:.3f}s")
     if report["ssim"] is not None and report["ssim"] < SSIM_FLOOR:
         reasons.append(f"SSIM {report['ssim']:.4f} below {SSIM_FLOOR}")
+    if report.get("psnr") is not None and report["psnr"] < PSNR_FLOOR:
+        reasons.append(f"PSNR {report['psnr']:.1f}dB below {PSNR_FLOOR}")
     if report["vmaf"] is not None and report["vmaf"] < VMAF_FLOOR:
         reasons.append(f"VMAF {report['vmaf']:.2f} below {VMAF_FLOOR}")
     return (not reasons, reasons)
@@ -215,6 +259,7 @@ def main(argv=None) -> int:
     if report["av_drift"] is not None:
         print(f"a/v drift : {report['av_drift']:.3f}s")
     print(f"SSIM      : {report['ssim'] if report['ssim'] is not None else 'not scored'}")
+    print(f"PSNR      : {report.get('psnr') if report.get('psnr') is not None else 'not scored'}")
     print(f"VMAF      : {report['vmaf'] if report['vmaf'] is not None else 'unavailable'}")
     print()
     print("PASS" if passed else "FAIL: " + "; ".join(reasons))

@@ -145,3 +145,36 @@ def test_the_floors_are_where_a_viewer_would_notice() -> None:
     """Documented so a future change to them is deliberate rather than drift."""
     assert VMAF_FLOOR == 95.0
     assert SSIM_FLOOR == 0.98
+
+
+# --------------------------------- PSNR, because VMAF lies in this comparison
+
+
+def test_psnr_catches_what_vmaf_rewards() -> None:
+    """The failure mode this content is prone to.
+
+    An over-sharpened candidate amplifies the source's compression mottling into
+    something VMAF scores as detail: measured at VMAF 92.4 while SSIM fell to
+    0.888. Sorted by VMAF, SSIM moved the opposite way. PSNR is unforgiving of
+    exactly that, so it is the tie-breaker.
+    """
+    from compare_quality import PSNR_FLOOR
+
+    passed, reasons = verdict(_report(vmaf=92.4, ssim=0.888, psnr=26.7))
+    assert not passed
+    assert any("PSNR" in r for r in reasons)
+    assert PSNR_FLOOR == 45.0
+
+
+def test_a_clean_but_different_upscale_is_still_refused() -> None:
+    """lanczos+unsharp lands near 0.96 SSIM / 35 dB against the ESRGAN
+    reference — clean, but a different picture. The gate is "same", not
+    "arguably similar"; trading that away is the user's call, not the gate's."""
+    passed, reasons = verdict(_report(ssim=0.959, psnr=35.0, vmaf=75.4))
+    assert not passed
+    assert len(reasons) >= 2
+
+
+def test_a_missing_psnr_does_not_fail_the_gate() -> None:
+    passed, _ = verdict(_report(psnr=None))
+    assert passed
