@@ -4,14 +4,17 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { MIN, REPEAT_SECONDS, TAIL, buildTimeline, spokenForm, spokenLines } from '../timeline.mjs';
+import {
+  LETTERS, MIN, NARRATION, REPEAT_SECONDS, TAIL,
+  buildTimeline, spokenForm, spokenId, spokenLines,
+} from '../timeline.mjs';
 
 const ELIFBA_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const lesson = JSON.parse(readFileSync(path.join(ELIFBA_DIR, 'lesson.json'), 'utf8'));
 
 /** Every line long enough that the tail, not the floor, decides the length. */
 function durationsFor(lines, seconds = 4) {
-  return new Map(lines.map((line) => [line, seconds]));
+  return new Map(lines.map((line) => [spokenId(line), seconds]));
 }
 
 function timelineFor(letterIds, seconds) {
@@ -67,14 +70,15 @@ test('the mark shown is the one the harakat names', () => {
 
 test('every spoken segment has a line that will be synthesised for it', () => {
   const letterIds = lesson.letters.map((l) => l.id);
-  const lines = new Set(spokenLines(lesson, letterIds));
-  const tl = buildTimeline(lesson, letterIds, durationsFor([...lines]));
+  const all = spokenLines(lesson, letterIds);
+  const lines = new Set(all.map(spokenId));
+  const tl = buildTimeline(lesson, letterIds, durationsFor(all));
 
   for (const seg of tl.segments) {
     if (seg.speak === null) continue;
     // A segment whose line was never synthesised gets no clip, and buildTrack
     // would silently emit silence there instead of failing.
-    assert.ok(lines.has(seg.speak), `nothing will be synthesised for ${JSON.stringify(seg.speak)}`);
+    assert.ok(lines.has(spokenId(seg.speak)), `nothing will be synthesised for ${spokenId(seg.speak)}`);
   }
 });
 
@@ -82,23 +86,52 @@ test('spokenLines deduplicates syllables shared between letters', () => {
   // Se and Sin are both read "se, si, su" in Turkish, so the pair must not
   // cost six clips.
   const lines = spokenLines(lesson, ['se', 'sin']);
-  assert.equal(new Set(lines).size, lines.length, 'lines should be unique');
-  assert.ok(lines.includes('Se.') && lines.includes('Sin.'));
-  assert.equal(lines.filter((l) => l === 'se.').length, 1);
+  const ids = lines.map(spokenId);
+  assert.equal(new Set(ids).size, ids.length, 'lines should be unique');
+  const texts = lines.map((l) => l.text);
+  assert.ok(texts.includes('Se.') && texts.includes('Sin.'));
+  // Both letters are drawn differently, so their sounds are different clips
+  // even though the book reads both "se, si, su".
+  assert.ok(texts.includes('سَ') && texts.includes('ثَ'));
 });
 
-test('lines reach the voice with terminal punctuation, exactly once', () => {
-  // The full stop is what gives a bare syllable a falling contour instead of a
-  // flat one; adding a second to a line that already ends in "!" would be
+test('narration is punctuated for prosody; the Arabic lines are left bare', () => {
+  // The full stop gives a short Turkish line a falling contour instead of a
+  // flat one, and adding a second to a line already ending in "!" would be
   // read aloud as a stumble.
-  assert.equal(spokenForm('be'), 'be.');
+  assert.equal(spokenForm('Be'), 'Be.');
   assert.equal(spokenForm('Şimdi sen söyle!'), 'Şimdi sen söyle!');
-  assert.equal(spokenForm(spokenForm('be')), 'be.');
+  assert.equal(spokenForm(spokenForm('Be')), 'Be.');
 
   for (const line of spokenLines(lesson, ['be'])) {
-    assert.match(line, /[!?.]$/, `${JSON.stringify(line)} has no terminal punctuation`);
-    assert.doesNotMatch(line, /\.\.$/, `${JSON.stringify(line)} was punctuated twice`);
+    if (line.role === NARRATION) {
+      assert.match(line.text, /[!?.]$/, `${JSON.stringify(line.text)} has no terminal punctuation`);
+      assert.doesNotMatch(line.text, /\.\.$/, `${JSON.stringify(line.text)} was punctuated twice`);
+    } else {
+      // The Arabic lines go to the voice exactly as they were auditioned.
+      assert.doesNotMatch(line.text, /[.!?]/, 'Arabic lines must stay bare');
+    }
   }
+});
+
+test('the sound is spoken in Arabic, the name in Turkish', () => {
+  const tl = timelineFor(['ha']);
+
+  const name = tl.segments.find((s) => s.kind === 'letter');
+  assert.equal(name.speak.role, NARRATION);
+  assert.equal(name.speak.text, 'Ha.', "the book's Turkish name for the letter");
+
+  // Turkish has one "ha" for ح, خ and ه, so the sound cannot come from the
+  // Turkish voice. It reads the Arabic that is drawn on the card.
+  const sounds = tl.segments.filter((s) => s.kind === 'harakat');
+  assert.deepEqual(sounds.map((s) => s.speak.role), [LETTERS, LETTERS, LETTERS]);
+  assert.deepEqual(sounds.map((s) => s.speak.text), ['حَ', 'حِ', 'حُ']);
+  for (const seg of sounds) {
+    assert.equal(seg.speak.text, seg.glyph + seg.mark, 'the voice reads what is on the card');
+  }
+
+  const prompt = tl.segments.find((s) => s.kind === 'prompt');
+  assert.equal(prompt.speak.role, NARRATION);
 });
 
 test('a segment is the spoken line plus its tail, or the floor if that is longer', () => {

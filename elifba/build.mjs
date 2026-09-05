@@ -33,7 +33,8 @@ const DEFAULTS = Object.freeze({
   height: 1080,
   out: path.join(ELIFBA_DIR, 'out', 'lesson.mp4'),
   keepFrames: false,
-  voice: null,
+  narrationVoice: null,
+  lettersVoice: null,
   rate: null,
 });
 
@@ -47,8 +48,10 @@ Usage: node elifba/build.mjs [options]
   --fps N          frames per second              (default ${DEFAULTS.fps})
   --out PATH       output MP4                     (default elifba/out/lesson.mp4)
   --title TEXT     override the spoken lesson title
-  --voice NAME     edge-tts voice        (default: lesson.json's "voice")
-  --rate PCT       speech rate, e.g. -8% (default: lesson.json's "rate")
+  --narration-voice NAME  voice for the letter names and the hand-over
+  --letters-voice NAME    voice for the vowelled sounds themselves
+  --rate PCT              speech rate, e.g. -8%
+                          (all three default to lesson.json)
   --keep-frames    keep the PNG scratch directory
   -h, --help       show this message
 `;
@@ -69,7 +72,8 @@ function parseArgs(argv) {
       case '--fps': opts.fps = Number(next()); break;
       case '--out': opts.out = next(); break;
       case '--title': opts.title = next(); break;
-      case '--voice': opts.voice = next(); break;
+      case '--narration-voice': opts.narrationVoice = next(); break;
+      case '--letters-voice': opts.lettersVoice = next(); break;
       case '--rate': opts.rate = next(); break;
       case '--keep-frames': opts.keepFrames = true; break;
       default: throw new Error(`unknown option ${arg}`);
@@ -113,10 +117,16 @@ async function main() {
 
   const { files, durations } = await synthesise(lines, {
     cacheDir: path.join(ELIFBA_DIR, 'voice'),
-    voice: opts.voice || lesson.voice,
+    voices: {
+      narration: opts.narrationVoice || lesson.voices.narration,
+      letters: opts.lettersVoice || lesson.voices.letters,
+    },
     ...(opts.rate || lesson.rate ? { rate: opts.rate || lesson.rate } : {}),
-    onProgress: (done, total, text, cached) =>
-      console.log(`[voice] ${done}/${total} ${cached ? 'cached ' : 'synth  '} ${JSON.stringify(text)}`),
+    onProgress: (done, total, text, cached, voice) =>
+      console.log(
+        `[voice] ${done}/${total} ${cached ? 'cached ' : 'synth  '} ` +
+          `${voice.slice(0, 5)} ${JSON.stringify(text)}`,
+      ),
   });
 
   // -- 2. the timeline both halves are built from --------------------------

@@ -1,13 +1,12 @@
 /**
  * Narration.
  *
- * edge-tts gives a Turkish neural voice for free and with no API key. Turkish
- * orthography is phonetic, so the syllables in lesson.json ("be", "bi", "bu")
- * come back pronounced the way the Diyanet book teaches them -- which is also
- * this approach's limitation, and a deliberate one: a Turkish voice makes no
- * distinction between the letters Turkish collapses (ha/hi/he, se/sin/sad),
- * exactly as a Turkish elifba class does. Proper Arabic makhraj needs a
- * reciter, not a TTS.
+ * edge-tts gives both voices a lesson needs, free and with no API key: a
+ * Turkish one for the letter names and the hand-over, and an Arabic one for
+ * the vowelled sounds themselves. Which voice speaks a line is decided in
+ * timeline.mjs and travels with the line as its role, because a Turkish voice
+ * cannot make the sounds the Turkish letter names stand for -- it says one
+ * "ha" for three different letters.
  *
  * Clips are cached by (voice, rate, text) so a re-render costs no network and
  * an edited lesson only synthesises what changed.
@@ -18,6 +17,8 @@ import { execFile } from 'node:child_process';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+
+import { spokenId } from './timeline.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -65,21 +66,25 @@ export async function probeDuration(file, ffprobePath = 'ffprobe') {
 /**
  * Synthesise every line, reusing whatever is already cached.
  *
- * @param {string[]} lines
- * @param {{cacheDir: string, voice: string, rate?: string, python?: string,
+ * @param {{text: string, role: string}[]} lines
+ * @param {{cacheDir: string, voices: Record<string,string>, rate?: string, python?: string,
  *          ffprobePath?: string, onProgress?: (done:number,total:number,text:string,cached:boolean)=>void}} opts
  * @returns {Promise<{files: Map<string,string>, durations: Map<string,number>}>}
+ *   both keyed by spokenId(line)
  */
 export async function synthesise(lines, opts) {
   const {
     cacheDir,
-    voice,
+    voices,
     rate = DEFAULT_RATE,
     python = 'python',
     ffprobePath = 'ffprobe',
     onProgress,
   } = opts;
 
+  if (!voices || typeof voices !== 'object') {
+    throw new Error('voice: synthesise needs a `voices` map of role -> edge-tts voice');
+  }
   await mkdir(cacheDir, { recursive: true });
 
   const files = new Map();
@@ -87,28 +92,34 @@ export async function synthesise(lines, opts) {
   const index = {};
 
   for (let i = 0; i < lines.length; i++) {
-    const text = lines[i];
-    const file = path.join(cacheDir, `${clipKey(text, voice, rate)}.mp3`);
+    const line = lines[i];
+    const voice = voices[line.role];
+    if (!voice) {
+      throw new Error(`voice: no voice configured for role ${JSON.stringify(line.role)}`);
+    }
+    const file = path.join(cacheDir, `${clipKey(line.text, voice, rate)}.mp3`);
     const cached = await exists(file);
 
     if (!cached) {
-      // `--rate=-20%` must be one argv token: edge-tts parses a leading "-"
+      // `--rate=-8%` must be one argv token: edge-tts parses a leading "-"
       // in a separate value as the start of another flag.
       await execFileAsync(python, [
         '-m', 'edge_tts',
         '--voice', voice,
         `--rate=${rate}`,
-        '--text', text,
+        '--text', line.text,
         '--write-media', file,
       ], { maxBuffer: 8 * 1024 * 1024 });
     }
 
     const seconds = await probeDuration(file, ffprobePath);
-    files.set(text, file);
-    durations.set(text, seconds);
-    index[path.basename(file)] = { text, voice, rate, seconds };
+    // Keyed by role+text, not text: the same string handed to a different
+    // voice is a different clip.
+    files.set(spokenId(line), file);
+    durations.set(spokenId(line), seconds);
+    index[path.basename(file)] = { text: line.text, role: line.role, voice, rate, seconds };
 
-    onProgress?.(i + 1, lines.length, text, cached);
+    onProgress?.(i + 1, lines.length, line.text, cached, voice);
   }
 
   // A human-readable map of the cache, so a wrong-sounding clip can be found
@@ -128,7 +139,7 @@ export async function synthesise(lines, opts) {
  * the voice and the picture.
  *
  * @param {{segments: object[], totalSeconds: number}} timeline
- * @param {Map<string,string>} files  spoken text -> clip path
+ * @param {Map<string,string>} files  spokenId(line) -> clip path
  * @param {{outPath: string, workDir: string, ffmpegPath?: string,
  *          sampleRate?: number, onProgress?: (done:number,total:number)=>void}} opts
  * @returns {Promise<string>} outPath
@@ -143,7 +154,7 @@ export async function buildTrack(timeline, files, opts) {
   for (let i = 0; i < timeline.segments.length; i++) {
     const seg = timeline.segments[i];
     const part = path.join(workDir, `seg_${String(i).padStart(4, '0')}.wav`);
-    const clip = seg.speak ? files.get(seg.speak) : null;
+    const clip = seg.speak ? files.get(spokenId(seg.speak)) : null;
 
     if (clip) {
       // apad then -t: pad with silence, then cut at the segment length. Doing
