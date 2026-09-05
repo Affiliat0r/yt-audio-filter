@@ -20,7 +20,7 @@
      There is deliberately no Latin text anywhere on screen: a three-year-old
      cannot read it, and a transliteration sitting under the letter invites
      reading that instead of the letter itself. Everything the words used to
-     carry is now carried by the voice, by the accent colour, and by the dots. */
+     carry is now carried by the voice and by the accent colour. */
   #stage {
     position: relative;
     overflow: hidden;
@@ -63,20 +63,20 @@
 
   /* Pulsing outline that means "your turn" without saying so. */
   #ring {
-    position: absolute; left: 50%; top: calc(var(--u) * 13);
+    position: absolute; left: 50%; top: calc(var(--u) * 16);
     transform: translateX(-50%);
     width: calc(var(--u) * 74);
-    height: calc(var(--u) * 64);
+    height: calc(var(--u) * 68);
     border-radius: calc(var(--u) * 7);
     border: calc(var(--u) * 0.7) solid #D64545;
     opacity: 0;
   }
 
   #card {
-    position: absolute; left: 50%; top: calc(var(--u) * 16);
+    position: absolute; left: 50%; top: calc(var(--u) * 19);
     transform: translateX(-50%);
     width: calc(var(--u) * 68);
-    height: calc(var(--u) * 58);
+    height: calc(var(--u) * 62);
     border-radius: calc(var(--u) * 5);
     background: #FFFFFF;
     box-shadow: 0 calc(var(--u) * 1.5) calc(var(--u) * 4.2) rgba(96, 66, 34, 0.15),
@@ -105,17 +105,6 @@
   #glyphMark { color: #D64545; }
   #glyphBase { color: #2A2018; }
 
-  #dots {
-    position: absolute; top: calc(var(--u) * 87); left: 0; right: 0;
-    display: flex; align-items: center; justify-content: center;
-    gap: calc(var(--u) * 2.4);
-    height: calc(var(--u) * 3);
-  }
-  .dot {
-    width: calc(var(--u) * 1.8); height: calc(var(--u) * 1.8);
-    border-radius: 50%;
-    background: #E6D6C1;
-  }
 </style>
 
 <div id="stage">
@@ -141,7 +130,6 @@
     <div class="glyph" id="glyphBase"></div>
   </div>
 
-  <div id="dots"></div>
 </div>
 
 <script src="timeline.js"></script>

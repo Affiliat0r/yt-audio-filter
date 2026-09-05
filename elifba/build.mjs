@@ -22,7 +22,7 @@ import { promisify } from 'node:util';
 import capture from '../visuals/capture/capture.mjs';
 import encode from '../visuals/encode/encode.mjs';
 import { buildTimeline, spokenLines } from './timeline.mjs';
-import { DEFAULT_RATE, buildTrack, normaliseTrack, synthesise } from './voice.mjs';
+import { buildTrack, normaliseTrack, synthesise } from './voice.mjs';
 
 const execFileAsync = promisify(execFile);
 const ELIFBA_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -48,7 +48,7 @@ Usage: node elifba/build.mjs [options]
   --out PATH       output MP4                     (default elifba/out/lesson.mp4)
   --title TEXT     override the spoken lesson title
   --voice NAME     edge-tts voice        (default: lesson.json's "voice")
-  --rate PCT       speech rate, e.g. -8% (default ${DEFAULT_RATE})
+  --rate PCT       speech rate, e.g. -8% (default: lesson.json's "rate")
   --keep-frames    keep the PNG scratch directory
   -h, --help       show this message
 `;
@@ -114,7 +114,7 @@ async function main() {
   const { files, durations } = await synthesise(lines, {
     cacheDir: path.join(ELIFBA_DIR, 'voice'),
     voice: opts.voice || lesson.voice,
-    ...(opts.rate ? { rate: opts.rate } : {}),
+    ...(opts.rate || lesson.rate ? { rate: opts.rate || lesson.rate } : {}),
     onProgress: (done, total, text, cached) =>
       console.log(`[voice] ${done}/${total} ${cached ? 'cached ' : 'synth  '} ${JSON.stringify(text)}`),
   });

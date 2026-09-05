@@ -11,13 +11,21 @@
  *
  * Nothing on screen is written in Latin script. A three-year-old cannot read
  * it, and a transliteration under the letter invites reading that instead of
- * the letter. What those words used to carry is now carried by the voice, by
- * the accent colour, and by the four dots.
+ * the letter. What those words used to carry is now carried by the voice and
+ * by the accent colour.
  */
 (function () {
   'use strict';
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  /** Seconds the card takes to dissolve in or out where the letter changes. */
+  var CARD_FADE = 0.5;
+  /** Seconds the harakat takes to dissolve in, and to dissolve back out. */
+  var MARK_IN = 0.45;
+  var MARK_OUT = 0.4;
+  /** Seconds the accent takes to travel from the previous beat's colour. */
+  var ACCENT_FADE = 0.55;
 
   var el = {};
   var timeline = null;
@@ -31,6 +39,22 @@
     x = clamp01(x);
     var c1 = 1.70158, c3 = c1 + 1;
     return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+  }
+
+  /*
+   * Blend two hex colours. The garden is the one thing that persists across a
+   * beat change -- it never fades -- so switching its tint instantly would
+   * leave the only hard cut in the video sitting on eighteen flowers.
+   */
+  function mixHex(a, b, amount) {
+    if (a === b) return b;
+    var pa = parseInt(a.slice(1), 16);
+    var pb = parseInt(b.slice(1), 16);
+    var m = clamp01(amount);
+    return 'rgb(' +
+      Math.round(((pa >> 16) & 255) * (1 - m) + ((pb >> 16) & 255) * m) + ', ' +
+      Math.round(((pa >> 8) & 255) * (1 - m) + ((pb >> 8) & 255) * m) + ', ' +
+      Math.round((pa & 255) * (1 - m) + (pb & 255) * m) + ')';
   }
 
   /** mulberry32 -- small, seeded, and identical on every machine. */
@@ -158,51 +182,44 @@
     if (node.textContent !== text) node.textContent = text;
   }
 
-  function paintDots(activeIndex, total, accent, allLit) {
-    if (el.dots.childElementCount !== total) {
-      el.dots.textContent = '';
-      for (var i = 0; i < total; i++) {
-        var d = document.createElement('div');
-        d.className = 'dot';
-        el.dots.appendChild(d);
-      }
-    }
-    for (var j = 0; j < total; j++) {
-      var dot = el.dots.children[j];
-      var on = allLit || j <= activeIndex;
-      var isActive = j === activeIndex;
-      dot.style.background = on ? accent : '#E6D6C1';
-      dot.style.opacity = on && !isActive ? '0.45' : '1';
-      dot.style.transform = isActive ? 'scale(1.45)' : 'scale(1)';
-    }
-  }
-
   function paint(seg, lt, t) {
-    var accent = seg.accent || '#B08968';
     var dur = seg.duration;
+    var accent = mixHex(seg.prevAccent || seg.accent, seg.accent,
+                        easeOutCubic(lt / ACCENT_FADE));
 
+    // The garden deliberately does not fade with the beats -- it just lives,
+    // and only its tint travels.
     paintGarden(t, accent);
 
     el.glowInner.setAttribute('stop-color', accent);
     el.glowOuter.setAttribute('stop-color', accent);
 
-    var vis = Math.min(easeOutCubic(lt / 0.32), easeOutCubic((dur - lt) / 0.22));
+    // The card dissolves only where the letter behind it actually changes.
+    // Within one letter the glyph is the same from the naming beat to the last
+    // repeat, so dipping between those beats would blink it for no reason.
+    var fin = seg.fadeIn ? easeOutCubic(lt / CARD_FADE) : 1;
+    var fout = seg.fadeOut ? easeOutCubic((dur - lt) / CARD_FADE) : 1;
+    var vis = Math.min(fin, fout);
 
     el.card.style.opacity = String(vis);
-    el.card.style.transform =
-      'translateX(-50%) scale(' + (0.95 + 0.05 * easeOutBack(lt / 0.45)) + ')';
+    el.card.style.transform = 'translateX(-50%) scale(' +
+      (seg.fadeIn ? 0.95 + 0.05 * easeOutBack(lt / 0.6) : 1) + ')';
 
     setText(el.glyphBase, seg.glyph);
     setText(el.glyphMark, seg.glyph + (seg.mark || ''));
     el.glyphMark.style.color = accent;
 
     // The mark fades in a beat after the letter has settled, so the child sees
-    // "the letter I know" and then "the thing that was added to it".
+    // "the letter I know" and then "the thing that was added to it" -- and it
+    // fades back out before the beat ends, so ustun -> esre reads as a
+    // dissolve even across the beats where the card itself holds.
     //
     // Only opacity is animated here. The accent layer also draws the base
     // letter underneath, hidden by the pixel-identical ink layer on top;
     // moving or scaling it would slide that copy out from behind its cover.
-    var markT = seg.mark ? easeOutCubic((lt - 0.22) / 0.42) : 0;
+    var markT = seg.mark
+      ? Math.min(easeOutCubic((lt - 0.2) / MARK_IN), easeOutCubic((dur - lt) / MARK_OUT))
+      : 0;
     el.glyphMark.style.opacity = String(markT * vis);
     el.glyphBase.style.opacity = String(vis);
 
@@ -220,8 +237,6 @@
       el.ring.style.opacity = '0';
     }
 
-    paintDots(seg.step === undefined ? -1 : seg.step, 4, accent,
-              seg.kind === 'repeat' || seg.kind === 'prompt');
   }
 
   // -- contract -------------------------------------------------------------
@@ -236,7 +251,7 @@
       }
 
       var ids = ['stage', 'garden', 'glowInner', 'glowOuter', 'ring', 'card',
-                 'glyphBase', 'glyphMark', 'dots'];
+                 'glyphBase', 'glyphMark'];
       for (var i = 0; i < ids.length; i++) {
         el[ids[i]] = document.getElementById(ids[i]);
         if (!el[ids[i]]) throw new Error('elifba scene: missing #' + ids[i]);

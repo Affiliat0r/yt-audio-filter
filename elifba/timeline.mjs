@@ -158,7 +158,34 @@ export function buildTimeline(lesson, letterIds, spoken, opts = {}) {
     });
   }
 
+  markTransitions(segments);
   return { title, totalSeconds: Number(t.toFixed(6)), segments };
+}
+
+/**
+ * Decide, for each segment, whether the card should fade at its edges.
+ *
+ * The card only dips when the letter behind it actually changes. Within one
+ * letter the glyph is identical from the naming beat through to the last
+ * repeat -- only the mark above or below it changes -- so fading the whole
+ * card out and back in between those beats would blink the letter at the
+ * child for no reason. Between letters it should dip, because that is a real
+ * change of subject.
+ *
+ * Also records the colour the previous segment was using, so the accent can
+ * be crossfaded rather than switched: the garden persists across the cut, and
+ * an instant hue jump on it would be the one hard edge left in the video.
+ *
+ * @param {object[]} segments  mutated in place
+ */
+function markTransitions(segments) {
+  for (let i = 0; i < segments.length; i++) {
+    const prev = segments[i - 1];
+    const next = segments[i + 1];
+    segments[i].fadeIn = !prev || prev.glyph !== segments[i].glyph;
+    segments[i].fadeOut = !next || next.glyph !== segments[i].glyph;
+    segments[i].prevAccent = prev ? prev.accent : segments[i].accent;
+  }
 }
 
 /**
