@@ -383,6 +383,16 @@ def _upscale_streaming(src: Path, dst: Path, upscaler, scale: int = 2) -> Path:
     reader.start()
     writer.start()
 
+    # A page-locked staging buffer was tried here and the comparison was not
+    # conclusive either way. It measured 34.0 fps sustained against 41.8 for
+    # this plain ``.cpu()`` — but a later run of *this very code*, unchanged,
+    # measured 33.2. On a thermally throttled laptop the starting temperature
+    # moves sustained throughput by more than the change did, so that A/B was
+    # confounded and proves nothing.
+    #
+    # The plain version stays because it is simpler, not because it is faster.
+    # Anyone revisiting this needs runs from an equal thermal state to say
+    # anything at all.
     try:
         with torch.no_grad():
             while True:

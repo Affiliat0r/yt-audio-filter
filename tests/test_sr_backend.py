@@ -140,10 +140,13 @@ def test_a_truncated_weight_file_is_refused(tmp_path: Path) -> None:
 
 
 def test_the_batch_size_is_one_because_batching_does_not_help() -> None:
-    """Measured on TensorRT: 118.4 / 118.8 / 118.7 / 116.9 fps at batch
-    1/2/4/8. One 640x360 frame already saturates this GPU, and PyTorch actively
-    degrades with batch (46.6 -> 22.2 at 4 -> 16) once activations fall out of
-    cache. Batching was the obvious hypothesis and the numbers killed it."""
+    """Batching was the obvious hypothesis and the numbers killed it twice.
+
+    Inference alone is flat on TensorRT: 118.4 / 118.8 / 118.7 / 116.9 fps at
+    batch 1/2/4/8 — one 640x360 frame already saturates this GPU. End to end,
+    through the real pipe, larger batches are actively worse: 79.9 / 82.8 /
+    72.0 / 54.6 fps at 1/2/4/8. Batch 2's 3.6% is inside the run-to-run spread
+    and would buy a tail-batch to handle, so 1 it is."""
     assert sr_backend.DEFAULT_BATCH == 1
 
 
