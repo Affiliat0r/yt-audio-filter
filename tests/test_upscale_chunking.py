@@ -91,6 +91,13 @@ def orchestration(tmp_path: Path):
         ), mock.patch.object(upscale, "ensure_ffmpeg_available"), mock.patch.object(
             upscale, "ensure_realesrgan_available"
         ), mock.patch.object(
+            upscale, "_probe_size", return_value=(640, 360, 25.0)
+        ), mock.patch(
+            # These tests are about the ncnn chunked path, so hold the machine
+            # on it: a box with TensorRT would otherwise take the streaming
+            # route and never chunk at all.
+            "yt_audio_filter.sr_backend.make_upscaler", return_value=None
+        ), mock.patch.object(
             upscale, "_upscale_single_pass", side_effect=fake_single
         ), mock.patch.object(
             upscale, "_segment_video", side_effect=fake_segment
@@ -211,3 +218,48 @@ def test_segmenting_keeps_the_video_stream_untouched(tmp_path: Path) -> None:
     assert "copy" in captured["cmd"]
     assert "segment" in captured["cmd"]
     assert len(made) == 2
+
+
+# ------------------------------------------- the streaming path takes priority
+
+
+def test_a_gpu_machine_streams_instead_of_chunking(tmp_path: Path) -> None:
+    """Measured 90 min -> 25.5 min for an episode. The PNG round-trip that
+    chunking existed to bound is simply gone: peak disk is one frame."""
+    src = tmp_path / "src.mp4"
+    src.write_bytes(b"\x00")
+    fake = mock.Mock(backend="tensorrt", batch=1)
+
+    with mock.patch.object(upscale, "ensure_ffmpeg_available"), mock.patch.object(
+        upscale, "_probe_size", return_value=(640, 360, 25.0)
+    ), mock.patch(
+        "yt_audio_filter.sr_backend.make_upscaler", return_value=fake
+    ), mock.patch.object(
+        upscale, "_upscale_streaming", return_value=tmp_path / "dst.mp4"
+    ) as streaming, mock.patch.object(
+        upscale, "_segment_video"
+    ) as segment, mock.patch.object(
+        upscale, "ensure_realesrgan_available"
+    ) as need_ncnn:
+        upscale.upscale_video(src, tmp_path / "dst.mp4")
+
+    streaming.assert_called_once()
+    segment.assert_not_called()
+    need_ncnn.assert_not_called(), "a TensorRT machine must not need the ncnn binary"
+
+
+def test_the_length_guard_does_not_apply_to_the_streaming_path(tmp_path: Path) -> None:
+    """MAX_TOTAL_UPSCALE_FRAMES bounded a four-hour ncnn run. At 3.5x, and
+    with no disk round-trip, that ceiling is the wrong shape for this path."""
+    src = tmp_path / "src.mp4"
+    src.write_bytes(b"\x00")
+
+    with mock.patch.object(upscale, "ensure_ffmpeg_available"), mock.patch.object(
+        upscale, "_probe_size", return_value=(640, 360, 25.0)
+    ), mock.patch(
+        "yt_audio_filter.sr_backend.make_upscaler",
+        return_value=mock.Mock(backend="tensorrt", batch=1),
+    ), mock.patch.object(
+        upscale, "_expected_frame_count", return_value=upscale.MAX_TOTAL_UPSCALE_FRAMES * 2
+    ), mock.patch.object(upscale, "_upscale_streaming", return_value=tmp_path / "dst.mp4"):
+        upscale.upscale_video(src, tmp_path / "dst.mp4")  # must not raise

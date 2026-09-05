@@ -383,6 +383,9 @@ def test_a_full_episode_is_chunked_rather_than_refused(tmp_path, monkeypatch) ->
     monkeypatch.setattr(up, "ensure_realesrgan_available", lambda: None)
     monkeypatch.setattr(up, "_probe_framerate", lambda p: 24.0)
     monkeypatch.setattr(up, "_expected_frame_count", lambda p, fps: 44_078)
+    monkeypatch.setattr(up, "_probe_size", lambda p: (640, 360, 25.0))
+    # Hold this on the ncnn path; the streaming one does not chunk.
+    monkeypatch.setattr("yt_audio_filter.sr_backend.make_upscaler", lambda *a, **k: None)
 
     seen = []
 
@@ -424,6 +427,9 @@ def test_upscale_still_refuses_what_the_clock_rules_out(tmp_path, monkeypatch) -
     monkeypatch.setattr(
         up, "_expected_frame_count", lambda p, fps: up.MAX_TOTAL_UPSCALE_FRAMES + 1
     )
+    monkeypatch.setattr(up, "_probe_size", lambda p: (640, 360, 25.0))
+    # Hold this on the ncnn path; the streaming one does not chunk.
+    monkeypatch.setattr("yt_audio_filter.sr_backend.make_upscaler", lambda *a, **k: None)
 
     with pytest.raises(OverlayError) as excinfo:
         up.upscale_video(src, tmp_path / "out.mp4")
