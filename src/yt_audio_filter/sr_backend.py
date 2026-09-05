@@ -1,9 +1,16 @@
 """Super-resolution backends: the same weights, run three different ways.
 
-Measured on an RTX 3070 Ti Laptop over 87,737 frames (a 58-minute episode):
+Measured end to end on a real 87,737-frame episode, not extrapolated from a
+clip — an RTX 3070 Ti Laptop:
 
     ncnn binary + PNG round-trip    90.0 min
-    TensorRT fp16 + rawvideo pipe   25.5 min     3.5x
+    TensorRT fp16 + rawvideo pipe   50.3 min     1.79x   (29.1 fps sustained)
+
+Shorter runs flatter this badly and consistently. The same code measured 33-42
+fps over 9,000 frames and 65-80 fps over 750, because a laptop card sinks
+deeper into thermal throttling the longer it works: 4 minutes of load is not 50
+minutes of load. Every projection from a clip overstated the episode by 15-40%.
+Quote the 50.3 min figure; the others are burst rates.
 
 Two independent things produce that, and it is worth keeping them apart:
 

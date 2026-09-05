@@ -1,9 +1,11 @@
 """Choosing how to upscale, and never failing an episode over it.
 
-Measured on an RTX 3070 Ti Laptop, 87,737 frames:
+Measured end to end on a real 87,737-frame episode, RTX 3070 Ti Laptop:
 
     ncnn + PNG round-trip   90.0 min
-    TensorRT fp16 + pipe    25.5 min      (3.5x, VMAF 97.80 / SSIM 0.99604)
+    TensorRT fp16 + pipe    50.3 min      (1.79x, VMAF 97.80 / SSIM 0.99604)
+
+Frame count survives exactly: 87,737 in, 87,737 out at 1280x720.
 
 The win is not a faster model — it is the same weights, parsed out of the very
 same ncnn ``.param``/``.bin`` — it is (a) tensor cores instead of Vulkan shader
