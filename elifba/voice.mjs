@@ -187,6 +187,75 @@ export async function buildTrack(timeline, files, opts) {
   return outPath;
 }
 
+/**
+ * Bring the finished track to an EBU R128 target, in two passes.
+ *
+ * Two passes rather than one because the single-pass filter normalises
+ * *dynamically*: it would ride the gain up through the long "now you say it"
+ * silences, which on this track are true digital silence and should stay that
+ * way. Measuring first lets the second pass apply one flat gain
+ * (`linear=true`), which cannot touch the quiet.
+ *
+ * -16 LUFS rather than YouTube's -14: it leaves a little headroom, and the
+ * project's video renderer already targets the same figure.
+ *
+ * @param {string} inPath
+ * @param {string} outPath
+ * @param {{ffmpegPath?:string, targetI?:number, targetTP?:number, targetLRA?:number,
+ *          sampleRate?:number, onWarn?:(m:string)=>void}} [opts]
+ * @returns {Promise<{outPath:string, measured:object}>}
+ */
+export async function normaliseTrack(inPath, outPath, opts = {}) {
+  const {
+    ffmpegPath = 'ffmpeg',
+    targetI = -16,
+    targetTP = -1.5,
+    targetLRA = 11,
+    sampleRate = 48000,
+    onWarn = (message) => console.warn(message),
+  } = opts;
+
+  const spec = `I=${targetI}:TP=${targetTP}:LRA=${targetLRA}`;
+
+  // Pass 1: measure. ffmpeg prints the JSON block on stderr and exits 0.
+  const { stderr } = await execFileAsync(ffmpegPath, [
+    '-hide_banner', '-i', inPath,
+    '-af', `loudnorm=${spec}:print_format=json`,
+    '-f', 'null', '-',
+  ], { maxBuffer: 8 * 1024 * 1024 });
+
+  const open = stderr.lastIndexOf('{');
+  const close = stderr.lastIndexOf('}');
+  let measured = null;
+  if (open !== -1 && close > open) {
+    try {
+      measured = JSON.parse(stderr.slice(open, close + 1));
+    } catch {
+      measured = null;
+    }
+  }
+  if (!measured || measured.input_i === undefined) {
+    // Normalisation is a polish step, not a correctness one: a track at the
+    // wrong level is still a usable lesson, so warn and pass it through.
+    onWarn('voice: could not measure loudness; leaving the track unnormalised');
+    return { outPath: inPath, measured: null };
+  }
+
+  // Pass 2: apply it as one flat gain.
+  await execFileAsync(ffmpegPath, [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-i', inPath,
+    '-af',
+    `loudnorm=${spec}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}` +
+      `:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}` +
+      `:offset=${measured.target_offset}:linear=true`,
+    '-ar', String(sampleRate), '-ac', '2', '-c:a', 'pcm_s16le',
+    outPath,
+  ], { maxBuffer: 8 * 1024 * 1024 });
+
+  return { outPath, measured };
+}
+
 /** Read back the cache index written by {@link synthesise}. */
 export async function readIndex(cacheDir) {
   try {

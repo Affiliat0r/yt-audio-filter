@@ -154,3 +154,8 @@ worker/worker.log
 node_modules/
 
 .vercel
+
+# elifba: generated lesson output, TTS cache, and the build-written timeline.
+/elifba/out/
+/elifba/voice/
+/elifba/scene/timeline.js

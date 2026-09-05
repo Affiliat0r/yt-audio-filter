@@ -22,7 +22,7 @@ import { promisify } from 'node:util';
 import capture from '../visuals/capture/capture.mjs';
 import encode from '../visuals/encode/encode.mjs';
 import { buildTimeline, spokenLines } from './timeline.mjs';
-import { buildTrack, synthesise } from './voice.mjs';
+import { buildTrack, normaliseTrack, synthesise } from './voice.mjs';
 
 const execFileAsync = promisify(execFile);
 const ELIFBA_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -167,11 +167,17 @@ async function main() {
 
     // -- 5. narration track, then mux --------------------------------------
     await buildTrack(timeline, files, { outPath: trackPath, workDir: audioWork });
+    const { outPath: mixPath, measured } = await normaliseTrack(
+      trackPath, path.join(audioWork, 'normalised.wav'),
+    );
+    if (measured) {
+      console.log(`[audio] ${Number(measured.input_i).toFixed(1)} LUFS in -> -16 LUFS out`);
+    }
 
     await execFileAsync('ffmpeg', [
       '-hide_banner', '-loglevel', 'error', '-y',
       '-i', silentPath,
-      '-i', trackPath,
+      '-i', mixPath,
       '-map', '0:v:0', '-map', '1:a:0',
       '-c:v', 'copy',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
