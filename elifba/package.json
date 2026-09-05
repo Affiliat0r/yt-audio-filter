@@ -1,0 +1,11 @@
+{
+  "name": "elifba",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Diyanet elifba lessons (letters + ustun/esre/otre) rendered headlessly to MP4.",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}

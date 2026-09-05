@@ -1,0 +1,327 @@
+{
+  "$comment": "Diyanet elifba, unit 3 (harekeler). Base letter + U+064E ustun / U+0650 esre / U+064F otre. Spoken text is Turkish orthography - the TTS reads Turkish phonetically, which is the convention the Diyanet book teaches these letters with.",
+  "voice": "tr-TR-EmelNeural",
+  "prompt": "Şimdi sen söyle!",
+  "harakat": [
+    {
+      "id": "ustun",
+      "name": "üstün",
+      "mark": "َ",
+      "accent": "#D64545"
+    },
+    {
+      "id": "esre",
+      "name": "esre",
+      "mark": "ِ",
+      "accent": "#2F80ED"
+    },
+    {
+      "id": "otre",
+      "name": "ötre",
+      "mark": "ُ",
+      "accent": "#0E9F6E"
+    }
+  ],
+  "letters": [
+    {
+      "id": "elif",
+      "glyph": "ا",
+      "name": "Elif",
+      "say": [
+        "e",
+        "i",
+        "u"
+      ]
+    },
+    {
+      "id": "be",
+      "glyph": "ب",
+      "name": "Be",
+      "say": [
+        "be",
+        "bi",
+        "bu"
+      ]
+    },
+    {
+      "id": "te",
+      "glyph": "ت",
+      "name": "Te",
+      "say": [
+        "te",
+        "ti",
+        "tu"
+      ]
+    },
+    {
+      "id": "se",
+      "glyph": "ث",
+      "name": "Se",
+      "say": [
+        "se",
+        "si",
+        "su"
+      ]
+    },
+    {
+      "id": "cim",
+      "glyph": "ج",
+      "name": "Cim",
+      "say": [
+        "ce",
+        "ci",
+        "cu"
+      ]
+    },
+    {
+      "id": "ha",
+      "glyph": "ح",
+      "name": "Ha",
+      "say": [
+        "ha",
+        "hı",
+        "hu"
+      ]
+    },
+    {
+      "id": "hi",
+      "glyph": "خ",
+      "name": "Hı",
+      "say": [
+        "ha",
+        "hı",
+        "hu"
+      ]
+    },
+    {
+      "id": "dal",
+      "glyph": "د",
+      "name": "Dal",
+      "say": [
+        "de",
+        "di",
+        "du"
+      ]
+    },
+    {
+      "id": "zel",
+      "glyph": "ذ",
+      "name": "Zel",
+      "say": [
+        "ze",
+        "zi",
+        "zu"
+      ]
+    },
+    {
+      "id": "ra",
+      "glyph": "ر",
+      "name": "Ra",
+      "say": [
+        "ra",
+        "ri",
+        "ru"
+      ]
+    },
+    {
+      "id": "ze",
+      "glyph": "ز",
+      "name": "Ze",
+      "say": [
+        "ze",
+        "zi",
+        "zu"
+      ]
+    },
+    {
+      "id": "sin",
+      "glyph": "س",
+      "name": "Sin",
+      "say": [
+        "se",
+        "si",
+        "su"
+      ]
+    },
+    {
+      "id": "sin2",
+      "glyph": "ش",
+      "name": "Şın",
+      "say": [
+        "şe",
+        "şi",
+        "şu"
+      ]
+    },
+    {
+      "id": "sad",
+      "glyph": "ص",
+      "name": "Sad",
+      "say": [
+        "sa",
+        "sı",
+        "su"
+      ]
+    },
+    {
+      "id": "dad",
+      "glyph": "ض",
+      "name": "Dad",
+      "say": [
+        "da",
+        "dı",
+        "du"
+      ]
+    },
+    {
+      "id": "ti",
+      "glyph": "ط",
+      "name": "Tı",
+      "say": [
+        "ta",
+        "tı",
+        "tu"
+      ]
+    },
+    {
+      "id": "zi",
+      "glyph": "ظ",
+      "name": "Zı",
+      "say": [
+        "za",
+        "zı",
+        "zu"
+      ]
+    },
+    {
+      "id": "ayn",
+      "glyph": "ع",
+      "name": "Ayn",
+      "say": [
+        "a",
+        "i",
+        "u"
+      ]
+    },
+    {
+      "id": "gayn",
+      "glyph": "غ",
+      "name": "Ğayn",
+      "say": [
+        "ğa",
+        "ğı",
+        "ğu"
+      ]
+    },
+    {
+      "id": "fe",
+      "glyph": "ف",
+      "name": "Fe",
+      "say": [
+        "fe",
+        "fi",
+        "fu"
+      ]
+    },
+    {
+      "id": "kaf",
+      "glyph": "ق",
+      "name": "Kaf",
+      "say": [
+        "ka",
+        "kı",
+        "ku"
+      ]
+    },
+    {
+      "id": "kef",
+      "glyph": "ك",
+      "name": "Kef",
+      "say": [
+        "ke",
+        "ki",
+        "ku"
+      ]
+    },
+    {
+      "id": "lam",
+      "glyph": "ل",
+      "name": "Lam",
+      "say": [
+        "le",
+        "li",
+        "lu"
+      ]
+    },
+    {
+      "id": "mim",
+      "glyph": "م",
+      "name": "Mim",
+      "say": [
+        "me",
+        "mi",
+        "mu"
+      ]
+    },
+    {
+      "id": "nun",
+      "glyph": "ن",
+      "name": "Nun",
+      "say": [
+        "ne",
+        "ni",
+        "nu"
+      ]
+    },
+    {
+      "id": "vav",
+      "glyph": "و",
+      "name": "Vav",
+      "say": [
+        "ve",
+        "vi",
+        "vu"
+      ]
+    },
+    {
+      "id": "he",
+      "glyph": "ه",
+      "name": "He",
+      "say": [
+        "he",
+        "hi",
+        "hu"
+      ]
+    },
+    {
+      "id": "ye",
+      "glyph": "ي",
+      "name": "Ye",
+      "say": [
+        "ye",
+        "yi",
+        "yu"
+      ]
+    },
+    {
+      "id": "lamelif",
+      "glyph": "لا",
+      "name": "Lamelif",
+      "say": [
+        "le",
+        "li",
+        "lu"
+      ]
+    },
+    {
+      "id": "hemze",
+      "glyph": "ء",
+      "name": "Hemze",
+      "say": [
+        "e",
+        "i",
+        "u"
+      ]
+    }
+  ]
+}
