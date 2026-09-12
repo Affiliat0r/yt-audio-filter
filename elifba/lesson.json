@@ -2,11 +2,11 @@
   "$comment": "Diyanet elifba, unit 3 (harekeler). Base letter + U+064E ustun / U+0650 esre / U+064F otre. Spoken text is Turkish orthography - the TTS reads Turkish phonetically, which is the convention the Diyanet book teaches these letters with.",
   "voices": {
     "narration": "tr-TR-EmelNeural",
-    "letters": "ar-SA-HamedNeural"
+    "letters": "ar-SY-AmanyNeural"
   },
   "rates": {
     "narration": "-8%",
-    "letters": "-40%"
+    "letters": "-25%"
   },
   "prompt": "Şimdi sen söyle!",
   "harakat": [
@@ -38,7 +38,8 @@
         "e",
         "i",
         "u"
-      ]
+      ],
+      "vowelOnly": true
     },
     {
       "id": "be",
@@ -328,7 +329,8 @@
         "e",
         "i",
         "u"
-      ]
+      ],
+      "vowelOnly": true
     }
   ]
 }

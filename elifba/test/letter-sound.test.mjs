@@ -8,6 +8,13 @@
  * clip was also far too short to imitate. Slowing that voice down did not help;
  * the ratio held at 1.55 at every rate, so the voice itself had to change.
  *
+ * It also guards a second defect with a different shape. Elif and hemze carry
+ * no consonant, and a bare alif with a vowel is not a pronounceable Arabic
+ * word -- so every Arabic voice tried resolved "اِ" into the definite article
+ * ال and put an audible L into it. That is not a tuning problem and no
+ * spelling fixed it; those two letters are read by the Turkish narrator, whose
+ * bare vowel is exactly what the book asks for there.
+ *
  * Nothing here claims a sound is *correct* -- only a person can judge an
  * Arabic phoneme, which is why elifba/test/transcribe.py exists for listening
  * by machine and the audition script for listening by ear. What these
@@ -23,7 +30,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { spokenId } from '../timeline.mjs';
+import { buildTimeline, spokenId, spokenLines } from '../timeline.mjs';
 import { synthesise } from '../voice.mjs';
 import { mean, speechSeconds, spread } from './audio-metrics.mjs';
 
@@ -38,6 +45,11 @@ export const MAX_SPREAD = 0.35;
 
 /** Damma against fatha. Above this the voice is elongating it into "oo". */
 export const DAMMA_RATIO = [0.7, 1.35];
+
+/** Stand-in clip lengths, so timeline shape can be checked without the network. */
+function stubDurations(lessonData, ids) {
+  return new Map(spokenLines(lessonData, ids).map((line) => [spokenId(line), 1]));
+}
 
 /** A spread of letters: two shallow, one tall, one deep, one wide. */
 const SAMPLE = ['ا', 'ب', 'ت', 'م', 'س'];
@@ -93,15 +105,51 @@ test('otre is a short vowel, not a long one', () => {
   );
 });
 
-test('the letters are sounded by a fusha voice, not a dialect one', () => {
-  // Egyptian voices read ج as /g/. The book calls that letter Cim and teaches
-  // it as /dʒ/, so an ar-EG voice would contradict the curriculum on every
-  // occurrence of it.
-  assert.match(
+test('the letters are not sounded by a dialect that changes them', () => {
+  // Egyptian reads ج as /g/; the book calls that letter Cim and teaches it as
+  // /dʒ/, so an ar-EG voice would contradict the curriculum every time that
+  // letter came round. The Maghrebi voices are out for their vowel system,
+  // which is the furthest from what is being taught here. Everything else --
+  // Gulf, Levantine, Peninsular -- reads these letters close enough to fusha.
+  const banned = /^ar-(EG|DZ|MA|TN)-/;
+  assert.doesNotMatch(
     lesson.voices.letters,
-    /^ar-SA-/,
-    'letter sounds must come from an ar-SA (fusha) voice',
+    banned,
+    `${lesson.voices.letters} is a dialect that changes the letters being taught`,
   );
+  assert.match(lesson.voices.letters, /^ar-/, 'letter sounds must come from an Arabic voice');
+});
+
+test('a letter with no consonant is sounded by the narrator, not the Arabic voice', () => {
+  // Elif and hemze carry no consonant, so on their own "اَ" and "ءَ" are not
+  // pronounceable Arabic words. Every TTS tried resolved them into something
+  // that is -- usually the definite article ال -- putting an audible L into a
+  // sound that has none. The book's reading of those is a bare vowel, which
+  // the Turkish narrator can simply say.
+  const vowelOnly = lesson.letters.filter((l) => l.vowelOnly).map((l) => l.id);
+  assert.deepEqual(vowelOnly, ['elif', 'hemze'], 'the vowel-only letters');
+
+  for (const id of vowelOnly) {
+    const letter = lesson.letters.find((l) => l.id === id);
+    const timeline = buildTimeline(lesson, [id], stubDurations(lesson, [id]));
+    for (const seg of timeline.segments.filter((s) => s.kind === 'harakat')) {
+      assert.equal(
+        seg.speak.role, 'narration',
+        `${letter.name} ${seg.harakatName} must be spoken by the narrator`,
+      );
+      assert.ok(
+        letter.say.includes(seg.speak.text.replace(/[.!?]$/, '')),
+        `${letter.name} should say a bare vowel, got ${JSON.stringify(seg.speak.text)}`,
+      );
+    }
+  }
+});
+
+test('a letter with a consonant keeps the Arabic voice', () => {
+  const timeline = buildTimeline(lesson, ['be'], stubDurations(lesson, ['be']));
+  for (const seg of timeline.segments.filter((s) => s.kind === 'harakat')) {
+    assert.equal(seg.speak.role, 'letters', 'Be must be sounded in Arabic');
+  }
 });
 
 test('the spoken narration stays Turkish', () => {
