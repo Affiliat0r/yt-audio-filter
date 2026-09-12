@@ -17,20 +17,23 @@
  *   node elifba/test/sound-compare.mjs
  */
 
-import { execFile } from 'node:child_process';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 
 import { spokenId } from '../timeline.mjs';
 import { synthesise } from '../voice.mjs';
+import { speechSeconds } from './audio-metrics.mjs';
 
-const execFileAsync = promisify(execFile);
 const ELIFBA_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-const VOICE = 'ar-SA-ZariyahNeural';
-const RATE = '-8%';
+// Runs against whatever the lesson is configured to use, so it stays a live
+// check rather than a record of one voice we happened to reject.
+const lesson = JSON.parse(
+  await readFile(path.join(ELIFBA_DIR, 'lesson.json'), 'utf8'),
+);
+const VOICE = lesson.voices.letters;
+const RATE = lesson.rates.letters;
 
 /**
  * Each row: what the card shows, the syllable we want, and the letter's real
@@ -47,32 +50,6 @@ const CASES = [
   { label: 'mim + fatha', syllable: 'مَ', name: 'ميم' },
 ];
 
-/**
- * Seconds of actual speech in a clip.
- *
- * `silencedetect` reports the quiet stretches; everything else is speech. The
- * threshold is deliberately low (-45 dB) because a neural TTS floor is not
- * digital silence.
- */
-async function speechSeconds(file) {
-  const { stderr } = await execFileAsync('ffmpeg', [
-    '-hide_banner', '-nostats',
-    '-i', file,
-    '-af', 'silencedetect=noise=-45dB:d=0.06',
-    '-f', 'null', '-',
-  ]);
-  const total = Number(
-    (await execFileAsync('ffprobe', [
-      '-v', 'error', '-show_entries', 'format=duration',
-      '-of', 'default=nw=1:nk=1', file,
-    ])).stdout.trim(),
-  );
-  let silent = 0;
-  for (const m of String(stderr).matchAll(/silence_duration: ([\d.]+)/g)) {
-    silent += Number(m[1]);
-  }
-  return Math.max(0, total - silent);
-}
 
 async function main() {
   const cacheDir = path.join(ELIFBA_DIR, 'out', 'sound-compare');

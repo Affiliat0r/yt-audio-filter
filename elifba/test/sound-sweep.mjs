@@ -20,16 +20,14 @@
  *   node elifba/test/sound-sweep.mjs
  */
 
-import { execFile } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 
 import { spokenId } from '../timeline.mjs';
 import { synthesise } from '../voice.mjs';
+import { mean, speechSeconds } from './audio-metrics.mjs';
 
-const execFileAsync = promisify(execFile);
 const ELIFBA_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const MARKS = ['َ', 'ِ', 'ُ']; // fatha, kasra, damma
@@ -44,23 +42,7 @@ const CANDIDATES = [
   { id: 'shakir -40% (EG male)', voice: 'ar-EG-ShakirNeural', rate: '-40%' },
 ];
 
-async function speechSeconds(file) {
-  const { stderr } = await execFileAsync('ffmpeg', [
-    '-hide_banner', '-nostats', '-i', file,
-    '-af', 'silencedetect=noise=-45dB:d=0.06', '-f', 'null', '-',
-  ]);
-  const { stdout } = await execFileAsync('ffprobe', [
-    '-v', 'error', '-show_entries', 'format=duration',
-    '-of', 'default=nw=1:nk=1', file,
-  ]);
-  let silent = 0;
-  for (const m of String(stderr).matchAll(/silence_duration: ([\d.]+)/g)) silent += Number(m[1]);
-  return Math.max(0, Number(stdout.trim()) - silent);
-}
 
-function mean(xs) {
-  return xs.reduce((a, b) => a + b, 0) / xs.length;
-}
 
 async function main() {
   const cacheDir = path.join(ELIFBA_DIR, 'out', 'sound-sweep');
