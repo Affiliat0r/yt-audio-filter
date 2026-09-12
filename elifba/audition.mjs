@@ -1,102 +1,81 @@
 #!/usr/bin/env node
 /**
- * Voice audition.
+ * Voice auditions -- the questions only a listener can settle.
  *
- * Renders the exact lines a lesson speaks in each candidate voice, so they can
- * be compared by ear rather than by voice-list adjective.
+ * The measurements in test/letter-sound.test.mjs can prove a sound is too
+ * short to copy, or that three vowels are being presented at wildly different
+ * lengths. They cannot prove a phoneme is *right*. That needs ears, so this
+ * builds the comparisons and gets out of the way.
  *
- *   node elifba/audition.mjs --suite turkish
- *   node elifba/audition.mjs --suite arabic
+ *   node elifba/audition.mjs --suite sounds     # which Arabic voice
+ *   node elifba/audition.mjs --suite narration  # which Turkish voice
  *
- * The `turkish` suite asks which voice sounds least mechanical. Isolated
- * single syllables are the hard case there: a one-syllable utterance gives a
- * TTS no sentence to hang an intonation contour on, so it comes out flat
- * however good the model is, which is why the candidates vary rate and
- * trailing punctuation as well as voice.
- *
- * The `arabic` suite asks a different question: whether the letters should be
- * sounded by an Arabic voice reading Arabic script. A Turkish voice cannot
- * distinguish the letters Turkish collapses -- it says the same "ha" for ح, خ
- * and ه, the same "sa" for س and ص -- so the suite deliberately uses the four
- * letters where that collapse is audible, and compares full-Arabic against
- * keeping the Diyanet's Turkish letter *names* over Arabic letter *sounds*.
+ * Each candidate becomes one mp3 saying the same lines, so they can be played
+ * back to back.
  */
 
 import { execFile } from 'node:child_process';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+import { spokenId } from './timeline.mjs';
 import { synthesise } from './voice.mjs';
 
 const execFileAsync = promisify(execFile);
 const ELIFBA_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 /** Seconds of quiet between lines, so each is heard on its own. */
-const GAP = 0.7;
+const GAP = 0.75;
 
 // --------------------------------------------------------------------------
-// suite: turkish -- which voice, and how fast
+// suite: sounds -- which Arabic voice sounds the letters
 // --------------------------------------------------------------------------
-
-const TURKISH_SCRIPT = ['Be', 'be', 'bi', 'bu', 'Şimdi sen söyle!'];
-
-const TURKISH_CANDIDATES = [
-  { id: '1-current-emel-slow', voice: 'tr-TR-EmelNeural', rate: '-20%', punctuate: false },
-  { id: '2-emel-natural-rate', voice: 'tr-TR-EmelNeural', rate: '-8%', punctuate: true },
-  { id: '3-emma-multilingual', voice: 'en-US-EmmaMultilingualNeural', rate: '-8%', punctuate: true },
-  { id: '4-ava-multilingual', voice: 'en-US-AvaMultilingualNeural', rate: '-8%', punctuate: true },
-  { id: '5-ahmet-male', voice: 'tr-TR-AhmetNeural', rate: '-8%', punctuate: true },
-];
-
-// --------------------------------------------------------------------------
-// suite: arabic -- should the letters be sounded in Arabic
-// --------------------------------------------------------------------------
-
-/** U+064E fatha, U+0650 kasra, U+064F damma. */
-const MARKS = ['َ', 'ِ', 'ُ'];
 
 /*
- * Four letters chosen because Turkish collapses them and Arabic does not:
- * be is the control, ha is ح (not خ and not ه), sad is ص (not س), and ayn is
- * ع, which a Turkish voice renders as a bare vowel. If an Arabic voice is
- * worth switching to, it is on these that you will hear it.
+ * Elif and Be under all three harakat, then four letters whose sound a
+ * Turkish voice could not distinguish -- ح against خ, and ص against س. If a
+ * voice is worth having, it is on those pairs that you hear why.
  */
-const PHONEME_LETTERS = [
-  { glyph: 'ب', turkish: 'Be', arabic: 'باء' },
-  { glyph: 'ح', turkish: 'Ha', arabic: 'حاء' },
-  { glyph: 'ص', turkish: 'Sad', arabic: 'صاد' },
-  { glyph: 'ع', turkish: 'Ayn', arabic: 'عين' },
+const SOUND_SCRIPT = [
+  'اَ', 'اِ', 'اُ',
+  'بَ', 'بِ', 'بُ',
+  'حَ', 'خَ', 'صَ', 'سَ',
 ];
 
-const ARABIC_CANDIDATES = [
+const SOUND_CANDIDATES = [
   {
-    id: 'A-all-arabic-zariyah',
-    nameLang: 'arabic',
-    nameVoice: 'ar-SA-ZariyahNeural',
-    sayVoice: 'ar-SA-ZariyahNeural',
+    // What shipped. Kept in the line-up so the difference is audible rather
+    // than asserted: this is the one that stretches otre into "oo".
+    id: '1-shipped-zariyah-fast',
+    voice: 'ar-SA-ZariyahNeural',
+    rate: '-8%',
   },
-  {
-    id: 'B-all-arabic-salma-egyptian',
-    nameLang: 'arabic',
-    nameVoice: 'ar-EG-SalmaNeural',
-    sayVoice: 'ar-EG-SalmaNeural',
-  },
-  {
-    // The Diyanet book names the letters in Turkish. This keeps that and
-    // borrows the Arabic voice only for the sound the mark makes.
-    id: 'C-turkish-name-arabic-sound',
-    nameLang: 'turkish',
-    nameVoice: 'tr-TR-EmelNeural',
-    sayVoice: 'ar-SA-ZariyahNeural',
-  },
+  { id: '2-hamed-slow-CHOSEN', voice: 'ar-SA-HamedNeural', rate: '-40%' },
+  { id: '3-zariyah-slow', voice: 'ar-SA-ZariyahNeural', rate: '-40%' },
+  { id: '4-salma-slow-egyptian', voice: 'ar-EG-SalmaNeural', rate: '-40%' },
 ];
 
 // --------------------------------------------------------------------------
+// suite: narration -- which Turkish voice reads the lesson
+// --------------------------------------------------------------------------
+
+const NARRATION_SCRIPT = ['Elif.', 'Be.', 'Şimdi sen söyle!'];
+
+const NARRATION_CANDIDATES = [
+  { id: '1-emel-CHOSEN', voice: 'tr-TR-EmelNeural', rate: '-8%' },
+  { id: '2-ahmet-male', voice: 'tr-TR-AhmetNeural', rate: '-8%' },
+  { id: '3-emma-multilingual', voice: 'en-US-EmmaMultilingualNeural', rate: '-8%' },
+];
+
+const SUITES = {
+  sounds: { script: SOUND_SCRIPT, candidates: SOUND_CANDIDATES, role: 'letters' },
+  narration: { script: NARRATION_SCRIPT, candidates: NARRATION_CANDIDATES, role: 'narration' },
+};
 
 /** Concatenate clips with a gap between each, into one mp3. */
-async function joinToMp3(entries, cacheDir, outPath, id) {
+async function joinToMp3(clips, cacheDir, outPath, id) {
   const silence = path.join(cacheDir, 'gap.wav');
   await execFileAsync('ffmpeg', [
     '-hide_banner', '-loglevel', 'error', '-y',
@@ -105,7 +84,7 @@ async function joinToMp3(entries, cacheDir, outPath, id) {
   ]);
 
   const parts = [];
-  for (const clip of entries) {
+  for (const clip of clips) {
     const wav = path.join(cacheDir, `${id}_${parts.length}.wav`);
     await execFileAsync('ffmpeg', [
       '-hide_banner', '-loglevel', 'error', '-y',
@@ -123,68 +102,45 @@ async function joinToMp3(entries, cacheDir, outPath, id) {
   ]);
 }
 
-async function runTurkish(outDir, cacheDir) {
-  for (const candidate of TURKISH_CANDIDATES) {
-    // A trailing full stop on a bare syllable is the cheapest prosody we can
-    // buy: it turns "bi" from a flat token into a falling contour.
-    const lines = TURKISH_SCRIPT.map((line) =>
-      candidate.punctuate && !/[!?.]$/.test(line) ? `${line}.` : line);
-
-    const { files } = await synthesise(lines, {
-      cacheDir, voice: candidate.voice, rate: candidate.rate,
-    });
-    await joinToMp3(lines.map((l) => files.get(l)), cacheDir,
-                    path.join(outDir, `${candidate.id}.mp3`), candidate.id);
-    console.log(`${candidate.id.padEnd(30)} ${candidate.voice} @ ${candidate.rate}`);
-  }
-}
-
-async function runArabic(outDir, cacheDir) {
-  for (const candidate of ARABIC_CANDIDATES) {
-    const clips = [];
-
-    for (const letter of PHONEME_LETTERS) {
-      const name = candidate.nameLang === 'arabic' ? letter.arabic : `${letter.turkish}.`;
-      const { files: nameFiles } = await synthesise([name], {
-        cacheDir, voice: candidate.nameVoice, rate: '-8%',
-      });
-      clips.push(nameFiles.get(name));
-
-      // The syllable is just the letter carrying the mark -- exactly what is
-      // drawn on the card -- so the voice is reading the same thing the child
-      // is looking at rather than a transliteration of it.
-      const syllables = MARKS.map((mark) => letter.glyph + mark);
-      const { files: sayFiles } = await synthesise(syllables, {
-        cacheDir, voice: candidate.sayVoice, rate: '-8%',
-      });
-      for (const syllable of syllables) clips.push(sayFiles.get(syllable));
-    }
-
-    await joinToMp3(clips, cacheDir, path.join(outDir, `${candidate.id}.mp3`), candidate.id);
-    console.log(
-      `${candidate.id.padEnd(30)} name=${candidate.nameVoice} say=${candidate.sayVoice}`,
-    );
-  }
-}
-
 async function main() {
   const suiteArg = process.argv.indexOf('--suite');
-  const suite = suiteArg === -1 ? 'turkish' : process.argv[suiteArg + 1];
-  if (suite !== 'turkish' && suite !== 'arabic') {
-    throw new Error(`--suite must be "turkish" or "arabic", got ${JSON.stringify(suite)}`);
+  const name = suiteArg === -1 ? 'sounds' : process.argv[suiteArg + 1];
+  const suite = SUITES[name];
+  if (!suite) {
+    throw new Error(`--suite must be one of ${Object.keys(SUITES).join(', ')}, got ${JSON.stringify(name)}`);
   }
 
-  const outDir = path.join(ELIFBA_DIR, 'out', `audition-${suite}`);
+  const lesson = JSON.parse(await readFile(path.join(ELIFBA_DIR, 'lesson.json'), 'utf8'));
+  const outDir = path.join(ELIFBA_DIR, 'out', `audition-${name}`);
   await rm(outDir, { recursive: true, force: true });
-  await mkdir(outDir, { recursive: true });
   const cacheDir = path.join(outDir, 'cache');
   await mkdir(cacheDir, { recursive: true });
 
-  if (suite === 'turkish') await runTurkish(outDir, cacheDir);
-  else await runArabic(outDir, cacheDir);
+  const lines = suite.script.map((text) => ({ text, role: suite.role }));
+
+  for (const candidate of SOUND_CANDIDATES.concat(NARRATION_CANDIDATES).filter((c) =>
+    suite.candidates.includes(c))) {
+    const { files } = await synthesise(lines, {
+      cacheDir,
+      voices: { [suite.role]: candidate.voice },
+      rates: { [suite.role]: candidate.rate },
+    });
+    await joinToMp3(
+      lines.map((l) => files.get(spokenId(l))),
+      cacheDir,
+      path.join(outDir, `${candidate.id}.mp3`),
+      candidate.id,
+    );
+    const inUse = lesson.voices[suite.role] === candidate.voice &&
+      lesson.rates[suite.role] === candidate.rate;
+    console.log(
+      `${candidate.id.padEnd(24)} ${candidate.voice} @ ${candidate.rate}${inUse ? '   <- in use' : ''}`,
+    );
+  }
 
   await rm(cacheDir, { recursive: true, force: true });
-  console.log(`\nauditions in ${outDir}`);
+  console.log(`\nsays: ${suite.script.join(' ')}`);
+  console.log(`auditions in ${outDir}`);
 }
 
 main().catch((err) => {

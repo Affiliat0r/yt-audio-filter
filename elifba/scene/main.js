@@ -84,6 +84,135 @@
     return segs[segs.length - 1];
   }
 
+  // -- mark placement ---------------------------------------------------------
+
+  /*
+   * How far the mark sits from the letter, as a fraction of the font size.
+   * One number for every letter: that constancy is the whole point, and is
+   * what the font does not give us.
+   */
+  var MARK_GAP_EM = 0.1;
+
+  var placement = null;
+
+  /**
+   * Cache key for one (letter, mark) pair.
+   *
+   * The separator only has to be something neither an Arabic letter nor a
+   * harakat can contain, and be visible: an earlier version joined on a NUL,
+   * which worked but made git treat this file as binary and stop diffing it.
+   */
+  function placementKey(glyph, mark) {
+    return glyph + '|' + mark;
+  }
+
+  /**
+   * Ink box of a string, relative to the text origin, in CSS pixels.
+   *
+   * `actualBoundingBox*` is measured outward from the origin, so left is
+   * positive going left; the ink therefore spans x in [-left, right] and y in
+   * [-ascent, descent] with y growing downward from the baseline.
+   */
+  function measureInk(ctx, text) {
+    var m = ctx.measureText(text);
+    return {
+      advance: m.width,
+      left: m.actualBoundingBoxLeft,
+      right: m.actualBoundingBoxRight,
+      ascent: m.actualBoundingBoxAscent,
+      descent: m.actualBoundingBoxDescent,
+    };
+  }
+
+  /**
+   * Where to move the mark so it sits centred on the letter, one constant gap
+   * clear of it.
+   *
+   * Both layers are centred lines in the same box with the same strut, so they
+   * share a baseline and their origins differ only by advance width:
+   * `origin = centre - advance/2`. The mark's advance is zero, so its origin
+   * is the box centre exactly.
+   *
+   * Whether a mark belongs above or below is read off its own metrics rather
+   * than hard-coded per character -- a mark drawn above the baseline has a
+   * positive ascent -- so adding sukun or a shadda later needs no new table.
+   */
+  function markOffset(letterInk, markInk, gapPx) {
+    var letterCentre = -letterInk.advance / 2 + (letterInk.right - letterInk.left) / 2;
+    var markCentre = (markInk.right - markInk.left) / 2;
+    var above = markInk.ascent > 0;
+
+    return {
+      dx: letterCentre - markCentre,
+      dy: above
+        ? -letterInk.ascent - gapPx - markInk.descent
+        : letterInk.descent + gapPx + markInk.ascent,
+      above: above,
+    };
+  }
+
+  /**
+   * How far to move a letter so its ink -- not its line box -- is centred in
+   * the card.
+   *
+   * A line box is centred on the baseline the font asks for, which leaves
+   * letters with deep tails (ج ح خ ز) hanging low and letters with none
+   * sitting high. That is invisible in running text and obvious on a card
+   * showing one letter. It also costs room exactly where it is needed: a
+   * kasra under a deep letter ran off the bottom of the card entirely.
+   *
+   * The element is one line high and vertically centred, so the baseline sits
+   * a known distance below the card's centre, and the letter's own ink box is
+   * known from the same metrics.
+   */
+  function letterShift(letterInk, lineHeightPx, fontAscent, fontDescent) {
+    var baselineFromLineTop =
+      (lineHeightPx - (fontAscent + fontDescent)) / 2 + fontAscent;
+    var inkCentreFromBaseline = (letterInk.descent - letterInk.ascent) / 2;
+    return lineHeightPx / 2 - baselineFromLineTop - inkCentreFromBaseline;
+  }
+
+  /**
+   * Measure every letter and every (letter, mark) pair the timeline asks for.
+   *
+   * @returns {{letters: object, marks: object}} px offsets, keyed by glyph and
+   *   by glyph+mark respectively
+   */
+  function buildPlacement(segments, fontString, gapPx, lineHeightPx) {
+    var ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = fontString;
+
+    var inkCache = {};
+    var ink = function (text) {
+      if (!(text in inkCache)) inkCache[text] = measureInk(ctx, text);
+      return inkCache[text];
+    };
+
+    // Font-level, so any glyph carrying real ink gives the same answer.
+    var probe = ctx.measureText('ا');
+    var fontAscent = probe.fontBoundingBoxAscent;
+    var fontDescent = probe.fontBoundingBoxDescent;
+
+    var letters = {};
+    var marks = {};
+    for (var i = 0; i < segments.length; i++) {
+      var seg = segments[i];
+      if (!seg.glyph) continue;
+
+      if (!(seg.glyph in letters)) {
+        letters[seg.glyph] = {
+          shiftY: letterShift(ink(seg.glyph), lineHeightPx, fontAscent, fontDescent),
+        };
+      }
+      if (!seg.mark) continue;
+
+      var key = placementKey(seg.glyph, seg.mark);
+      if (key in marks) continue;
+      marks[key] = markOffset(ink(seg.glyph), ink(seg.mark), gapPx);
+    }
+    return { letters: letters, marks: marks };
+  }
+
   // -- the garden -----------------------------------------------------------
 
   /*
@@ -206,17 +335,26 @@
       (seg.fadeIn ? 0.95 + 0.05 * easeOutBack(lt / 0.6) : 1) + ')';
 
     setText(el.glyphBase, seg.glyph);
-    setText(el.glyphMark, seg.glyph + (seg.mark || ''));
+    var shiftY = (placement.letters[seg.glyph] || { shiftY: 0 }).shiftY;
+    el.glyphBase.style.transform = 'translateY(calc(-50% + ' + shiftY.toFixed(2) + 'px))';
+
+    // The mark layer carries the mark alone; it is put where it belongs by
+    // the offsets measured in init(), not by the font. It rides the same
+    // letter shift so the gap between the two stays exactly as measured.
+    setText(el.glyphMark, seg.mark || '');
     el.glyphMark.style.color = accent;
+    if (seg.mark) {
+      var offset = placement.marks[placementKey(seg.glyph, seg.mark)];
+      if (!offset) throw new Error('elifba scene: no measured offset for ' + seg.glyph + seg.mark);
+      el.glyphMark.style.transform =
+        'translate(' + offset.dx.toFixed(2) + 'px, calc(-50% + ' +
+        (shiftY + offset.dy).toFixed(2) + 'px))';
+    }
 
     // The mark fades in a beat after the letter has settled, so the child sees
     // "the letter I know" and then "the thing that was added to it" -- and it
     // fades back out before the beat ends, so ustun -> esre reads as a
     // dissolve even across the beats where the card itself holds.
-    //
-    // Only opacity is animated here. The accent layer also draws the base
-    // letter underneath, hidden by the pixel-identical ink layer on top;
-    // moving or scaling it would slide that copy out from behind its cover.
     var markT = seg.mark
       ? Math.min(easeOutCubic((lt - 0.2) / MARK_IN), easeOutCubic((dur - lt) / MARK_OUT))
       : 0;
@@ -281,6 +419,17 @@
       if (!document.fonts.check('400 100px ElifbaArabic')) {
         throw new Error('elifba scene: the Arabic font never loaded; refusing to render fallback glyphs');
       }
+
+      // Measure only now: glyph metrics taken before the real face has loaded
+      // describe the fallback font, and every mark would be placed from them.
+      var style = getComputedStyle(el.glyphBase);
+      var fontSize = parseFloat(style.fontSize);
+      placement = buildPlacement(
+        timeline.segments,
+        style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily,
+        fontSize * MARK_GAP_EM,
+        parseFloat(style.lineHeight),
+      );
 
       this.ready = true;
     },

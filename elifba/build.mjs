@@ -121,7 +121,9 @@ async function main() {
       narration: opts.narrationVoice || lesson.voices.narration,
       letters: opts.lettersVoice || lesson.voices.letters,
     },
-    ...(opts.rate || lesson.rate ? { rate: opts.rate || lesson.rate } : {}),
+    // --rate, when given, overrides every role at once; otherwise each role
+    // takes its own speed from the lesson.
+    ...(opts.rate ? { rate: opts.rate } : { rates: lesson.rates }),
     onProgress: (done, total, text, cached, voice) =>
       console.log(
         `[voice] ${done}/${total} ${cached ? 'cached ' : 'synth  '} ` +

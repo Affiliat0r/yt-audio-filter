@@ -83,11 +83,24 @@
                 0 calc(var(--u) * 0.3) calc(var(--u) * 0.9) rgba(96, 66, 34, 0.07);
   }
 
-  /* The two stacked copies that give the harakat its own colour: the bottom
-     layer draws letter+mark in the accent, the top layer redraws the bare
-     letter in ink over it. A combining mark has zero advance width, so both
-     layers put the base glyph on exactly the same pixels and only the mark
-     is left showing in colour. */
+  /* Letter and mark are two independent layers: #glyphBase holds the bare
+     letter in ink, #glyphMark holds the bare harakat in the accent colour,
+     and main.js positions the mark over or under the letter itself.
+
+     The font is deliberately not trusted to place the mark. Amiri positions
+     harakat the way running text needs them -- at a fixed height above the
+     baseline so marks align across a line -- which is wrong for a single
+     letter filling a card: the fatha floats far above a shallow letter like
+     ب while hugging a tall ا, and the kasra, pinned just below the baseline,
+     lands inside deep letters like ع and م. See
+     test/harakat-placement.test.mjs, which holds placement to the same
+     tolerance for all thirty letters.
+
+     `direction: ltr` is load-bearing for that maths: a centred line puts the
+     text origin at `centre - advance/2`, which is the convention the canvas
+     metrics in main.js are read in. Arabic still shapes right-to-left inside
+     the run -- the bidi algorithm handles that from the characters themselves
+     -- so lamelif still ligates. */
   .glyph {
     position: absolute;
     left: 0; right: 0; top: 50%;
@@ -96,11 +109,10 @@
     font-family: 'ElifbaArabic', 'Amiri', 'Scheherazade New', serif;
     font-size: calc(var(--u) * 32);
     line-height: 1.5;
-    direction: rtl;
-    /* Kill every optional shaping feature that could make the two layers
-       disagree about where the base letter sits. */
+    direction: ltr;
+    /* Kerning would shift the letter without shifting the measurement the
+       mark was placed from. */
     font-kerning: none;
-    font-variant-ligatures: none;
   }
   #glyphMark { color: #D64545; }
   #glyphBase { color: #2A2018; }
@@ -126,8 +138,12 @@
   <div id="ring"></div>
 
   <div id="card">
-    <div class="glyph" id="glyphMark"></div>
+    <!-- The mark paints over the letter, not under it. They are placed not to
+         touch, but on a letter with a deep tail the kasra can still come close,
+         and a mark half-hidden behind the letter is both wrong to look at and
+         unmeasurable. -->
     <div class="glyph" id="glyphBase"></div>
+    <div class="glyph" id="glyphMark"></div>
   </div>
 
 </div>

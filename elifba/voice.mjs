@@ -77,6 +77,7 @@ export async function synthesise(lines, opts) {
     cacheDir,
     voices,
     rate = DEFAULT_RATE,
+    rates,
     python = 'python',
     ffprobePath = 'ffprobe',
     onProgress,
@@ -85,6 +86,13 @@ export async function synthesise(lines, opts) {
   if (!voices || typeof voices !== 'object') {
     throw new Error('voice: synthesise needs a `voices` map of role -> edge-tts voice');
   }
+
+  // Rate is per role, not per lesson. The two voices want very different
+  // speeds: the Turkish narration reads whole sentences and sounds drugged if
+  // slowed much, while the Arabic letters are single syllables that at
+  // conversational rate go by too fast for a child to catch. `rate` remains
+  // the fallback for callers with only one voice in play.
+  const rateFor = (role) => (rates && rates[role]) || rate;
   await mkdir(cacheDir, { recursive: true });
 
   const files = new Map();
@@ -97,7 +105,8 @@ export async function synthesise(lines, opts) {
     if (!voice) {
       throw new Error(`voice: no voice configured for role ${JSON.stringify(line.role)}`);
     }
-    const file = path.join(cacheDir, `${clipKey(line.text, voice, rate)}.mp3`);
+    const lineRate = rateFor(line.role);
+    const file = path.join(cacheDir, `${clipKey(line.text, voice, lineRate)}.mp3`);
     const cached = await exists(file);
 
     if (!cached) {
@@ -106,7 +115,7 @@ export async function synthesise(lines, opts) {
       await execFileAsync(python, [
         '-m', 'edge_tts',
         '--voice', voice,
-        `--rate=${rate}`,
+        `--rate=${lineRate}`,
         '--text', line.text,
         '--write-media', file,
       ], { maxBuffer: 8 * 1024 * 1024 });
@@ -117,7 +126,9 @@ export async function synthesise(lines, opts) {
     // voice is a different clip.
     files.set(spokenId(line), file);
     durations.set(spokenId(line), seconds);
-    index[path.basename(file)] = { text: line.text, role: line.role, voice, rate, seconds };
+    index[path.basename(file)] = {
+      text: line.text, role: line.role, voice, rate: lineRate, seconds,
+    };
 
     onProgress?.(i + 1, lines.length, line.text, cached, voice);
   }
