@@ -86,6 +86,8 @@ Thumbs.db
 
 # Sensitive files
 client_secrets.json
+# Google Cloud's own download name for the same file.
+client_secret_*.json
 request.token
 *.token
 *.pickle
