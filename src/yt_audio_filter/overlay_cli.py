@@ -146,7 +146,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--video-id",
         dest="video_id",
         default=None,
-        help="YouTube video id from the cartoon catalog (numbers mode).",
+        help=(
+            "Which visual to render against. In numbers mode it names the "
+            "cartoon-catalog entry; in surah mode it overrides the default "
+            "of 'longest video on the channel', which is what lets you put "
+            "the same recitation over a different background. An id not on "
+            "the channel is refused rather than silently falling back."
+        ),
     )
 
     parser.add_argument(
@@ -362,6 +368,9 @@ def main(argv: list[str] | None = None) -> int:
                 proxy=args.proxy,
                 upscale=args.upscale,
                 playlist_id=resolve_playlist_id(args.playlist) if args.upload else None,
+                # Same recitation over a different picture: without this the
+                # longest visual always wins and a rerun repeats itself.
+                visual_video_id=args.video_id,
             )
             logger.info(f"Done. Output: {result.output_path}")
             if result.uploaded_video_id:

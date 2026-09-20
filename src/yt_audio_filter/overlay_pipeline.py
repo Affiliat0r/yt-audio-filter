@@ -84,6 +84,7 @@ def run_overlay(
     cookies_from_browser: Optional[str] = None,
     proxy: Optional[str] = None,
     upscale: bool = False,
+    playlist_id: Optional[str] = None,
 ) -> OverlayResult:
     """Run the 4-stage overlay pipeline."""
     cache_dir = Path(cache_dir)
@@ -201,6 +202,7 @@ def run_overlay(
             tags=metadata.tags,
             category_id=metadata.category_id,
             privacy=metadata.privacy_status,
+            playlist_id=playlist_id,
         )
     else:
         logger.info("[4/4] Upload skipped (no --upload flag)")
@@ -349,6 +351,38 @@ def _build_surah_auto_vars(
     }
 
 
+def select_visual(visuals, visual_video_id=None):
+    """The video to render against: the longest, or the one asked for.
+
+    Longest is the right default — it loops least. But it is also
+    deterministic, so rendering the same recitation twice gives the same
+    picture both times, and "same audio, different background" is impossible
+    without an override.
+
+    An id that is not on the channel raises rather than falling back. Falling
+    back would quietly produce the very video the override was meant to differ
+    from, and nobody would notice until it was public.
+    """
+    if not visuals:
+        raise OverlayError(
+            "No usable visual candidates on the video channel",
+            "Every candidate was filtered out (shorts, or unknown duration).",
+        )
+    if not visual_video_id:
+        return max(visuals, key=lambda v: v.duration)
+
+    for candidate in visuals:
+        if candidate.video_id == visual_video_id:
+            return candidate
+
+    longest = sorted(visuals, key=lambda v: -v.duration)[:5]
+    raise OverlayError(
+        f"Visual {visual_video_id!r} is not on the video channel",
+        "Longest available: "
+        + ", ".join(f"{v.video_id} ({v.duration // 60}min)" for v in longest),
+    )
+
+
 def run_overlay_surahs(
     surah_names: List[str],
     audio_channel: str,
@@ -365,6 +399,7 @@ def run_overlay_surahs(
     max_candidates_per_channel: int = 200,
     upscale: bool = False,
     playlist_id: Optional[str] = None,
+    visual_video_id: Optional[str] = None,
 ) -> OverlayResult:
     """Resolve surah names → audio URLs, concat audios, render against the longest visual.
 
@@ -422,7 +457,7 @@ def run_overlay_surahs(
 
     logger.info("[4/5] Selecting longest visual from video channel...")
     visuals = fetch_candidates(video_channel, max_videos=max_candidates_per_channel)
-    visual = max(visuals, key=lambda v: v.duration)
+    visual = select_visual(visuals, visual_video_id)
     total_audio_duration = sum(c.duration for c in resolved)
     if visual.duration < total_audio_duration:
         logger.info(
@@ -744,6 +779,7 @@ def run_overlay_from_surah_numbers(
     cookies_from_browser: Optional[str] = None,
     proxy: Optional[str] = None,
     upload: bool = False,
+    playlist_id: Optional[str] = None,
 ) -> OverlayResult:
     """Render a Quran-overlay video from canonical surah numbers + a
     pre-selected visual from the cartoon catalog.
@@ -781,6 +817,8 @@ def run_overlay_from_surah_numbers(
         cookies_from_browser: Passed through to visual download_stream.
         proxy: Passed through to visual download_stream.
         upload: If True AND metadata.logo_path is set, upload after render.
+        playlist_id: Optional YouTube playlist id; when set and uploading,
+            the video is filed there (see ``uploader.add_to_playlist``).
 
     Returns:
         OverlayResult with output_path, uploaded_video_id (or None),
@@ -903,6 +941,7 @@ def run_overlay_from_surah_numbers(
             tags=metadata.tags,
             category_id=metadata.category_id,
             privacy=metadata.privacy_status,
+            playlist_id=playlist_id,
         )
     else:
         logger.info("[5/5] Upload skipped (upload=False)")
