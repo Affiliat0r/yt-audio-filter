@@ -2,8 +2,8 @@
   "title": "$detected_surah — $reciter | Muziksiz Cizgi Filimler",
   "description_template": "$detected_surah recitation by $reciter.\n\n#Quran #$surah_tag #$reciter_tag #MuziksizCizgiFilimler",
   "description_vars": {
-    "detected_surah": "Ash-Shams → At-Takathur (12 surahs)",
-    "surah_tag": "AshShamsAlLailAdDuhaAshSharhAtTinAlAlaqAlQadrAlBayyinahAzZalzalahAlAdiyatAlQariahAtTakathur",
+    "detected_surah": "At-Takathur → Ash-Shams (12 surahs)",
+    "surah_tag": "AtTakathurAlQariahAlAdiyatAzZalzalahAlBayyinahAlQadrAlAlaqAtTinAshSharhAdDuhaAlLailAshShams",
     "reciter": "Othman Al-Haddad",
     "reciter_tag": "OthmanAlHaddad"
   },
