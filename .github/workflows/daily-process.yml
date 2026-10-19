@@ -270,6 +270,10 @@ jobs:
             git push
           fi
 
+      # This repo is public, and so are its artifacts: anyone signed in to
+      # GitHub can download them. cookies.txt is a logged-in YouTube session,
+      # and login_error.png is a screenshot of the Google sign-in page, so
+      # neither belongs here.
       - name: Upload logs as artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -277,10 +281,8 @@ jobs:
           name: processing-logs
           path: |
             *.log
-            *.png
             yt_dlp_test.log
             pot_server.log
             pot_scheduler.log
-            cookies.txt
             processed_videos.json
           retention-days: 7

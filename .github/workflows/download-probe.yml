@@ -1,0 +1,59 @@
+name: Download probe
+
+# Does the worker's download chain (youtube.download_stream) still return bytes
+# from a GitHub runner's datacenter IP? Nothing downloaded is kept: this repo is
+# public, and so are its artifacts. See scripts/ci_download_probe.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: 'Space-separated mode:video_id pairs (blank = the default set)'
+        required: false
+        default: ''
+  push:
+    paths:
+      - '.github/workflows/download-probe.yml'
+      - 'scripts/ci_download_probe.py'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # yt-dlp solves YouTube's JS challenges with an external runtime, and
+      # Deno is the one it uses without extra configuration.
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install package
+        run: |
+          pip install --upgrade pip
+          pip install -e . "yt-dlp[default]"
+          yt-dlp --version
+
+      - name: Probe downloads
+        env:
+          CASES: ${{ inputs.cases }}
+        # $CASES is unquoted on purpose: one argument per case.
+        run: python scripts/ci_download_probe.py $CASES
