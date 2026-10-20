@@ -54,6 +54,13 @@ music = [
     "torchaudio>=2.0.0",
     "soundfile>=0.12.0",
 ]
+# scripts/refresh_youtube_cookies.py only: keeps the CI cookies secret fresh
+# from a machine on a residential connection. Chromium itself comes from
+# `playwright install chromium` when Google Chrome is not installed.
+cookies = [
+    "playwright>=1.49",  # channel="chromium" (new headless mode) needs 1.49+
+    "pynacl>=1.5",       # GitHub's API only accepts secrets sealed with libsodium
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

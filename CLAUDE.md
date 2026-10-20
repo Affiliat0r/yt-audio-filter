@@ -209,7 +209,10 @@ backends answers "Sign in to confirm you're not a bot" — all four cases of
 the worker leaves it alone. In CI it comes from the `YTDLP_COOKIES` secret,
 deliberately not the older `YOUTUBE_COOKIES`, whose cookies were published in
 public artifacts. Use a throwaway account, never the channel's: YouTube can ban
-an account used this way.
+an account used this way. `scripts/refresh_youtube_cookies.py` keeps that
+secret current from a PC on a residential connection: `--login` once, then a
+daily refresh (`--install-task`) re-exports the session from a dedicated
+browser profile and writes it through GitHub's secrets API.
 
 The music-removal CLI reaches the same chain via
 `download_video_with_metadata()` — see "YouTube Download Fallback Chain" above.
