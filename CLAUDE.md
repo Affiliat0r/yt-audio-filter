@@ -201,6 +201,16 @@ order.
 
 No YTDownloader.exe, no Docker, no Node.js server required in the default path.
 
+**Datacenter IPs need cookies.** From a GitHub runner, every client in both
+backends answers "Sign in to confirm you're not a bot" — all four cases of
+`download-probe.yml` on 2026-10-19, which a residential IP never sees. Set
+`YT_COOKIES_FILE` to a Netscape cookies.txt and both `download_stream()` and
+`fetch_yt_metadata()` pass it to yt-dlp; unset, nothing changes, which is why
+the worker leaves it alone. In CI it comes from the `YTDLP_COOKIES` secret,
+deliberately not the older `YOUTUBE_COOKIES`, whose cookies were published in
+public artifacts. Use a throwaway account, never the channel's: YouTube can ban
+an account used this way.
+
 The music-removal CLI reaches the same chain via
 `download_video_with_metadata()` — see "YouTube Download Fallback Chain" above.
 

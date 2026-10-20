@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from .exceptions import YouTubeDownloadError
 from .logger import get_logger
-from .youtube import ensure_ytdlp_available, validate_youtube_url
+from .youtube import cookies_file, ensure_ytdlp_available, validate_youtube_url
 
 logger = get_logger()
 
@@ -39,6 +39,10 @@ def fetch_yt_metadata(url: str) -> YouTubeMetadata:
             "youtubepot-bgutilscript": {"script_path": ["__disabled__"]},
         },
     }
+    # Same bot check as the download itself; see youtube.COOKIES_FILE_ENV.
+    cookiefile = cookies_file()
+    if cookiefile:
+        ydl_opts["cookiefile"] = cookiefile
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

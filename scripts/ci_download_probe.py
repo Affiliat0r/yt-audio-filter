@@ -48,10 +48,19 @@ MODES = ("video-only", "audio-only", "video+audio")
 def probe(path: Path) -> dict:
     """Duration, size and per-stream codec/resolution of a downloaded file."""
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries",
-         "format=duration,size:stream=codec_type,codec_name,width,height",
-         "-of", "json", str(path)],
-        capture_output=True, text=True, timeout=60,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration,size:stream=codec_type,codec_name,width,height",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     data = json.loads(result.stdout or "{}")
     streams = []
@@ -115,14 +124,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("cases", nargs="*", help="mode:video_id (default: a fixed set)")
     args = parser.parse_args(argv)
 
-    workdir = Path(tempfile.mkdtemp(prefix="download-probe-",
-                                    dir=os.environ.get("RUNNER_TEMP")))
+    workdir = Path(tempfile.mkdtemp(prefix="download-probe-", dir=os.environ.get("RUNNER_TEMP")))
     try:
         rows = [run_case(case, workdir) for case in (args.cases or DEFAULT_CASES)]
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
-    table = summary_table(rows)
+    cookies = "yes" if youtube.cookies_file() else "none"
+    table = f"Cookies: {cookies}\n\n" + summary_table(rows)
     print(table)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

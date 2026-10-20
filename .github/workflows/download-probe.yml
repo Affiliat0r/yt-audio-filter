@@ -52,8 +52,18 @@ jobs:
           pip install -e . "yt-dlp[default]"
           yt-dlp --version
 
+      # Without cookies a runner gets "Sign in to confirm you're not a bot" from
+      # every client (2026-10-19). YTDLP_COOKIES is a Netscape cookies.txt from
+      # a throwaway account; it only ever exists in RUNNER_TEMP, never in an
+      # artifact or the log. $CASES is unquoted on purpose: one arg per case.
       - name: Probe downloads
         env:
           CASES: ${{ inputs.cases }}
-        # $CASES is unquoted on purpose: one argument per case.
-        run: python scripts/ci_download_probe.py $CASES
+          YTDLP_COOKIES: ${{ secrets.YTDLP_COOKIES }}
+        run: |
+          if [ -n "$YTDLP_COOKIES" ]; then
+            export YT_COOKIES_FILE="$RUNNER_TEMP/cookies.txt"
+            printf '%s\n' "$YTDLP_COOKIES" > "$YT_COOKIES_FILE"
+            chmod 600 "$YT_COOKIES_FILE"
+          fi
+          python scripts/ci_download_probe.py $CASES

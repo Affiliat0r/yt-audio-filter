@@ -1,5 +1,6 @@
 """YouTube video download integration using yt-dlp."""
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -282,6 +283,26 @@ _STREAM_PREFIX = {
     "video+audio": "full",
 }
 
+#: Names a Netscape-format cookies.txt that yt-dlp should send.
+#:
+#: A residential IP never needs one, which is why the worker leaves it unset. A
+#: datacenter IP does: from a GitHub runner, every client in both backends
+#: answered "Sign in to confirm you're not a bot" on all four probe cases
+#: (download-probe.yml, 2026-10-19). Use a throwaway account's cookies — never
+#: the channel's — since YouTube can ban an account used this way.
+COOKIES_FILE_ENV = "YT_COOKIES_FILE"
+
+
+def cookies_file() -> Optional[str]:
+    """The cookies file ``YT_COOKIES_FILE`` names, or None when unset or missing."""
+    path = os.environ.get(COOKIES_FILE_ENV, "").strip()
+    if not path:
+        return None
+    if not Path(path).is_file():
+        logger.warning(f"{COOKIES_FILE_ENV} names {path}, which does not exist; ignoring it.")
+        return None
+    return path
+
 #: yt-dlp client configurations, tried in order until one delivers a file.
 #: ``None`` means "let yt-dlp pick its own defaults".
 #:
@@ -438,6 +459,7 @@ def download_stream(
         }
         if cookies_from_browser:
             options["cookiesfrombrowser"] = (cookies_from_browser,)
+        options["cookiefile"] = cookies_file()
         if proxy:
             options["proxy"] = proxy
         return {k: v for k, v in options.items() if v is not None}
