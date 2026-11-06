@@ -29,6 +29,13 @@ KEYWORDS = re.compile(
     r"cadı|büyücü|sihirli|büyülü|\bperi\b|\bcin\b|dilek|doğum günü",
     re.IGNORECASE,
 )
+# The channel is "Muziksiz": stories about musicians, singing or instruments are
+# out too, and music removal keeps vocals, so a sung song would survive it.
+MUSIC = re.compile(
+    r"şarkı|ninni|müzik|mızık|enstrüman|gitar|piyano|keman|davul|orkestra|koro\b|"
+    r"konser|nağme|melodi|flüt|trompet|şarkıcı|\bmarş\b",
+    re.IGNORECASE,
+)
 
 
 def video_id(arg: str) -> str:
@@ -60,11 +67,13 @@ def caption_hits(vid: str) -> list:
     print(f"captions: scanned {len(cues)} cues")
     for h, m, s, body in cues:
         text = re.sub(r"<[^>]+>", "", body).replace("\n", " ").strip()
-        for found in KEYWORDS.finditer(text):
-            key = (int(h) * 3600 + int(m) * 60 + int(s)) // 20, found.group(0).lower()
-            if key not in seen:
-                seen.add(key)
-                hits.append((int(h) * 3600 + int(m) * 60 + int(s), found.group(0).lower(), text[:80]))
+        for kind, pattern in (("shirk", KEYWORDS), ("MUSIC", MUSIC)):
+            for found in pattern.finditer(text):
+                key = (int(h) * 3600 + int(m) * 60 + int(s)) // 20, found.group(0).lower()
+                if key not in seen:
+                    seen.add(key)
+                    hits.append((int(h) * 3600 + int(m) * 60 + int(s),
+                                 f"{kind}:{found.group(0).lower()}", text[:80]))
     return hits
 
 

@@ -82,6 +82,26 @@ def test_get_or_create_upscaled_ignores_zero_byte_cache(tmp_path) -> None:
     mock_up.assert_called_once()
 
 
+def test_get_or_create_upscaled_leaves_no_trusted_file_after_a_crash(tmp_path) -> None:
+    # A GPU fault half-way through writes part of a file. It must not end up
+    # under the real cache name, or the next run reuses a truncated visual.
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    visual = tmp_path / "src.mp4"
+    visual.write_bytes(b"\x00" * 16)
+
+    def _crash(src, dst, *a, **kw):
+        Path(dst).write_bytes(b"\x00" * 32)
+        raise OverlayError("CUDA fault")
+
+    with patch("yt_audio_filter.upscale.upscale_video", side_effect=_crash):
+        with pytest.raises(OverlayError):
+            get_or_create_upscaled(visual, "crash", cache)
+
+    assert not (cache / "upscaled_crash.mp4").exists()
+    assert not list(cache.glob("*.partial*"))
+
+
 def test_upscale_video_raises_on_missing_source(tmp_path) -> None:
     from yt_audio_filter.upscale import upscale_video
 

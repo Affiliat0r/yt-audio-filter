@@ -516,7 +516,16 @@ def get_or_create_upscaled(
     if dst.exists() and dst.stat().st_size > 0:
         logger.info(f"Using cached upscaled visual: {dst.name}")
         return dst
-    return upscale_video(visual_path, dst)
+    # Built under another name and renamed on success. A crash part-way through
+    # would otherwise leave a truncated file under the real name, and the check
+    # above would trust it on the next run.
+    partial = dst.with_name(f"{dst.stem}.partial{dst.suffix}")
+    try:
+        upscale_video(visual_path, partial)
+        partial.replace(dst)
+    finally:
+        partial.unlink(missing_ok=True)
+    return dst
 
 
 def upscale_preserving_audio(
