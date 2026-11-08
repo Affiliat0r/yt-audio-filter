@@ -31,6 +31,7 @@ KEYWORDS = re.compile(
 )
 # The channel is "Muziksiz": stories about musicians, singing or instruments are
 # out too, and music removal keeps vocals, so a sung song would survive it.
+SINGING = re.compile(r"\[(?:şarkı|ilahi|şarkı söyleme|şarkı söylüyor|koro)[^\]]*\]", re.IGNORECASE)
 MUSIC = re.compile(
     r"şarkı|ninni|müzik|mızık|enstrüman|gitar|piyano|keman|davul|orkestra|koro\b|"
     r"konser|nağme|melodi|flüt|trompet|şarkıcı|\bmarş\b",
@@ -67,6 +68,16 @@ def caption_hits(vid: str) -> list:
     print(f"captions: scanned {len(cues)} cues")
     for h, m, s, body in cues:
         text = re.sub(r"<[^>]+>", "", body).replace("\n", " ").strip()
+        # "[Müzik]", "[Alkış]", "[kahkaha]" are sound-effect tags YouTube adds,
+        # not words anyone says; matching them buried every real hit in noise.
+        # "[Şarkı söyleme]" is different: it means a character is singing, and
+        # music removal keeps voices, so it is reported rather than dropped.
+        for sung in SINGING.finditer(text):
+            key = (int(h) * 3600 + int(m) * 60 + int(s)) // 20, "singing"
+            if key not in seen:
+                seen.add(key)
+                hits.append((int(h) * 3600 + int(m) * 60 + int(s), "MUSIC:singing", sung.group(0)))
+        text = re.sub(r"\[[^\]]*\]", " ", text).replace("&gt;&gt;", " ").strip()
         for kind, pattern in (("shirk", KEYWORDS), ("MUSIC", MUSIC)):
             for found in pattern.finditer(text):
                 key = (int(h) * 3600 + int(m) * 60 + int(s)) // 20, found.group(0).lower()
