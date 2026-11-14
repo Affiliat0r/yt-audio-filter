@@ -5,10 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 The repo ships **two** CLI tools built on a shared FFmpeg / yt-dlp / uploader
-stack:
+stack, plus a video series that reuses the uploader:
 
 - **`yt-audio-filter`** — original tool. Removes background music from MP4 videos using Facebook's Demucs AI model. Accepts a local file or a YouTube URL, preserves vocals, remuxes losslessly.
 - **`yt-quran-overlay`** — added in feat/quran-overlay + feat/surah-input. Combines a YouTube visual (e.g. Toy Factory cartoons) with a separate Quran recitation audio, loops the visual to match audio length, applies EBU R128 loudnorm, overlays a channel logo, and optionally uploads to YouTube with a templated description. Three invocation modes (see "yt-quran-overlay tool" section below).
+- **`elifba/`** — the Elif-Ba series: animated lessons teaching the Arabic letters to three-year-olds, rendered from HTML/JS with Diyanet's recordings, following the printed Diyanet Elif-Ba (see "Elif-Ba videos" below and `elifba/README.md`).
 
 ## Development Commands
 
@@ -407,6 +408,80 @@ Setup, secrets, and deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
   `OPTIONS` response carries `Access-Control-Allow-Private-Network: true`.
   Miss it and the probe fails silently and everything falls back to "any
   machine".
+
+## Elif-Ba videos (`elifba/`)
+
+YouTube videos teaching the Arabic letters to **three-year-olds**. YouTube only —
+the HTML/JS is a rendering engine, not a web app. Fuller notes: `elifba/README.md`.
+
+```bash
+python -m elifba.fetch_audio                     # Diyanet recordings -> elifba/audio/ (gitignored; run from PowerShell)
+python -m elifba.render harekeler                # -> output/elifba/elifba_harekeler.mp4
+python -m elifba.render harekeler --stills 15,50 # a few PNG frames, to check a look
+python -m elifba.render harekeler --thumbnail    # -> output/elifba/elifba_harekeler_thumb.jpg
+```
+
+| File | Role |
+|---|---|
+| `curriculum.py` | Diyanet's 13-unit Elif-Ba course, ported, with the recording for every tile |
+| `storyboard.py` | `LESSONS` -> timed scenes, audio placements, beats, chapters |
+| `engine/` | `seek(t)` draws any frame as a pure function of time |
+| `render.py` | Playwright + system Edge steps frames into NVENC; audio mixed in numpy |
+
+**Lessons follow the printed Diyanet Elif-Ba (2024)**, the owner's reference PDF:
+
+| Ders | `lesson` | Content | Length | Published |
+|---|---|---|---|---|
+| 1 | `harfler` | every letter, named twice with pauses | 4:52 | `_WD5bIZTIYs` |
+| 2 | `kelime` | each letter at the start / middle / end of three words, spelled by Diyanet | 11:20 | `VKqEBgDu1aM` |
+| 3 | `harekeler` | every letter with fetha, kesra, damme together (اَ اِ اُ) | 4:29 | approved; not yet up (daily upload limit) |
+| – | `fetha` | fetha only, the web course's order — **not part of the series** | 4:11 | – |
+
+Playlist "Elif-Ba": `PLdYHA_TLuNaM`. Uploads use `upload_with_explicit_metadata`
+(category 27, chapters, Diyanet credited) plus `set_thumbnail`.
+
+**The format the owner settled on** (after seeing richer versions): each item
+shown and said, with pauses to say it back; **5 minutes max** (`MAX_SECONDS`,
+enforced by render.py and a test). The one exception is ders 2, which the owner
+wanted in one 11-minute piece rather than three parts (`LESSON_MAX_SECONDS`).
+**No prompts** ("Dinle" / "Sen söyle" were removed), **no quiz** ("no comparison
+tests between letters"), no narrator. Don't add them back without asking. Every
+render goes to the owner for an OK before anything is uploaded.
+
+**YouTube's daily upload limit** surfaces as `400 ... exceeded the number of
+videos they may upload`. It is per channel and resets within a day; it is not a
+quota-units problem and retrying the same day does not help.
+
+**The only voice is Diyanet's human recordings** (kuran.diyanet.gov.tr/elifba,
+plus Osman Şahin's besmele). Arabic TTS was tested and rejected (Whisper heard
+بَ بِ بُ as unrelated words); Turkish TTS prompts were removed at the owner's
+request. The owner chose Diyanet's audio knowing the rights question; credit
+Diyanet in the description.
+
+**No character with a face.** The companion is a kamış kalem (reed pen) and its
+divit (inkwell) — inanimate, grounded in Alak 96:1-5 ("kalemle öğreten"). It stands
+just outside the card and taps toward the letter as it is named.
+
+**Nothing may sit on or near a letter that a child could read as part of it.**
+Three toddler-perspective reviews found: a bar beside alif read as a second alif;
+number badges beside dots read as extra dots; a pen lying under a letter read as
+a kasra; a ring above a letter read as a cezm; a dark nib beside a dot read as a
+dot. Check stills of anything new near a card.
+
+**U+06EA renders as a hollow dot under the letter in Scheherazade.** In the
+besmele it made الرَّح۪يمِ read as الرَّجيم ("the accursed"). Displayed Arabic
+uses a plain kasra; the curriculum keeps Diyanet's U+06EA as data, so anything
+that later *displays* long-kesra words must check its rendered frames first.
+
+**Network:** Diyanet refuses the sandboxed shell (403). Run `fetch_audio` from
+PowerShell.
+
+**Sound numbering is positional** (`btn_1..N` by tile order, with quirks such as
+the fetha lesson's thick rows skipping a number). `curriculum.py` ports the
+site's helpers one for one; `tests/test_elifba.py` pins them.
+
+**YouTube chapters** need the first at 0:00 and each at least 10 s; the
+storyboard marks one per row of seven letters, and a test holds it to that.
 
 ### Legacy Streamlit UI (superseded)
 
