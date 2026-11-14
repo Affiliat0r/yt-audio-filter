@@ -1,7 +1,8 @@
 """Film the Elif-Ba video: storyboard -> HTML engine -> frames + mixed audio -> MP4.
 
-    python -m elifba.render                    # -> output/elifba/elifba_harfler.mp4
-    python -m elifba.render --stills 3,20,95   # just a few frames, for checking a look
+    python -m elifba.render [lesson]                 # -> output/elifba/elifba_<lesson>.mp4
+    python -m elifba.render fetha --stills 3,20,95   # just a few frames, for checking a look
+    python -m elifba.render fetha --thumbnail        # -> output/elifba/elifba_<lesson>_thumb.jpg
 
 The page draws any frame on demand (``seek(t)``), so frames are captured one by
 one rather than screen-recorded: no dropped frames, and identical output every
@@ -149,6 +150,17 @@ def film(timeline: dict, out: Path) -> None:
     wav.unlink(missing_ok=True)
 
 
+def thumbnail(timeline: dict, out: Path) -> Path:
+    """A 1280x720 thumbnail: the lesson's name over every one of its cards."""
+    outro = next(s for s in timeline["scenes"] if s["type"] == "outro")
+    thumb = {"scenes": [{**outro, "type": "thumb", "start": 0.0, "end": 1.0, "heading": timeline["subtitle"]}],
+             "beats": [], "audio": [], "duration": 1.0}
+    png = stills(thumb, [0.5], out.parent / f"{out.stem}_frame")[0]
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(png), "-vf", "scale=1280:720:flags=lanczos",
+                    "-q:v", "2", str(out)], check=True)
+    return out
+
+
 def chapters_text(timeline: dict) -> str:
     lines = []
     for c in timeline["chapters"]:
@@ -160,13 +172,18 @@ def chapters_text(timeline: dict) -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("lesson", nargs="?", default="harfler")
+    ap.add_argument("--thumbnail", action="store_true", help="write the YouTube thumbnail instead of the video")
     ap.add_argument("--stills", help="comma-separated times; write PNGs instead of a video")
     args = ap.parse_args()
 
-    tl = episode()
+    tl = episode(args.lesson)
     if tl["duration"] > MAX_SECONDS:
         raise SystemExit(f"{tl['duration']:.0f} s is over the {MAX_SECONDS} s limit")
-    name = "elifba_harfler"
+    name = f"elifba_{args.lesson}"
+    if args.thumbnail:
+        print(thumbnail(tl, OUT_DIR / f"{name}_thumb.jpg"))
+        return
     (OUT_DIR / f"{name}.timeline.json").parent.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / f"{name}.timeline.json").write_text(json.dumps(tl, ensure_ascii=False, indent=1), encoding="utf-8")
     if args.stills:

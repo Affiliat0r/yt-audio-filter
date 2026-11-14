@@ -181,22 +181,42 @@
   // ---------------------------------------------------------------- the letter, drawn once per colour
   // Drawn on a canvas so the ink itself is centred in the card (a text box would
   // centre the advance width, which leaves letters like ى or ر visibly off-centre).
+  // With ``markColor``, the harakat are drawn in their own colour: the whole text
+  // in markColor first, then the bare letter over it in ``color`` — what is left
+  // showing in markColor is exactly the mark.
+  const HARAKAT = /[ً-ْٰ۪ٖ]/g;
   const glyphCache = {};
-  function glyphImage(letter, color, box, fontPx) {
-    const key = `${letter}|${color}|${box}|${fontPx}`;
+  function glyphImage(letter, color, box, fontPx, markColor = null) {
+    const key = `${letter}|${color}|${box}|${fontPx}|${markColor}`;
     if (glyphCache[key]) return glyphCache[key];
     const cv = document.createElement("canvas");
     cv.width = cv.height = box;
     const ctx = cv.getContext("2d");
-    ctx.font = `700 ${fontPx}px "Scheherazade"`;
     ctx.direction = "rtl";
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
-    const m = ctx.measureText(letter);
+    // A tall letter with a mark on it (غَ) can outgrow the card: shrink only those,
+    // so the ink always fits inside 76% of the box. Everything else keeps its size.
+    ctx.font = `700 ${fontPx}px "Scheherazade"`;
+    let m = ctx.measureText(letter);
+    const fit = Math.min(1, (0.76 * box) / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent),
+      (0.76 * box) / (m.actualBoundingBoxLeft + m.actualBoundingBoxRight));
+    if (fit < 1) {
+      ctx.font = `700 ${Math.floor(fontPx * fit)}px "Scheherazade"`;
+      m = ctx.measureText(letter);
+    }
     const inkW = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
     const inkH = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
-    ctx.fillStyle = color;
-    ctx.fillText(letter, (box - inkW) / 2 + m.actualBoundingBoxLeft, (box - inkH) / 2 + m.actualBoundingBoxAscent);
+    const x = (box - inkW) / 2 + m.actualBoundingBoxLeft, y = (box - inkH) / 2 + m.actualBoundingBoxAscent;
+    if (markColor) {
+      ctx.fillStyle = markColor;
+      ctx.fillText(letter, x, y);
+      ctx.fillStyle = color;
+      ctx.fillText(letter.replace(HARAKAT, ""), x, y);
+    } else {
+      ctx.fillStyle = color;
+      ctx.fillText(letter, x, y);
+    }
     return (glyphCache[key] = cv.toDataURL("image/png"));
   }
 
@@ -209,9 +229,9 @@
     const pop = easeOutBack(prog(t, scene.start, scene.start + 0.6));
     const e = env("letter", t);
     const cx = CARD.x + CARD.w / 2, cy = CARD.y + CARD.w / 2;
-    const url = glyphImage(scene.letter, scene.color, CARD.w, 430);
-    let html = rings(t, "letter", cx, cy, 330, scene.color);
-    html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.color};left:${CARD.x}px;top:${CARD.y}px;
+    const url = glyphImage(scene.text, scene.color, CARD.w, 430, scene.mark);
+    let html = rings(t, "letter", cx, cy, 330, scene.rim);
+    html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.rim};left:${CARD.x}px;top:${CARD.y}px;
       transform:scale(${lerp(0.2, 1, pop) * (1 + 0.035 * e)});opacity:${clamp(pop * 1.5)}">
       <img src="${url}" style="position:absolute;inset:0;width:${CARD.w}px;height:${CARD.w}px;
         transform:scale(${1 + 0.09 * e});filter:drop-shadow(0 10px 0 rgba(0,0,0,.07))"></div>`;
@@ -229,7 +249,7 @@
     return `<div class="big-title" style="top:300px;font-size:220px;transform:scale(${k});letter-spacing:4px">
       Elif<span style="color:#E4572E">-</span>Ba</div>
       <div class="big-title" style="top:590px;font-size:76px;font-weight:700;color:#6B6575;opacity:${prog(t, scene.start + 0.5, scene.start + 1.0)}">
-      Harfler</div>`;
+      ${scene.subtitle}</div>`;
   }
 
   function drawBesmele(scene, t) {
@@ -241,27 +261,40 @@
         Bismillâhirrahmânirrahîm</div>`;
   }
 
-  /** All the letters together, in rows of seven, right to left. */
+  /** All the lesson's cards together, in rows of seven, right to left. */
+  function letterGrid(scene, t, y0, size, popFrom) {
+    const cols = 7, gap = Math.round(size * 0.16);
+    const w = cols * size + (cols - 1) * gap, x0 = (1920 - w) / 2;
+    return scene.texts.map((l, i) => {
+      const r = Math.floor(i / cols), c = i % cols;
+      const at = popFrom + i * 0.05;
+      const p = popFrom === null ? 1 : easeOutBack(prog(t, at, at + 0.4));
+      const x = x0 + (cols - 1 - c) * (size + gap), y = y0 + r * (size + gap);
+      return `<div class="chip" style="--c:${scene.rims[i]};left:${x}px;top:${y}px;width:${size}px;height:${size}px;
+        border-radius:${size * 0.27}px;transform:scale(${lerp(0.1, 1, p)});opacity:${clamp(p * 1.5)}">
+        <img src="${glyphImage(l, scene.colors[i], size, size * 0.64, scene.mark)}" style="width:${size}px;height:${size}px"></div>`;
+    }).join("");
+  }
+
   function drawOutro(scene, t) {
     const k = easeOutBack(prog(t, scene.start, scene.start + 0.7));
     let html = `<div class="big-title" style="top:60px;font-size:150px;color:#E4572E;transform:scale(${k})">Aferin!</div>`;
-    const cols = 7, size = 128, gap = 20;
-    const w = cols * size + (cols - 1) * gap, x0 = (1920 - w) / 2, y0 = 290;
-    scene.letters.forEach((l, i) => {
-      const r = Math.floor(i / cols), c = i % cols;
-      const at = scene.start + 0.3 + i * 0.05;
-      const p = easeOutBack(prog(t, at, at + 0.4));
-      const x = x0 + (cols - 1 - c) * (size + gap), y = y0 + r * (size + gap);
-      html += `<div class="chip" style="--c:${scene.colors[i]};left:${x}px;top:${y}px;width:${size}px;height:${size}px;
-        border-radius:34px;transform:scale(${lerp(0.1, 1, p)});opacity:${clamp(p * 1.5)}">
-        <img src="${glyphImage(l, scene.colors[i], size, 82)}" style="width:${size}px;height:${size}px"></div>`;
-    });
+    html += letterGrid(scene, t, 290, 128, scene.start + 0.3);
     fxLayer.innerHTML += stars(t, scene.start + 1.8, 960, 160, 16, 700);
     drawPen(t, track(t, [[scene.start, SIDE], [scene.start + 0.5, LIFT], [scene.start + 0.9, HOME]]));
     return html;
   }
 
-  const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, outro: drawOutro };
+  /** The video's thumbnail: its name, and every card of the lesson. */
+  function drawThumb(scene, t) {
+    penOpacity = 0;            // the grid needs the whole frame
+    drawPen(t, HOME);
+    return `<div class="big-title" style="top:26px;font-size:170px;letter-spacing:3px">
+        Elif<span style="color:#E4572E">-</span>Ba <span style="color:#6B6575;font-size:120px">· ${scene.heading}</span></div>`
+      + letterGrid(scene, t, 262, 176, null);
+  }
+
+  const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, outro: drawOutro, thumb: drawThumb };
 
   // ---------------------------------------------------------------- frame
   window.seek = function seek(t) {

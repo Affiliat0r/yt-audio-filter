@@ -86,7 +86,7 @@ def test_no_two_sounds_overlap_and_scenes_tile_the_video():
 @NEEDS_AUDIO
 def test_all_28_letters_in_order_each_named_twice_within_five_minutes():
     ep = episode()
-    letters = [s["letter"] for s in ep["scenes"] if s["type"] == "letter"]
+    letters = [s["text"] for s in ep["scenes"] if s["type"] == "letter"]
     assert letters == c.JE
     names = [a["path"] for a in ep["audio"] if "harfler/harfler" in a["path"]]
     assert names == [f"audio/elifba/harfler/harfler/btn_{i}.mp3" for i in range(1, 29) for _ in range(HEARINGS)]
@@ -99,6 +99,18 @@ def test_youtube_chapters_are_at_least_ten_seconds_apart():
     ts = [ch["t"] for ch in ep["chapters"]] + [ep["duration"]]
     assert ts[0] == 0
     assert all(b - a >= 10 for a, b in zip(ts, ts[1:]))
+
+
+@NEEDS_AUDIO
+def test_fetha_lesson_is_thin_letters_then_thick_with_the_books_ya():
+    ep = episode("fetha")
+    assert len(ep["items"]) == 28
+    assert ep["items"][:3] == ["اَ", "بَ", "تَ"]
+    assert ep["items"][20:] == ["خَ", "رَ", "غَ", "قَ", "صَ", "ضَ", "طَ", "ظَ"]
+    assert "يَ" in ep["items"] and "ىَ" not in ep["items"]   # the printed Elif-Ba's spelling
+    sounds = [a["path"].split("/")[-1] for a in ep["audio"] if "fetha/fetha" in a["path"]][::2]
+    assert sounds[19:22] == ["btn_20.mp3", "btn_25.mp3", "btn_26.mp3"]   # Diyanet's numbering skips 21-24
+    assert ep["duration"] <= MAX_SECONDS
 
 
 def test_script_cursor_advances_past_waits():

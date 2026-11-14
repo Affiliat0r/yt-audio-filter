@@ -1,8 +1,10 @@
-"""Turn the alphabet into a timed script for one toddler video.
+"""Turn a lesson into a timed script for one toddler video.
 
 The audience is about three years old. What the owner asked for, after seeing
-richer versions: just the letters — each one shown and named, with pauses in
-between — all 28 in one video of five minutes at most. No prompts, no quiz.
+richer versions: just the letters — each one shown and said, with pauses in
+between — a whole lesson in one video of five minutes at most. No prompts, no quiz.
+
+Lessons follow Diyanet's Elif-Ba order: 1. the letters (by name), 2. fetha, ...
 
 * one letter on screen at a time, very large, with its own colour;
 * the only voice is Diyanet's human recording of each letter's name (and the
@@ -24,7 +26,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from elifba.curriculum import JE
+from elifba.curriculum import JE, unit_fetha
 
 ROOT = Path(__file__).resolve().parent
 AUDIO = ROOT / "audio"
@@ -43,6 +45,11 @@ HEAVY = set("خصضطظغق")
 
 #: Chapter marks for the description, one per row of seven (YouTube wants >= 10 s each).
 CHAPTER_EVERY = 7
+
+#: The colour of a hareke on the card: one fixed colour, so the eye goes to the new mark.
+MARK_COLOR = "#E4572E"
+#: Lessons that teach a mark draw the letters themselves in one calm ink.
+INK = "#2E3A59"
 
 
 def name_sound(letter: str) -> Path:
@@ -95,16 +102,56 @@ class Script:
         scene["end"] = round(self.t, 3)
 
 
-def letter_segment(s: Script, letter: str, number: int) -> None:
-    scene = s.open_scene("letter", letter=letter, color=color_of(letter), heavy=letter in HEAVY, number=number)
+def base_letter(text: str) -> str:
+    """The letter without its harakat. A tatweel stays: Diyanet writes ha as هـ."""
+    return "".join(ch for ch in text if not ("ً" <= ch <= "ْ" or ch in "ٰ۪ٖ"))
+
+
+def harfler_items() -> List[Dict]:
+    """Lesson 1: every letter, by name, in alphabet order."""
+    return [{"text": l, "letter": l, "sound": name_sound(l)} for l in JE]
+
+
+def fetha_items() -> List[Dict]:
+    """Lesson 2: every letter with fetha, in Diyanet's order — thin letters, then thick.
+
+    Diyanet's web course writes ya-with-fetha as dotless ىَ; the printed 2024
+    Elif-Ba (the owner's reference) writes يَ, the normal spelling with a vowel.
+    The card follows the book; the recording is the same.
+    """
+    folder = AUDIO / "elifba" / "fetha" / "fetha"
+    items = []
+    for group in unit_fetha()[0]["groups"]:
+        for row in group["rows"]:
+            for tile in row["tiles"]:
+                text = "يَ" if tile["arabic"] == "ىَ" else tile["arabic"]
+                items.append({"text": text, "letter": base_letter(tile["arabic"]) or tile["arabic"],
+                              "sound": folder / f"{tile['sound']}.mp3", "group": group["title"]})
+    return items
+
+
+#: number, items, subtitle on the title card, whether the cards show a coloured hareke
+LESSONS = {
+    "harfler": (1, harfler_items, "Harfler", False),
+    "fetha": (2, fetha_items, "Fetha", True),
+}
+
+
+def letter_segment(s: Script, item: Dict, number: int, marked: bool) -> None:
+    letter = item["letter"]
+    scene = s.open_scene("letter", text=item["text"], color=INK if marked else color_of(letter),
+                         rim=color_of(letter), mark=MARK_COLOR if marked else None,
+                         heavy=letter in HEAVY, number=number)
     s.wait(APPEAR)
     for _ in range(HEARINGS):
-        s.play(name_sound(letter), target="letter")
+        s.play(item["sound"], target="letter")
         s.wait(PAUSE)
     s.close_scene(scene)
 
 
-def episode(letters: Sequence[str] = JE) -> Dict:
+def episode(lesson: str = "harfler") -> Dict:
+    number, make, subtitle, marked = LESSONS[lesson]
+    items = make()
     s = Script()
 
     scene = s.open_scene("besmele")
@@ -114,28 +161,31 @@ def episode(letters: Sequence[str] = JE) -> Dict:
     s.wait(1.0)
     s.close_scene(scene)
 
-    scene = s.open_scene("title")
+    scene = s.open_scene("title", subtitle=subtitle)
     s.wait(3.0)
     s.close_scene(scene)
 
-    for i, letter in enumerate(letters):
+    for i, item in enumerate(items):
         if i % CHAPTER_EVERY == 0:
-            last = letters[min(i + CHAPTER_EVERY, len(letters)) - 1]
-            s.chapters.append({"t": round(s.t, 3), "title": f"{letter} – {last}"})
-        letter_segment(s, letter, i)
+            last = items[min(i + CHAPTER_EVERY, len(items)) - 1]
+            s.chapters.append({"t": round(s.t, 3), "title": f"{item['text']} – {last['text']}"})
+        letter_segment(s, item, i, marked)
 
     # the closing five seconds stay inside the last chapter: YouTube wants 10 s or more each
-    scene = s.open_scene("outro", letters=list(letters), colors=[color_of(l) for l in letters])
+    scene = s.open_scene("outro", texts=[it["text"] for it in items],
+                         colors=[INK if marked else color_of(it["letter"]) for it in items],
+                         rims=[color_of(it["letter"]) for it in items], mark=MARK_COLOR if marked else None)
     s.wait(5.0)
     s.close_scene(scene)
 
-    return {"letters": list(letters), "duration": round(s.t, 3), "scenes": s.scenes,
-            "audio": s.audio, "beats": s.beats, "chapters": s.chapters}
+    return {"lesson": lesson, "number": number, "subtitle": subtitle, "items": [it["text"] for it in items],
+            "duration": round(s.t, 3), "scenes": s.scenes, "audio": s.audio, "beats": s.beats,
+            "chapters": s.chapters}
 
 
 if __name__ == "__main__":
     import sys
 
     sys.stdout.reconfigure(encoding="utf-8")
-    ep = episode()
-    print(json.dumps({k: ep[k] for k in ("duration", "chapters")}, ensure_ascii=False))
+    ep = episode(sys.argv[1] if len(sys.argv) > 1 else "harfler")
+    print(json.dumps({k: ep[k] for k in ("lesson", "duration", "chapters")}, ensure_ascii=False))
