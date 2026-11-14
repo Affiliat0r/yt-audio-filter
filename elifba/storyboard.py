@@ -6,8 +6,8 @@ between — a whole lesson in one video of five minutes at most. No prompts, no 
 
 Lessons follow the printed Diyanet Elif-Ba (2024), the owner's reference: 1. the
 letters (by name), 2. the letters inside words (at the start, middle and end;
-three parts, since Diyanet spells each word letter by letter and all 28 would run
-to nine minutes), 3. harekeler — every letter with all three harakat at once,
+one video of about eleven minutes — Diyanet spells each word letter by letter,
+and the owner wanted it in one piece rather than three), 3. harekeler — every letter with all three harakat at once,
 اَ اِ اُ, as the book's table shows them. (A fetha-only lesson, the order of
 Diyanet's web course, is kept as ``fetha`` but is not part of the series.)
 
@@ -40,7 +40,9 @@ BESMELE = AUDIO / "quran" / "besmele_osmansahin.mp3"
 APPEAR = 0.7        # the card grows in before the name is said
 PAUSE = 2.5         # silence after each hearing: time to say it back
 HEARINGS = 2        # how many times each name is said
-MAX_SECONDS = 300   # the owner's limit
+MAX_SECONDS = 300   # the owner's limit ...
+#: ... except where the owner chose a longer single video over several parts
+LESSON_MAX_SECONDS = {"kelime": 720}
 
 #: One warm, distinct colour per letter, cycling. Readable on the cream card.
 PALETTE = ["#E4572E", "#1C7CB8", "#2A9D5B", "#8E44AD", "#E08E0B", "#C2185B", "#00897B"]
@@ -178,7 +180,8 @@ def kelime_items(part: int) -> List[Dict]:
     recording spells its word letter by letter. The letter on its own is named
     with the same recording as lesson 1 (Diyanet's own recording of alif here
     says "hemze"). Diyanet's extra hamza rows and repeated peltek rows are left
-    out: the book's table is the 28 letters. Parts: ا-ر, ز-غ, ف-ى (10, 9, 9)."""
+    out: the book's table is the 28 letters. ``part`` 0 is all of them; 1-3 split
+    them ا-ر, ز-غ, ف-ى for videos under five minutes (not used: the owner chose one)."""
     sek = unit_harfler()[3]
     folder = AUDIO / "elifba" / "harfler" / "sekilleri"
     rows: Dict[str, list] = {}
@@ -188,7 +191,7 @@ def kelime_items(part: int) -> List[Dict]:
             if first == "ء" or first in rows:
                 continue
             rows[first] = row["tiles"]
-    letters = {1: JE[:10], 2: JE[10:19], 3: JE[19:]}[part]
+    letters = {0: JE, 1: JE[:10], 2: JE[10:19], 3: JE[19:]}[part]
     return [{"text": l, "letter": l, "sound": name_sound(l),
              "words": [{"text": t["arabic"], "sound": folder / f"{t['sound']}.mp3"} for t in rows[l][1:]]}
             for l in letters]
@@ -197,9 +200,7 @@ def kelime_items(part: int) -> List[Dict]:
 #: number, items, subtitle on the title card, whether the cards show a coloured hareke
 LESSONS = {
     "harfler": (1, harfler_items, "Harfler", False),
-    "kelime1": (2, lambda: kelime_items(1), "Harfler ve Kelimeler · 1", False),
-    "kelime2": (2, lambda: kelime_items(2), "Harfler ve Kelimeler · 2", False),
-    "kelime3": (2, lambda: kelime_items(3), "Harfler ve Kelimeler · 3", False),
+    "kelime": (2, lambda: kelime_items(0), "Harfler ve Kelimeler", False),
     "harekeler": (3, harekeler_items, "Harekeler", True),
     "fetha": (2, fetha_items, "Fetha", True),
 }
@@ -290,6 +291,7 @@ def episode(lesson: str = "harfler") -> Dict:
         scene["example"] = {"letter": ex["letter"], "words": [w["text"] for w in ex["words"]],
                             "rim": color_of(ex["letter"]), "color": INK}
     return {"lesson": lesson, "number": number, "subtitle": subtitle, "thumb_heading": thumb_heading,
+            "max_seconds": LESSON_MAX_SECONDS.get(lesson, MAX_SECONDS),
             "items": [it["text"] for it in items],
             "duration": round(s.t, 3), "scenes": s.scenes, "audio": s.audio, "beats": s.beats,
             "chapters": s.chapters}

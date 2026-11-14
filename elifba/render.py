@@ -25,7 +25,7 @@ from typing import List
 
 import numpy as np
 
-from elifba.storyboard import MAX_SECONDS, ROOT, episode
+from elifba.storyboard import ROOT, episode
 
 ENGINE = ROOT / "engine" / "index.html"
 OUT_DIR = ROOT.parent / "output" / "elifba"
@@ -178,8 +178,8 @@ def main() -> None:
     args = ap.parse_args()
 
     tl = episode(args.lesson)
-    if tl["duration"] > MAX_SECONDS:
-        raise SystemExit(f"{tl['duration']:.0f} s is over the {MAX_SECONDS} s limit")
+    if tl["duration"] > tl["max_seconds"]:
+        raise SystemExit(f"{tl['duration']:.0f} s is over the {tl['max_seconds']} s limit")
     name = f"elifba_{args.lesson}"
     if args.thumbnail:
         print(thumbnail(tl, OUT_DIR / f"{name}_thumb.jpg"))
