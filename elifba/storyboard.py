@@ -40,7 +40,7 @@ FIRST_TURN = 3.8    # the child's first go at a new letter: toddlers take ~1 s t
 CHILD_TURN = 3.2    # later turns
 RECAP_TURN = 3.0
 THINK = 4.0         # silent time to point at a card in the game
-DOT_STEP = 0.8      # the pen touches one dot per this many seconds
+DOT_STEP = 1.0      # the pen places one dot per this many seconds
 
 #: Short words shown next to the icons, for the parent watching along. Never spoken.
 LABELS = {
@@ -181,12 +181,15 @@ def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
     s.phase(scene, "meet", start)
 
     start = s.t
-    s.wait(0.4)
     n = DOT_COUNT.get(dots, 0)
-    for i in range(n):               # the pen touches each dot as it lights up
-        s.beat(f"dot:{i}", DOT_STEP)
-    if not n:
-        s.wait(1.8)                  # alif stands up tall / the pen finds no dots
+    if n:
+        s.wait(0.9)                  # the dots lift off the letter ...
+        for i in range(n):           # ... and the pen puts them back, one by one
+            s.beat(f"dot:{i}", DOT_STEP)
+    else:
+        s.wait(1.6)                  # alif stands up tall / a letter without dots
+    s.wait(0.3)
+    s.play(sound, target="letter")   # the whole letter, named once more
     s.wait(0.6)
     s.phase(scene, "dots", start)
 
@@ -206,7 +209,7 @@ def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
         s.phase(scene, "say", start, turn=round(turn, 3))
         start = s.t
         s.play(sound, target="letter")
-        s.wait(0.6)
+        s.wait(0.9)                  # a green check: the same one the game uses later
         s.phase(scene, "echo", start)
 
     start = s.t
@@ -228,7 +231,9 @@ def game(s: Script, letters: Sequence[str]) -> None:
         s.wait(0.4)
         s.phase(scene, "ask", start)
         start = s.t
-        s.wait(THINK)
+        s.wait(THINK / 2)
+        s.play(name_sound(target), target="ask")      # a reminder of what to find
+        s.wait(THINK / 2)
         s.phase(scene, "think", start)
         start = s.t
         s.wait(0.5)
@@ -277,7 +282,11 @@ def episode(number: int, letters: Sequence[str]) -> Dict:
     s.close_scene(scene)
 
     scene = s.open_scene("title", episode=number, letters=list(letters), colors=[colors[l] for l in letters])
-    s.wait(1.0 + 0.45 * len(letters) + 1.2)          # the pen touches each letter as it appears
+    s.wait(0.9)
+    for i, letter in enumerate(letters):              # each letter pops up with its name: a preview
+        s.play(name_sound(letter), target=f"title:{i}")
+        s.wait(0.3)
+    s.wait(0.6)
     s.close_scene(scene)
 
     for i, letter in enumerate(letters):
@@ -288,10 +297,13 @@ def episode(number: int, letters: Sequence[str]) -> Dict:
     scene = s.open_scene("outro", letters=list(letters), colors=[colors[l] for l in letters])
     s.chapters.append({"t": scene["start"], "title": "Aferin!"})
     start = s.t
-    s.wait(3.6)
+    s.wait(1.0)
+    for i, letter in enumerate(letters):              # one last time, right to left
+        s.play(name_sound(letter), target=f"outro:{i}")
+        s.wait(0.3)
     s.phase(scene, "celebrate", start)
     start = s.t
-    s.wait(2.2)                # the pen returns to its inkwell; everything fades out gently
+    s.wait(1.8)                # the pen returns to its inkwell; everything fades out gently
     s.phase(scene, "settle", start)
     s.close_scene(scene)
 

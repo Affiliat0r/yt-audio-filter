@@ -109,4 +109,4 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
   display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 22px rgba(0, 0, 0, .18);
 }
 .progress { position: absolute; left: 0; right: 0; bottom: 34px; display: flex; justify-content: center; gap: 18px; }
-.progress span { width: 26px; height: 26px; border-radius: 50%; background: rgba(0, 0, 0, .12); }
+.progress span { width: 54px; height: 14px; border-radius: 7px; background: rgba(0, 0, 0, .12); }

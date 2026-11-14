@@ -8,9 +8,14 @@
  *   window.seek(t)      draw the frame at t seconds
  *
  * The guide is a kamış kalem (reed pen) with its divit (inkwell) — no character,
- * no face. "Oku! ... kalemle öğreten Rabbin" (Alak 96:1-5). It works the way a
- * hoca's pointer does: taps the letter as it is said, touches each dot, glides
- * under the letter right to left while the child reads.
+ * no face. "Oku! ... kalemle öğreten Rabbin" (Alak 96:1-5). The pen either stays
+ * clear of the letters or does something meaningful with them:
+ *   - it points from outside the card's edge, or from below like a pointer
+ *     stick held from beneath — never across a glyph, never lying under one
+ *     (a stroke under a letter reads as a kasra);
+ *   - it *places* each dot: the dots lift off, the pen taps where each belongs,
+ *     the dot appears and the pen leaves — near a dot only to make it;
+ *   - during the child's turn it goes back to its inkwell: the teacher waits.
  */
 (() => {
   "use strict";
@@ -45,6 +50,7 @@
     return null;
   }
   const beatIn = (target, a, b) => (beatsByTarget[target] || []).find((x) => x.t >= a && x.t < b) || null;
+  const beatsIn = (target, a, b) => (beatsByTarget[target] || []).filter((x) => x.t >= a && x.t < b);
 
   /** Loudness-like envelope of the sound on ``target``: fast attack, slow fall. */
   function env(target, t) {
@@ -64,9 +70,11 @@
     speaker: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="#E3F0FB"/>
       <path d="M24 42h12l16-13v42L36 58H24z" fill="#1C7CB8" stroke="#1C7CB8" stroke-width="4" stroke-linejoin="round"/>
       <path d="M62 38q8 12 0 24M70 30q14 20 0 40" fill="none" stroke="#1C7CB8" stroke-width="6" stroke-linecap="round"/></svg>`,
-    speech: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="#FFEBD6"/>
-      <path d="M22 30q0-8 8-8h40q8 0 8 8v26q0 8-8 8H46l-14 12v-12h-2q-8 0-8-8z" fill="#F08A24"/>
-      <circle cx="37" cy="43" r="5" fill="#fff"/><circle cx="50" cy="43" r="5" fill="#fff"/><circle cx="63" cy="43" r="5" fill="#fff"/></svg>`,
+    // "we are listening to you": an ear, nothing more
+    ear: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="#FFEBD6"/>
+      <path d="M34 47c0-13 8-23 19-23s19 9 19 21c0 10-6 14-10 19-4 4-3 12-10 14-6 2-11-2-12-6"
+        fill="none" stroke="#E07B00" stroke-width="7" stroke-linecap="round"/>
+      <path d="M44 47c0-6 4-11 9-11s9 4 9 9c0 5-4 7-6 10" fill="none" stroke="#E07B00" stroke-width="6" stroke-linecap="round"/></svg>`,
     star: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="#FFF4CC"/>
       <path d="M50 18l9 20 22 2-17 14 5 22-19-11-19 11 5-22-17-14 22-2z" fill="#F5B800" stroke="#E09A00" stroke-width="3" stroke-linejoin="round"/></svg>`,
     question: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="#EFE6FB"/>
@@ -99,6 +107,7 @@
 
   // ---------------------------------------------------------------- the pen and its inkwell
   // Pen artwork is 80x520 units, drawn at 0.8 scale; its nib tip is at (40, 512).
+  // Angle a: 0 = nib straight down (body above); 180 = nib up, body below (held from beneath).
   const PEN_W = 64, PEN_H = 416, TIP_X = 32, TIP_Y = 409.6;
   penEl.setAttribute("width", PEN_W);
   penEl.setAttribute("height", PEN_H);
@@ -109,7 +118,7 @@
         <stop offset="0" stop-color="#E7B866"/><stop offset=".45" stop-color="#C98E3C"/><stop offset="1" stop-color="#94601F"/>
       </linearGradient>
       <linearGradient id="nib" x1="0" x2="1">
-        <stop offset="0" stop-color="#4A3A5C"/><stop offset="1" stop-color="#1D1530"/>
+        <stop offset="0" stop-color="#6B4A2A"/><stop offset="1" stop-color="#3B2614"/>
       </linearGradient>
     </defs>
     <path d="M22 26 Q40 6 58 26 L58 372 Q57 404 50 432 L30 432 Q23 404 22 372 Z" fill="url(#reed)"/>
@@ -135,21 +144,22 @@
     el.style.top = `${WELL.y}px`;
   }
 
-  /** Interpolate a pose along [[time, {x, y, a}], ...]. Holds at both ends. */
-  function track(t, keys) {
-    if (t <= keys[0][0]) return keys[0][1];
+  /** Interpolate a pose along [[time, pose], ...]. ``resolve`` turns a stored
+   *  pose into stage coordinates at time t (card-relative poses follow the card). */
+  function track(t, keys, resolve = (p) => p) {
+    const at = (i) => resolve(keys[i][1], t);
+    if (t <= keys[0][0]) return at(0);
     for (let i = 1; i < keys.length; i++) {
-      const [t1, p1] = keys[i];
-      if (t < t1) {
-        const [t0, p0] = keys[i - 1];
-        const k = easeInOut(prog(t, t0, t1));
+      if (t < keys[i][0]) {
+        const p0 = at(i - 1), p1 = at(i);
+        const k = easeInOut(prog(t, keys[i - 1][0], keys[i][0]));
         return { x: lerp(p0.x, p1.x, k), y: lerp(p0.y, p1.y, k), a: lerp(p0.a, p1.a, k) };
       }
     }
-    return keys[keys.length - 1][1];
+    return at(keys.length - 1);
   }
 
-  /** A quick tap toward the letter while ``target`` sounds — the pointer's "this one". */
+  /** A quick tap toward what the pen points at, while ``target`` sounds. */
   function tap(t, target) {
     const b = beatAt(target, t, 0);
     if (!b) return 0;
@@ -157,10 +167,12 @@
   }
 
   let penOpacity = 1;
-  function drawPen(t, pose, opacity = 1, tapK = 0) {
-    penEl.style.opacity = opacity * penOpacity;
+  function drawPen(t, pose, tapK = 0) {
+    penEl.style.opacity = penOpacity;
     wellBack.style.opacity = wellFront.style.opacity = penOpacity;
-    const x = pose.x - 14 * tapK, y = pose.y + 18 * tapK;
+    const rad = (pose.a * Math.PI) / 180;
+    // a tap moves the nib the way it points
+    const x = pose.x - Math.sin(rad) * 18 * tapK, y = pose.y + Math.cos(rad) * 18 * tapK;
     const a = pose.a + 0.8 * Math.sin(t * 1.3);     // a living hand is never quite still
     penEl.style.transformOrigin = `${TIP_X}px ${TIP_Y}px`;
     penEl.style.transform = `translate(${x - TIP_X}px, ${y - TIP_Y}px) rotate(${a}deg)`;
@@ -213,10 +225,14 @@
       transform:scale(${s});transform-origin:0 50%">${ICON[icon]}<span>${text}</span>${extra}</div>`;
   }
 
+  const checkBadge = (x, y, k) =>
+    `<div class="check" style="left:${x}px;top:${y}px;transform:scale(${k});opacity:${clamp(k * 2)}">${CHECK}</div>`;
+
   // ---------------------------------------------------------------- glyph images
-  // The big letter is drawn on a canvas once, so the engine knows where its dots
-  // are: the small separate blobs of ink. Touching dots (ث in this font) are
-  // split with k-means.
+  // Each letter is drawn on a canvas once. Its dots are the small separate blobs
+  // of ink (touching dots, ث in this font, are split with k-means). From that the
+  // engine makes the letter without its dots and one sprite per dot, so the pen
+  // can put the dots back one at a time.
   const DOT_COUNT = { dots_below_1: 1, dots_above_1: 1, dots_above_2: 2, dots_above_3: 3, dots_mid_1: 1 };
   const glyphCache = {};
 
@@ -235,12 +251,11 @@
     const inkH = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
     const x = (box - inkW) / 2 + m.actualBoundingBoxLeft;
     const y = (box - inkH) / 2 + m.actualBoundingBoxAscent;
-    ctx.fillStyle = "rgba(0,0,0,.07)";
-    ctx.fillText(letter, x, y + 10);
     ctx.fillStyle = color;
     ctx.fillText(letter, x, y);
 
-    const { data } = ctx.getImageData(0, 0, box, box);
+    const img = ctx.getImageData(0, 0, box, box);
+    const data = img.data;
     const step = 2, gw = Math.ceil(box / step), seen = new Uint8Array(gw * gw), comps = [];
     const ink = (gx, gy) => data[((gy * step) * box + gx * step) * 4 + 3] > 140;
     for (let gy = 0; gy < gw; gy++) for (let gx = 0; gx < gw; gx++) {
@@ -251,7 +266,7 @@
       seen[i] = 1;
       while (stack.length) {
         const j = stack.pop(), px = j % gw, py = (j - px) / gw;
-        pts.push([px * step, py * step]);
+        pts.push([px, py]);
         for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const qx = px + ax, qy = py + ay;
           if (qx < 0 || qy < 0 || qx >= gw || qy >= gw) continue;
@@ -268,18 +283,61 @@
       const big = blobs.shift(), k = Math.min(dotCount - blobs.length, 3);
       blobs.push(...kmeans(big, k));
     }
-    const dots = blobs.sort((a, b) => a.length - b.length).slice(0, dotCount).map(centroid)
-      .sort((a, b) => (Math.abs(a.y - b.y) > 25 ? b.y - a.y : b.x - a.x));   // lower first, right to left
+    const chosen = blobs.sort((a, b) => a.length - b.length).slice(0, dotCount)
+      .map((pts) => ({ pts, c: centroid(pts, step) }))
+      .sort((a, b) => (Math.abs(a.c.y - b.c.y) > 25 ? b.c.y - a.c.y : b.c.x - a.c.x));   // lower first, right to left
+
+    // label grid: which dot (if any) each cell belongs to
+    const labels = new Int8Array(gw * gw).fill(-1);
+    chosen.forEach(({ pts }, k) => { for (const [px, py] of pts) labels[py * gw + px] = k; });
+    const labelOf = (px, py) => {               // nearest labelled cell within 2 cells
+      const gx = px >> 1, gy = py >> 1;
+      for (let r = 0; r <= 2; r++)
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          const qx = gx + dx, qy = gy + dy;
+          if (qx < 0 || qy < 0 || qx >= gw || qy >= gw) continue;
+          const l = labels[qy * gw + qx];
+          if (l >= 0) return l;
+        }
+      return -1;
+    };
+    const noDots = new ImageData(new Uint8ClampedArray(data), box, box);
+    const sprites = chosen.map(({ pts }, k) => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [px, py] of pts) { x0 = Math.min(x0, px); y0 = Math.min(y0, py); x1 = Math.max(x1, px); y1 = Math.max(y1, py); }
+      x0 = Math.max(0, x0 * step - 5); y0 = Math.max(0, y0 * step - 5);
+      x1 = Math.min(box - 1, x1 * step + 6); y1 = Math.min(box - 1, y1 * step + 6);
+      const w = x1 - x0 + 1, h = y1 - y0 + 1;
+      const sc = document.createElement("canvas");
+      sc.width = w; sc.height = h;
+      const sctx = sc.getContext("2d");
+      const out = sctx.createImageData(w, h);
+      for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+        const o = (py * box + px) * 4;
+        if (data[o + 3] === 0 || labelOf(px, py) !== k) continue;
+        const q = ((py - y0) * w + (px - x0)) * 4;
+        out.data.set(data.subarray(o, o + 4), q);
+        noDots.data[o + 3] = 0;
+      }
+      sctx.putImageData(out, 0, 0);
+      return { url: sc.toDataURL("image/png"), x: x0, y: y0, w, h };
+    });
+    const nd = document.createElement("canvas");
+    nd.width = nd.height = box;
+    nd.getContext("2d").putImageData(noDots, 0, 0);
     const inkBox = { top: y - m.actualBoundingBoxAscent, bottom: y + m.actualBoundingBoxDescent,
       left: x - m.actualBoundingBoxLeft, right: x + m.actualBoundingBoxRight };
-    return (glyphCache[key] = { url: cv.toDataURL("image/png"), dots, ink: inkBox, box });
+    return (glyphCache[key] = {
+      url: cv.toDataURL("image/png"), urlNoDots: nd.toDataURL("image/png"), sprites,
+      dots: chosen.map((d) => d.c), ink: inkBox, box,
+    });
   }
 
-  function centroid(pts) {
+  function centroid(pts, step = 1) {
     let sx = 0, sy = 0;
     for (const [x, y] of pts) { sx += x; sy += y; }
     const n = pts.length;
-    return { x: sx / n, y: sy / n, r: Math.sqrt((n * 4) / Math.PI) };
+    return { x: (sx / n) * step, y: (sy / n) * step, r: Math.sqrt((n * step * step) / Math.PI) };
   }
 
   function kmeans(pts, k) {
@@ -305,7 +363,7 @@
     return groups.filter((g) => g.length);
   }
 
-  /** Soft glows *behind* the real dots — never a shape that could be counted as one more dot. */
+  /** Soft glows *behind* the dots — never a shape that could be counted as one more dot. */
   function dotHalos(g, strength) {
     return g.dots.map((d, i) => {
       const s = strength(i);
@@ -317,73 +375,65 @@
     }).join("");
   }
 
-  /** Where the nib points at a dot: from just *outside* it, on the side away from
-   *  the letter, so the dark nib is never mistaken for one more dot. A dot below
-   *  the letter is pointed at by a pen lying flat, so its body passes under the
-   *  letter instead of through it. */
-  function pointAtDot(ox, oy, g, d) {
-    if (g.dots.length > 1) {
-      // A cluster: hover just above it, leaning a little
-      // toward the dot being counted — never in between the dots.
-      const r = Math.max(...g.dots.map((q) => q.r), 18);
-      // directly above the cluster: the pen's body then leans away over empty space,
-      // clear of a letter's horn that rises beside its dots (ت)
-      const hx = g.dots.reduce((a, q) => a + q.x, 0) / g.dots.length + 14;
-      const hy = Math.min(...g.dots.map((q) => q.y)) - r - 46;
-      let vx = d.x - hx, vy = d.y - hy;
-      const len = Math.hypot(vx, vy) || 1;
-      return { x: ox + hx + (vx / len) * 16, y: oy + hy + (vy / len) * 16, a: 32 };
-    }
-    const cx = (g.ink.left + g.ink.right) / 2, cy = (g.ink.top + g.ink.bottom) / 2;
-    let vx = d.x - cx, vy = d.y - cy;
-    const len = Math.hypot(vx, vy) || 1;
-    vx /= len; vy /= len;
-    const gap = Math.max(d.r, 18) + 40;
-    return { x: ox + d.x + vx * gap, y: oy + d.y + vy * gap, a: vy > 0.3 ? 74 : 32 };
-  }
-  /** A flat pen lying under a line, its nib pointing left at ``x``. */
-  const under = (x, y) => ({ x, y, a: 78 });
+  const SHADOW = "filter:drop-shadow(0 10px 0 rgba(0,0,0,.07))";
 
-  // ---------------------------------------------------------------- scenes
-  const CARD = { x: 230, y: 180, w: 700 };
-  const NEUTRAL_INK = "#3A3550", NEUTRAL_RIM = "#D3C4A9";
+  /** The letter's image, or (while its dots are being placed) the dotless letter
+   *  plus each dot sprite at scale ``dotScale(i)``. */
+  function glyphLayers(g, size, dotScale) {
+    if (!dotScale) return `<img src="${g.url}" style="position:absolute;inset:0;width:${size}px;height:${size}px;${SHADOW}">`;
+    let html = `<img src="${g.urlNoDots}" style="position:absolute;inset:0;width:${size}px;height:${size}px;${SHADOW}">`;
+    g.sprites.forEach((sp, i) => {
+      const s = dotScale(i);
+      if (s.k <= 0.001) return;
+      html += `<img src="${sp.url}" style="position:absolute;left:${sp.x}px;top:${sp.y + s.dy}px;width:${sp.w}px;height:${sp.h}px;
+        transform:scale(${s.k});opacity:${clamp(s.o)};${SHADOW}">`;
+    });
+    return html;
+  }
+
+  // ---------------------------------------------------------------- letter scene
+  const CARD = { y: 180, w: 700, center: 610, left: 230 };
+
+  /** The card sits centred while it has the stage to itself and slides left
+   *  when a prompt appears beside it. */
+  function cardX(scene, t) {
+    const listen = phasesOf(scene, "listen")[0];
+    return lerp(CARD.center, CARD.left, easeInOut(prog(t, listen.start - 0.3, listen.start + 0.3)));
+  }
+
+  /** How the pen approaches a dot, by where the dot sits on the letter. */
+  function approach(kind) {
+    if (kind === "dots_below_1") return { dx: 0, dy: 1, a: 180 };    // from below, held from beneath
+    if (kind === "dots_mid_1") return { dx: -1, dy: 0, a: -90 };     // from the open side (ج opens left)
+    return { dx: 0.25, dy: -1, a: 22 };                              // from above
+  }
 
   function letterPenKeys(scene, g) {
-    const ox = CARD.x, oy = CARD.y;
-    const midY = oy + (g.ink.top + g.ink.bottom) / 2;
-    const point = { x: ox + g.ink.right + 40, y: midY + 30, a: 30 };
-    const underY = oy + g.ink.bottom + 72;
+    // card-relative poses carry rel: true and follow the card as it slides
+    const side = { x: CARD.w + 16, y: CARD.w / 2, a: 22, rel: true };    // just outside the card's right edge
     const keys = [[scene.start, HOME], [scene.start + 0.4, LIFT]];
     const meet = phasesOf(scene, "meet")[0];
-    keys.push([meet.start + 1.0, point]);
+    keys.push([meet.start + 1.0, side]);
     const dots = phasesOf(scene, "dots")[0];
-    if (scene.dots === "alif_tall") {
-      // the nib rides up alif's side as it stands tall
-      keys.push([dots.start + 0.3, { x: ox + g.ink.right + 36, y: oy + g.ink.bottom - 10, a: 26 }]);
-      keys.push([dots.start + 1.6, { x: ox + g.ink.right + 36, y: oy + g.ink.top + 30, a: 26 }]);
-      keys.push([dots.end - 0.2, point]);
-    } else if (scene.dots === "dots_none") {
-      // looks above and below the letter: no dots anywhere
-      const top = oy + g.ink.top - 50, bot = oy + g.ink.bottom + 70;
-      keys.push([dots.start + 0.4, { x: ox + g.ink.right, y: top, a: 30 }]);
-      keys.push([dots.start + 1.1, { x: ox + g.ink.left + 20, y: top, a: 30 }]);
-      keys.push([dots.start + 1.6, under(ox + g.ink.left + 20, bot)]);
-      keys.push([dots.start + 2.4, under(ox + g.ink.right, bot)]);
-      keys.push([dots.end - 0.1, point]);
-    } else {
+    const n = g.dots.length;
+    if (n) {
+      const ap = approach(scene.dots);
       g.dots.forEach((d, i) => {
         const b = beatIn(`dot:${i}`, dots.start, dots.end);
         if (!b) return;
-        const p = pointAtDot(ox, oy, g, d);
-        keys.push([b.t, p], [b.t + b.dur - 0.3, p]);
+        const len = Math.hypot(ap.dx, ap.dy);
+        const ux = ap.dx / len, uy = ap.dy / len;
+        const near = { x: d.x + ux * (d.r * 0.4), y: d.y + uy * (d.r * 0.4), a: ap.a, rel: true };
+        const away = { x: d.x + ux * 150, y: d.y + uy * 150, a: ap.a, rel: true };
+        keys.push([b.t - 0.3, away], [b.t, near], [b.t + 0.12, near], [b.t + 0.5, away]);
       });
-      keys.push([dots.end - 0.1, point]);
+      const last = beatIn(`dot:${n - 1}`, dots.start, dots.end);
+      keys.push([(last ? last.t : dots.start) + 1.0, side]);
     }
     for (const say of phasesOf(scene, "say")) {
-      // the pointer lies flat under the letter and moves right to left: "read it"
-      keys.push([say.turn, under(ox + g.ink.right + 20, underY)]);
-      keys.push([say.end - 0.35, under(ox + g.ink.left - 10, underY)]);
-      keys.push([say.end + 0.25, point]);
+      // the child's turn: the pen goes back to its inkwell — the teacher waits
+      keys.push([say.start + 0.1, side], [say.start + 0.6, LIFT], [say.turn + 0.2, HOME]);
+      keys.push([say.end - 0.75, HOME], [say.end - 0.45, LIFT], [say.end + 0.05, side]);
     }
     const praise = phasesOf(scene, "praise")[0];
     keys.push([praise.start + 0.5, LIFT], [scene.end - 0.35, LIFT], [scene.end, HOME]);
@@ -394,75 +444,100 @@
     const ph = phaseAt(scene, t) || scene.phases[scene.phases.length - 1];
     const pop = easeOutBack(prog(t, scene.start + 0.5, scene.start + 1.1));
     const e = env("letter", t);
-    const breathe = ph.kind === "turn" || (ph.kind === "say" && t >= ph.turn) ? 0.025 * Math.sin(t * 4) : 0;
-    const cx = CARD.x + CARD.w / 2, cy = CARD.y + CARD.w / 2;
-
+    const cxCard = cardX(scene, t);
+    const cx = cxCard + CARD.w / 2, cy = CARD.y + CARD.w / 2;
     const g = glyphImage(scene.letter, scene.color, 700, 430, DOT_COUNT[scene.dots] || 0);
-    let halos = "";
-    if (ph.kind === "dots") {
+
+    // the child's turn: dim the room, light the card, let it pulse
+    const say = phasesOf(scene, "say").find((p) => t >= p.turn && t < p.end);
+    let turnK = 0, pulse = 0;
+    if (say) {
+      turnK = Math.min(easeOutCubic(prog(t, say.turn, say.turn + 0.4)), 1 - easeInOut(prog(t, say.end - 0.25, say.end)));
+      pulse = 0.04 * Math.sin(2 * Math.PI * 1.3 * (t - say.turn)) * turnK;
+    }
+
+    // dots: lift off, then placed back one by one by the pen
+    let dotScale = null, halos = "";
+    const dots = phasesOf(scene, "dots")[0];
+    if (g.dots.length && t >= dots.start && t < dots.end) {
+      const lift = prog(t, dots.start + 0.15, dots.start + 0.75);
+      dotScale = (i) => {
+        const b = beatIn(`dot:${i}`, dots.start, dots.end);
+        if (b && t >= b.t + 0.05) return { k: easeOutBack(prog(t, b.t + 0.05, b.t + 0.4)), o: 1, dy: 0 };
+        return { k: 1 - easeInOut(lift) * 0.6, o: 1 - easeInOut(lift), dy: -40 * easeInOut(lift) };
+      };
       halos = dotHalos(g, (i) => {
-        const b = beatIn(`dot:${i}`, ph.start, ph.end);
-        if (!b || t < b.t) return 0;
-        const k = t - b.t;
-        return Math.max(0.45, 1 - 0.55 * clamp(k / b.dur)) * easeOutCubic(clamp(k / 0.2));
+        const b = beatIn(`dot:${i}`, dots.start, dots.end);
+        if (!b || t < b.t + 0.05) return 0;
+        return Math.max(0.4, 1 - 0.6 * prog(t, b.t, b.t + 0.9)) * easeOutCubic(prog(t, b.t + 0.05, b.t + 0.25));
       });
     }
+
     const praise = phasesOf(scene, "praise")[0];
     const hop = t >= praise.start ? Math.sin(Math.PI * prog(t, praise.start, praise.start + 0.5)) * 0.05 : 0;
-    let html = rings(t, "letter", cx, cy, 330, scene.color);
-    html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.color};left:${CARD.x}px;top:${CARD.y}px;
-      transform:scale(${lerp(0.2, 1, pop) * (1 + 0.035 * e + hop)});opacity:${clamp(pop * 1.5)}">
-      <div style="position:absolute;inset:0;transform-origin:50% ${g.ink.bottom}px;transform:scale(${1 + 0.09 * e + breathe})${
+    let html = "";
+    if (turnK > 0) {
+      html += `<div style="position:absolute;inset:0;background:rgba(70,45,20,${0.13 * turnK})"></div>
+        <div style="position:absolute;left:${cx - 620}px;top:${cy - 620}px;width:1240px;height:1240px;border-radius:50%;
+          background:radial-gradient(circle, rgba(255,226,160,${0.75 * turnK}) 0%, rgba(255,226,160,0) 62%)"></div>`;
+    }
+    html += rings(t, "letter", cx, cy, 330, scene.color);
+    html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.color};left:${cxCard}px;top:${CARD.y}px;
+      transform:scale(${lerp(0.2, 1, pop) * (1 + 0.035 * e + hop + pulse)});opacity:${clamp(pop * 1.5)}">
+      <div style="position:absolute;inset:0;transform-origin:50% ${g.ink.bottom}px;transform:scale(${1 + 0.09 * e})${
         scene.dots === "alif_tall" && ph.kind === "dots"
           ? ` scaleY(${lerp(0.45, 1, easeOutBack(prog(t, ph.start + 0.25, ph.start + 1.5)))})` : ""}">
-        ${halos}<img src="${g.url}" style="position:absolute;inset:0;width:700px;height:700px"></div></div>`;
+        ${halos}${glyphLayers(g, 700, dotScale)}</div></div>`;
 
-    const bx = 1080, by = 520;
+    // a green check after each echo: the same mark the game uses later
+    for (const echo of phasesOf(scene, "echo")) {
+      const b = beatIn("letter", echo.start, echo.end);
+      if (b && t >= b.t + b.dur && t < echo.end + 0.3) {
+        const k = easeOutBack(prog(t, b.t + b.dur, b.t + b.dur + 0.35)) * (1 - prog(t, echo.end, echo.end + 0.3));
+        html += checkBadge(cxCard - 34, CARD.y - 34, k);
+      }
+    }
+
+    const bx = 1080, by = 370;   // above the pen when it rests in its inkwell
     if (ph.kind === "listen" || ph.kind === "echo") {
       html += bubble("speaker", label("listen"), bx, by, prog(t, ph.start, ph.start + 0.4));
     } else if (ph.kind === "say" || ph.kind === "turn") {
-      const says = phasesOf(scene, "say");
-      const say = says.find((p) => t >= p.start && t < p.end) || says[0];
-      const ring = t >= say.turn ? timerRing(t, say.turn, say.end, 150, scene.color) : "";
-      html += bubble("speech", label("say"), bx, by, prog(t, say.start, say.start + 0.4),
+      const s2 = phasesOf(scene, "say").find((p) => t >= p.start && t < p.end) || phasesOf(scene, "say")[0];
+      const ring = t >= s2.turn ? timerRing(t, s2.turn, s2.end, 150, scene.color) : "";
+      html += bubble("ear", label("say"), bx, by, prog(t, s2.start, s2.start + 0.4),
         `<div style="position:relative;width:150px;height:150px;margin-left:6px">${ring}</div>`);
     } else if (ph.kind === "praise") {
       html += bubble("star", label("praise"), bx, by, prog(t, ph.start, ph.start + 0.4));
+      html += checkBadge(cxCard - 34, CARD.y - 34, easeOutBack(prog(t, ph.start, ph.start + 0.35)));
       fxLayer.innerHTML += stars(t, ph.start, cx, cy, 14, 520);
     }
 
     scene._pen ||= letterPenKeys(scene, g);
-    drawPen(t, track(t, scene._pen), 1, tap(t, "letter"));
+    const resolve = (p, tt) => (p.rel ? { x: cardX(scene, tt) + p.x, y: CARD.y + p.y, a: p.a } : p);
+    const inDots = t >= dots.start && t < dots.end;
+    drawPen(t, track(t, scene._pen, resolve), inDots ? 0 : tap(t, "letter"));
     return html;
   }
 
-  const GAME = { W: 540, Y: 150, XS: [330, 1050] };
+  // ---------------------------------------------------------------- game
+  const GAME = { W: 540, Y: 210, XS: [330, 1050] };   // the space below belongs to the pointer
+  /** Pointing up at a card from beneath it: nib just under its bottom edge, body below. */
+  const fromBelow = (x, bottom) => ({ x, y: bottom + 26, a: 180 });
 
   function gamePenKeys(scene) {
     const { W, Y, XS } = GAME;
-    const at = (i) => ({ x: XS[i] + W - 34, y: Y + W - 34, a: 30 });   // nib on the card's lower corner
-    const ask = phasesOf(scene, "ask")[0], think = phasesOf(scene, "think")[0], reveal = phasesOf(scene, "reveal")[0];
+    const at = (i) => fromBelow(XS[i] + W / 2, Y + W);
+    const ask = phasesOf(scene, "ask")[0], think = phasesOf(scene, "think")[0];
+    const ti = scene.options.indexOf(scene.target);
     const keys = [[scene.start, HOME], [scene.start + 0.4, LIFT]];
-    // back and forth between the two cards: "this one ... or this one?"
-    let side = 1, tk = ask.start + 0.9;
+    // back and forth between the two cards, always beneath them: "this one ... or this one?"
+    let side = 1, tk = ask.start + 1.0;
     while (tk < think.end - 0.6) {
       keys.push([tk, at(side)], [tk + 0.55, at(side)]);
       side = 1 - side;
       tk += 1.25;
     }
-    const ti = scene.options.indexOf(scene.target);
-    const g = glyphImage(scene.target, NEUTRAL_INK, W, 330, DOT_COUNT[scene.dots[ti]] || 0);
-    keys.push([reveal.start + 0.35, { x: XS[ti] + g.ink.right + 34, y: Y + (g.ink.top + g.ink.bottom) / 2 + 30, a: 30 }]);
-    const rb = beatIn("reveal-dots", reveal.start, reveal.end);
-    let last = keys[keys.length - 1][1];
-    if (rb && g.dots.length) {
-      last = pointAtDot(XS[ti], Y, g, g.dots[0]);
-      keys.push([rb.t + 0.1, last], [rb.t + rb.dur, last]);
-    }
-    // stay put, then leave up and to the right — off the card, never down through
-    // the letter — and drop into the inkwell
-    const off = { x: XS[ti] + W + 40, y: Y + 120, a: 40 };
-    keys.push([scene.end - 0.8, last], [scene.end - 0.45, off], [scene.end, HOME]);
+    keys.push([think.end + 0.3, at(ti)], [scene.end - 0.55, at(ti)], [scene.end, HOME]);
     return keys.sort((a, b) => a[0] - b[0]);
   }
 
@@ -492,10 +567,9 @@
       html += `<div class="card" style="--c:${t >= reveal.start && isTarget ? "#2FA866" : NEUTRAL_RIM};left:${XS[i]}px;top:${Y}px;
         width:${W}px;height:${W}px;border-radius:80px;transform:scale(${scale});opacity:${op};
         box-shadow:0 26px 50px rgba(120,80,30,.18), inset 0 0 0 14px var(--c)${glow}">
-        <div style="position:absolute;inset:0;transform:scale(${1 + 0.08 * e})">${halos}
-          <img src="${g.url}" style="position:absolute;inset:0;width:${W}px;height:${W}px"></div></div>`;
+        <div style="position:absolute;inset:0;transform:scale(${1 + 0.08 * e})">${halos}${glyphLayers(g, W, null)}</div></div>`;
       if (isTarget && t >= reveal.start) {
-        html += `<div class="check" style="left:${XS[i] - 30}px;top:${Y - 30}px;transform:scale(${rk})">${CHECK}</div>`;
+        html += checkBadge(XS[i] - 30, Y - 30, rk);
         fxLayer.innerHTML += stars(t, reveal.start + 0.1, cx, cy, 12, 440);
       }
     });
@@ -503,34 +577,36 @@
     if (t < reveal.start) {
       const extra = t >= think.start
         ? `<div style="position:relative;width:150px;height:150px;margin-left:6px">${timerRing(t, think.start, think.end, 150, "#8E44AD")}</div>` : "";
-      html += bubble("question", label("which"), 620, 790, askK, extra);
+      html += bubble("question", label("which"), 640, 26, askK, extra);
     } else if (scene.round === scene.rounds) {
-      html += bubble("star", label("praise"), 760, 790, prog(t, reveal.start + 0.6, reveal.start + 1.0));
+      html += bubble("star", label("praise"), 760, 26, prog(t, reveal.start + 0.6, reveal.start + 1.0));
     }
+    // progress as short bars, not dots: this is an episode about counting dots
     html += `<div class="progress">${Array.from({ length: scene.rounds }, (_, i) =>
       `<span style="${i < scene.round ? "background:#8E44AD" : ""}"></span>`).join("")}</div>`;
     scene._pen ||= gamePenKeys(scene);
-    drawPen(t, track(t, scene._pen), 1, tap(t, "answer"));
+    drawPen(t, track(t, scene._pen), tap(t, "answer"));
     return html;
   }
 
+  // ---------------------------------------------------------------- recap
   function recapLayout(scene) {
     const n = scene.letters.length;
     const S = n > 4 ? 270 : 300, gap = 60;
-    const total = n * S + (n - 1) * gap, x0 = (1920 - total) / 2, y = 230;
+    const total = n * S + (n - 1) * gap, x0 = (1920 - total) / 2, y = 300;
     // Arabic reads right to left: the first letter sits on the right.
     return { S, y, xs: scene.letters.map((_, i) => x0 + (n - 1 - i) * (S + gap)) };
   }
 
   function recapPenKeys(scene) {
     const { S, y, xs } = recapLayout(scene);
-    const at = (i) => under(xs[i] + S / 2, y + S + 50);
+    const at = (i) => fromBelow(xs[i] + S / 2, y + S);
     const keys = [[scene.start, HOME], [scene.start + 0.5, LIFT]];
     for (const p of scene.phases) {
       if (p.index === undefined) continue;
       keys.push([p.start, at(p.index)], [p.end - 0.05, at(p.index)]);
     }
-    keys.push([scene.end - 0.4, LIFT], [scene.end, HOME]);
+    keys.push([scene.end - 0.5, keys[keys.length - 1][1]], [scene.end, HOME]);
     return keys.sort((a, b) => a[0] - b[0]);
   }
 
@@ -550,59 +626,65 @@
         opacity:${clamp(pop * 1.5) * (ph && ph.index !== undefined && !active ? 0.5 : 1)}">
         <div class="glyph" style="font-size:${S * 0.7}px">${l}</div></div>`;
       if (active && ph.kind === "turn") {
-        html += `<div style="position:absolute;left:${x + S / 2 - 75}px;top:${y + S + 130}px;width:150px;height:150px">
+        html += `<div style="position:absolute;left:${x + S / 2 - 75}px;top:${y - 190}px;width:150px;height:150px">
           ${timerRing(t, ph.start, ph.end, 150, scene.colors[i])}</div>`;
       }
     });
-    if (ph && ph.kind === "intro") html += bubble("speaker", label("listen"), 800, 760, prog(t, ph.start, ph.start + 0.4));
-    if (ph && ph.kind === "your-turn") html += bubble("speech", label("say"), 760, 760, prog(t, ph.start, ph.start + 0.4));
+    if (ph && ph.kind === "intro") html += bubble("speaker", label("listen"), 780, 70, prog(t, ph.start, ph.start + 0.4));
+    if (ph && ph.kind === "your-turn") html += bubble("ear", label("say"), 740, 70, prog(t, ph.start, ph.start + 0.4));
     scene._pen ||= recapPenKeys(scene);
     const k = ph && ph.index !== undefined ? tap(t, `recap:${ph.index}`) : 0;
-    drawPen(t, track(t, scene._pen), 1, k);
+    drawPen(t, track(t, scene._pen), k);
     return html;
   }
 
-  function chipsRow(scene, t, y, size, popAt, wave = false) {
-    const n = scene.letters.length, gap = 40;
-    const total = n * size + (n - 1) * gap, x0 = (1920 - total) / 2;
-    return scene.letters.map((l, i) => {
-      const pop = easeOutBack(prog(t, popAt(i), popAt(i) + 0.5));
-      const dy = wave ? Math.sin(t * 3.2 - i * 0.8) * 14 : 0;
-      const x = x0 + (n - 1 - i) * (size + gap);
-      return `<div class="chip" style="--c:${scene.colors[i]};left:${x}px;top:${y + dy}px;width:${size}px;height:${size}px;
-        transform:scale(${lerp(0.1, 1, pop)});opacity:${clamp(pop * 1.5)}">
-        <div class="glyph" style="font-size:${size * 0.7}px">${l}</div></div>`;
-    }).join("");
-  }
+  // ---------------------------------------------------------------- title, besmele, outro
   const chipX = (scene, i, size, gap = 40) => {
     const n = scene.letters.length, total = n * size + (n - 1) * gap;
     return (1920 - total) / 2 + (n - 1 - i) * (size + gap);
   };
 
+  /** A row of letter chips; chip i appears with its name (beat ``prefix:i``). */
+  function namedChips(scene, t, y, size, prefix, wave = false) {
+    return scene.letters.map((l, i) => {
+      const b = beatIn(`${prefix}:${i}`, scene.start, scene.end);
+      const at = b ? b.t - 0.25 : scene.start;
+      const pop = easeOutBack(prog(t, at, at + 0.5));
+      const e = env(`${prefix}:${i}`, t);
+      const dy = wave ? Math.sin(t * 3.2 - i * 0.8) * 10 : 0;
+      return `<div class="chip" style="--c:${scene.colors[i]};left:${chipX(scene, i, size)}px;top:${y + dy}px;width:${size}px;height:${size}px;
+        transform:scale(${lerp(0.1, 1, pop) * (1 + 0.08 * e)});opacity:${clamp(pop * 1.5)}">
+        <div class="glyph" style="font-size:${size * 0.7}px">${l}</div></div>`;
+    }).join("");
+  }
+
+  function chipPenKeys(scene, y, size, prefix, endKeys) {
+    const keys = [[scene.start, HOME], [scene.start + 0.5, LIFT]];
+    scene.letters.forEach((_, i) => {
+      const b = beatIn(`${prefix}:${i}`, scene.start, scene.end);
+      if (!b) return;
+      const p = fromBelow(chipX(scene, i, size) + size / 2, y + size + 10);
+      keys.push([b.t, p], [b.t + b.dur, p]);
+    });
+    return keys.concat(endKeys).sort((a, b) => a[0] - b[0]);
+  }
+
   function drawTitle(scene, t) {
     const k = easeOutBack(prog(t, scene.start + 0.1, scene.start + 0.8));
-    const popAt = (i) => scene.start + 1.0 + i * 0.45;
-    let html = `<div class="big-title" style="top:120px;font-size:190px;transform:scale(${k});letter-spacing:4px">
+    let html = `<div class="big-title" style="top:110px;font-size:190px;transform:scale(${k});letter-spacing:4px">
       Elif<span style="color:#E4572E">-</span>Ba</div>`;
-    html += `<div class="big-title" style="top:370px;font-size:64px;font-weight:700;color:#6B6575;opacity:${prog(t, scene.start + 0.4, scene.start + 0.9)}">
+    html += `<div class="big-title" style="top:360px;font-size:64px;font-weight:700;color:#6B6575;opacity:${prog(t, scene.start + 0.4, scene.start + 0.9)}">
       ${scene.episode}. Ders</div>`;
-    html += chipsRow(scene, t, 520, 230, popAt);
-    if (!scene._pen) {
-      const keys = [[scene.start, HOME], [scene.start + 0.5, LIFT]];
-      scene.letters.forEach((_, i) => {
-        const p = under(chipX(scene, i, 230) + 115, 520 + 230 + 40);
-        keys.push([popAt(i), p], [popAt(i) + 0.2, p]);
-      });
-      keys.push([scene.end - 0.4, LIFT], [scene.end, HOME]);
-      scene._pen = keys;
-    }
-    drawPen(t, track(t, scene._pen));
+    html += namedChips(scene, t, 500, 230, "title");
+    scene._pen ||= chipPenKeys(scene, 500, 230, "title", [[scene.end - 0.5, LIFT], [scene.end, HOME]]);
+    const i = scene.letters.findIndex((_, j) => beatAt(`title:${j}`, t, 0));
+    drawPen(t, track(t, scene._pen), i >= 0 ? tap(t, `title:${i}`) : 0);
     return html;
   }
 
   function drawBesmele(scene, t) {
     const k = easeInOut(prog(t, scene.start + 0.1, scene.start + 1.4));
-    drawPen(t, HOME, 0);
+    drawPen(t, HOME);
     return `<div class="frame" style="opacity:${k}"></div>
       <div class="besmele" style="opacity:${k};transform:translateY(${(1 - k) * 20}px)">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ</div>
       <div class="big-title" style="top:650px;font-size:46px;font-weight:600;color:#8A6A3A;opacity:${k * 0.9}">
@@ -611,26 +693,18 @@
 
   function drawOutro(scene, t) {
     const k = easeOutBack(prog(t, scene.start, scene.start + 0.7));
-    let html = `<div class="big-title" style="top:150px;font-size:170px;color:#E4572E;transform:scale(${k})">${label("praise")}</div>`;
-    html += chipsRow(scene, t, 480, 220, (i) => scene.start + 0.4 + i * 0.2, true);
-    fxLayer.innerHTML += stars(t, scene.start + 0.2, 960, 260, 16, 760);
-    fxLayer.innerHTML += stars(t, scene.start + 1.8, 960, 260, 16, 760);
-    if (!scene._pen) {
-      // the pen visits each letter once more, right to left, then goes home
-      const keys = [[scene.start, HOME], [scene.start + 0.5, LIFT]];
-      scene.letters.forEach((_, i) => {
-        const p = under(chipX(scene, i, 220) + 110, 480 + 220 + 50);
-        const at = scene.start + 0.9 + i * 0.6;
-        keys.push([at, p], [at + 0.25, p]);
-      });
-      const settle = phasesOf(scene, "settle")[0];
-      keys.push([settle.start, LIFT], [settle.start + 0.8, HOME]);
-      scene._pen = keys;
-    }
-    drawPen(t, track(t, scene._pen));
+    let html = `<div class="big-title" style="top:140px;font-size:170px;color:#E4572E;transform:scale(${k})">${label("praise")}</div>`;
+    html += namedChips(scene, t, 470, 220, "outro", true);
+    fxLayer.innerHTML += stars(t, scene.start + 0.2, 960, 250, 16, 760);
+    const settle = phasesOf(scene, "settle")[0];
+    fxLayer.innerHTML += stars(t, settle.start, 960, 250, 16, 760);
+    scene._pen ||= chipPenKeys(scene, 470, 220, "outro", [[settle.start + 0.2, LIFT], [settle.start + 0.9, HOME]]);
+    const i = scene.letters.findIndex((_, j) => beatAt(`outro:${j}`, t, 0));
+    drawPen(t, track(t, scene._pen), i >= 0 ? tap(t, `outro:${i}`) : 0);
     return html;
   }
 
+  const NEUTRAL_INK = "#3A3550", NEUTRAL_RIM = "#D3C4A9";
   const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, game: drawGame, recap: drawRecap, outro: drawOutro };
 
   // ---------------------------------------------------------------- frame
