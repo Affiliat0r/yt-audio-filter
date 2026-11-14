@@ -33,7 +33,7 @@ FPS = 30
 W, H = 1920, 1080
 
 #: Per-kind level (RMS, dBFS) each clip is brought to before mixing.
-LEVELS = {"voice": -18.0, "cue": -19.5, "quran": -19.0}
+LEVELS = {"voice": -18.0, "quran": -19.0}
 
 
 def decode(path: Path) -> np.ndarray:

@@ -4,17 +4,20 @@ The audience is about three years old, so the script follows what works at that
 age rather than what an adult course does:
 
 * one letter on screen at a time, very large, with its own colour;
-* every Arabic sound is a human recording (Diyanet), heard several times;
-* the echo pattern — the model says it, the child gets a silent turn with a
-  visible cue, the model says it again so the child can compare;
-* the dots are the feature that tells look-alike letters apart (ب ت ث), so they
-  are pointed out and counted;
-* a two-choice "which one?" game, always between letters that look alike;
-* short: a video is four letters or fewer, about three minutes.
+* the only voice is Diyanet's human recordings of the Arabic (and the recited
+  besmele) — no narrator. Prompts are visual: a reed pen (kalem) that points
+  like a hoca's pointer stick, plus a few icons;
+* the echo pattern — the model says it, the child gets a silent turn while the
+  pen glides under the letter right to left, the model says it again;
+* the dots are what tells look-alike letters apart (ب ت ث), so the pen touches
+  each one as it lights up;
+* a two-choice "which one?" game, always between letters that look alike, in
+  one neutral ink so that colour can't give the answer away;
+* short: four letters or so, under five minutes.
 
-No text needs reading. The output is plain data — scenes with start/end times,
-the audio to place, and "beats" that tell the page when a sound starts so the
-letter can pulse with it. ``engine/engine.js`` draws it; ``render.py`` films it.
+The output is plain data — scenes with start/end times, the audio to place, and
+"beats" that tell the page when something happens. ``engine/engine.js`` draws it;
+``render.py`` films it.
 """
 
 from __future__ import annotations
@@ -26,25 +29,28 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from elifba.curriculum import JE
-from elifba.voice import CUES, cue_path
 
 ROOT = Path(__file__).resolve().parent
 AUDIO = ROOT / "audio"
 BESMELE = AUDIO / "quran" / "besmele_osmansahin.mp3"
 
 GAP = 0.35          # breath between two sounds
+PROMPT = 1.0        # a visual prompt (icon) appears this long before what it announces
 FIRST_TURN = 3.8    # the child's first go at a new letter: toddlers take ~1 s to start
 CHILD_TURN = 3.2    # later turns
 RECAP_TURN = 3.0
 THINK = 4.0         # silent time to point at a card in the game
+DOT_STEP = 0.8      # the pen touches one dot per this many seconds
 
-#: How many dots each description counts out.
-DOT_COUNT = {"dots_below_1": 1, "dots_above_1": 1, "dots_mid_1": 1, "dots_above_2": 2, "dots_above_3": 3}
+#: Short words shown next to the icons, for the parent watching along. Never spoken.
+LABELS = {
+    "listen": "Dinle",
+    "say": "Sen söyle",
+    "which": "Hangisi?",
+    "praise": "Aferin!",
+}
 
-#: Which side the right answer is on, round by round: not a pattern a child can learn.
-SIDES = [1, 0, 0, 1, 0, 1, 1, 0]
-
-#: What to say about each letter's dots ("noktası"), a cue key from voice.CUES.
+#: How each letter's dots are presented.
 DOTS = {
     "ا": "alif_tall", "ب": "dots_below_1", "ت": "dots_above_2", "ث": "dots_above_3",
     "ج": "dots_mid_1", "ح": "dots_none", "خ": "dots_above_1",
@@ -54,6 +60,7 @@ DOTS = {
     "ف": "dots_above_1", "ق": "dots_above_2", "ك": "dots_none", "ل": "dots_none",
     "م": "dots_none", "ن": "dots_above_1", "هـ": "dots_none", "و": "dots_none", "ى": "dots_none",
 }
+DOT_COUNT = {"dots_below_1": 1, "dots_above_1": 1, "dots_mid_1": 1, "dots_above_2": 2, "dots_above_3": 3}
 
 #: Shape families: letters that differ only by their dots. The game pairs within these.
 FAMILIES = [set("بتثن"), set("جحخ"), set("دذ"), set("رز"), set("سش"), set("صض"), set("طظ"),
@@ -76,7 +83,8 @@ PALETTE = ["#E4572E", "#1C7CB8", "#2A9D5B", "#8E44AD", "#E08E0B", "#C2185B", "#0
 #: Diyanet's (and the printed Elif-Ba's) heavy letters, marked with a red rim.
 HEAVY = set("خصضطظغق")
 
-PRAISE = ["praise_1", "praise_2", "praise_3", "praise_4"]
+#: Which side the right answer is on, round by round: not a pattern a child can learn.
+SIDES = [1, 0, 0, 1, 0, 1, 1, 0]
 
 
 def name_sound(letter: str) -> Path:
@@ -113,8 +121,12 @@ class Script:
         self.t += dur
         return start
 
-    def cue(self, key: str) -> float:
-        return self.play(cue_path(key), target="cue:" + key, kind="cue")
+    def beat(self, target: str, dur: float) -> float:
+        """A silent, visual-only event (a dot lighting up, the pen touching it)."""
+        start = self.t
+        self.beats.append({"t": round(start, 3), "dur": round(dur, 3), "target": target})
+        self.t += dur
+        return start
 
     def wait(self, seconds: float) -> None:
         self.t += seconds
@@ -158,82 +170,73 @@ def game_rounds(letters: Sequence[str]) -> List[tuple]:
 
 def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
     sound = name_sound(letter)
-    scene = s.open_scene("letter", letter=letter, color=color, heavy=letter in HEAVY, number=number,
-                         dots=DOTS[letter])
+    dots = DOTS[letter]
+    scene = s.open_scene("letter", letter=letter, color=color, heavy=letter in HEAVY, number=number, dots=dots)
     s.chapters.append({"t": scene["start"], "title": f"{letter}"})
 
     start = s.t
-    s.wait(0.7)                      # the letter bounces in
+    s.wait(1.1)                      # the pen lifts out of the inkwell; the letter bounces in
     s.play(sound, target="letter")
-    s.wait(0.6)
+    s.wait(0.8)
     s.phase(scene, "meet", start)
 
     start = s.t
-    s.cue(DOTS[letter])
-    s.wait(0.3)
-    for i in range(DOT_COUNT.get(DOTS[letter], 0)):   # "Bir! ... İki! ... Üç!", each dot lit as it is counted
-        s.play(cue_path(f"count_{i + 1}"), target=f"dot:{i}", kind="cue")
-        s.wait(0.45)
-    s.wait(0.5)
+    s.wait(0.4)
+    n = DOT_COUNT.get(dots, 0)
+    for i in range(n):               # the pen touches each dot as it lights up
+        s.beat(f"dot:{i}", DOT_STEP)
+    if not n:
+        s.wait(1.8)                  # alif stands up tall / the pen finds no dots
+    s.wait(0.6)
     s.phase(scene, "dots", start)
 
     start = s.t
-    s.cue("listen")
-    s.wait(GAP)
+    s.wait(PROMPT)
     for _ in range(3):
         s.play(sound, target="letter")
-        s.wait(0.55)
+        s.wait(0.6)
     s.phase(scene, "listen", start)
 
-    for say_cue, turn_len in (("say", FIRST_TURN), ("say_again", CHILD_TURN)):
+    for turn_len in (FIRST_TURN, CHILD_TURN):
         start = s.t
-        s.cue(say_cue)
-        s.wait(GAP)
+        s.wait(PROMPT)
         turn = s.t
         s.wait(max(turn_len, duration(sound) + 1.6))
         s.phase(scene, "turn", turn)
         s.phase(scene, "say", start, turn=round(turn, 3))
         start = s.t
         s.play(sound, target="letter")
-        s.wait(0.5)
+        s.wait(0.6)
         s.phase(scene, "echo", start)
 
     start = s.t
-    s.cue(PRAISE[number % len(PRAISE)])
-    s.wait(0.7)
+    s.wait(1.8)
     s.phase(scene, "praise", start)
     s.close_scene(scene)
 
 
-def game(s: Script, letters: Sequence[str], colors: Dict[str, str]) -> None:
+def game(s: Script, letters: Sequence[str]) -> None:
     s.chapters.append({"t": round(s.t, 3), "title": "Hangisi?"})
     rounds = game_rounds(letters)
     for i, (target, other) in enumerate(rounds):
         options = [target, other] if SIDES[i % len(SIDES)] == 0 else [other, target]
-        # Both cards in the same neutral ink: the dots must be the only clue, not the colour.
         scene = s.open_scene("game", options=options, target=target, dots=[DOTS[o] for o in options],
                              round=i + 1, rounds=len(rounds))
         start = s.t
-        s.wait(0.7)
-        s.play(name_sound(target), target="ask")          # the word first: "Bâ ..."
-        s.wait(0.25)
-        s.cue("which_show")                                # "... hangisi? Göster!"
+        s.wait(1.0)
+        s.play(name_sound(target), target="ask")
+        s.wait(0.4)
         s.phase(scene, "ask", start)
         start = s.t
         s.wait(THINK)
         s.phase(scene, "think", start)
         start = s.t
-        s.cue("this_one")
-        s.wait(0.2)
+        s.wait(0.5)
         s.play(name_sound(target), target="answer")
-        s.wait(0.3)
-        n_dots = DOT_COUNT.get(DOTS[target], 0)
-        if n_dots:                                         # say *why*: "Üstünde iki nokta!"
-            s.play(cue_path(DOTS[target]), target="reveal-dots", kind="cue")
-        s.wait(0.6)
-        if i == len(rounds) - 1:
-            s.cue("praise_3")
-            s.wait(0.5)
+        s.wait(0.2)
+        if DOT_COUNT.get(DOTS[target]):
+            s.beat("reveal-dots", 1.3)     # its dots light up: that is *why* it is this one
+        s.wait(0.8 if i < len(rounds) - 1 else 1.6)
         s.phase(scene, "reveal", start)
         s.close_scene(scene)
 
@@ -242,26 +245,23 @@ def recap(s: Script, letters: Sequence[str], colors: Dict[str, str]) -> None:
     s.chapters.append({"t": round(s.t, 3), "title": "Tekrar"})
     scene = s.open_scene("recap", letters=list(letters), colors=[colors[l] for l in letters])
     start = s.t
-    s.wait(0.5)
-    s.cue("first_listen")     # say what actually happens: the model reads first, then the child
-    s.wait(0.5)
+    s.wait(PROMPT + 0.4)
     s.phase(scene, "intro", start)
-    for i, letter in enumerate(letters):            # model reads the row
+    for i, letter in enumerate(letters):            # the model reads the row, right to left
         start = s.t
         s.play(name_sound(letter), target=f"recap:{i}")
-        s.wait(0.45)
+        s.wait(0.5)
         s.phase(scene, "model", start, index=i)
     start = s.t
-    s.cue("say")
-    s.wait(0.4)
+    s.wait(PROMPT)
     s.phase(scene, "your-turn", start)
-    for i, letter in enumerate(letters):            # child reads it, each echoed
+    for i, letter in enumerate(letters):            # the child reads it, each echoed
         start = s.t
         s.wait(max(RECAP_TURN, duration(name_sound(letter)) + 1.4))
         s.phase(scene, "turn", start, index=i)
         start = s.t
         s.play(name_sound(letter), target=f"recap:{i}")
-        s.wait(0.4)
+        s.wait(0.45)
         s.phase(scene, "echo", start, index=i)
     s.close_scene(scene)
 
@@ -273,36 +273,30 @@ def episode(number: int, letters: Sequence[str]) -> Dict:
     scene = s.open_scene("besmele")
     s.wait(0.6)
     s.play(BESMELE, target="besmele", kind="quran")
-    s.wait(0.8)
+    s.wait(1.0)
     s.close_scene(scene)
 
     scene = s.open_scene("title", episode=number, letters=list(letters), colors=[colors[l] for l in letters])
-    s.wait(0.4)
-    s.cue("intro")
-    s.wait(1.6)
+    s.wait(1.0 + 0.45 * len(letters) + 1.2)          # the pen touches each letter as it appears
     s.close_scene(scene)
 
     for i, letter in enumerate(letters):
         letter_segment(s, letter, colors[letter], i)
-    game(s, letters, colors)
+    game(s, letters)
     recap(s, letters, colors)
 
     scene = s.open_scene("outro", letters=list(letters), colors=[colors[l] for l in letters])
     s.chapters.append({"t": scene["start"], "title": "Aferin!"})
     start = s.t
-    s.wait(0.4)
-    s.cue("outro")
-    s.wait(0.5)
-    s.cue("goodbye")
-    s.wait(1.6)
+    s.wait(3.6)
     s.phase(scene, "celebrate", start)
     start = s.t
-    s.wait(2.2)                # the mascot lands and waves; everything fades out gently
+    s.wait(2.2)                # the pen returns to its inkwell; everything fades out gently
     s.phase(scene, "settle", start)
     s.close_scene(scene)
 
     return {"episode": number, "letters": list(letters), "duration": round(s.t, 3), "scenes": s.scenes,
-            "audio": s.audio, "beats": s.beats, "chapters": s.chapters, "cues": CUES}
+            "audio": s.audio, "beats": s.beats, "chapters": s.chapters, "labels": LABELS}
 
 
 if __name__ == "__main__":

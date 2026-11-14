@@ -69,7 +69,7 @@ def test_every_referenced_recording_is_on_disk_or_known_missing():
     assert absent == []
 
 
-@pytest.mark.skipif(not (AUDIO / "tts").exists(), reason="needs fetched audio and generated cues")
+@pytest.mark.skipif(not (AUDIO / "quran").exists(), reason="run python -m elifba.fetch_audio first")
 def test_no_two_sounds_overlap_and_scenes_tile_the_episode():
     ep = episode(1, SERIES[0])
     spans = sorted((a["t"], a["t"] + a["dur"]) for a in ep["audio"])
@@ -80,7 +80,7 @@ def test_no_two_sounds_overlap_and_scenes_tile_the_episode():
     assert ep["scenes"][-1]["end"] == pytest.approx(ep["duration"], abs=1e-3)
 
 
-@pytest.mark.skipif(not (AUDIO / "tts").exists(), reason="needs fetched audio and generated cues")
+@pytest.mark.skipif(not (AUDIO / "quran").exists(), reason="run python -m elifba.fetch_audio first")
 def test_the_game_pairs_look_alike_letters_when_it_can():
     ep = episode(1, SERIES[0])
     rounds = [s for s in ep["scenes"] if s["type"] == "game"]
