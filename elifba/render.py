@@ -153,7 +153,7 @@ def film(timeline: dict, out: Path) -> None:
 def thumbnail(timeline: dict, out: Path) -> Path:
     """A 1280x720 thumbnail: the lesson's name over every one of its cards."""
     outro = next(s for s in timeline["scenes"] if s["type"] == "outro")
-    thumb = {"scenes": [{**outro, "type": "thumb", "start": 0.0, "end": 1.0, "heading": timeline["subtitle"]}],
+    thumb = {"scenes": [{**outro, "type": "thumb", "start": 0.0, "end": 1.0, "heading": timeline.get("thumb_heading", timeline["subtitle"])}],
              "beats": [], "audio": [], "duration": 1.0}
     png = stills(thumb, [0.5], out.parent / f"{out.stem}_frame")[0]
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(png), "-vf", "scale=1280:720:flags=lanczos",

@@ -294,6 +294,65 @@
     return html;
   }
 
+  // ---------------------------------------------------------------- a letter inside words
+  // The letter on its own at the top; below it three words with that letter at the
+  // start, in the middle and at the end (right to left), the letter picked out in
+  // its colour. The card being spelled is lit; the pen points at it from below.
+  const WORDS = { y: 450, w: 500, h: 350, xs: [1300, 710, 120] };     // başta, ortada, sonda
+  const WORD_LABELS = ["Başta", "Ortada", "Sonda"];
+  const ISO = { x: 810, y: 60, w: 300 };
+  const wordBelow = (k) => ({ x: WORDS.xs[k] + WORDS.w / 2, y: WORDS.y + WORDS.h + 26, a: 180 });
+
+  /** The largest size (up to ``max``) at which ``text`` fits ``width`` — long words shrink, short ones don't grow. */
+  const measureCtx = document.createElement("canvas").getContext("2d");
+  function fitFont(text, width, max) {
+    measureCtx.font = `700 ${max}px "Scheherazade"`;
+    measureCtx.direction = "rtl";
+    const w = measureCtx.measureText(text.replace(/[{}]/g, "")).width;
+    return Math.min(max, Math.floor((max * width) / w));
+  }
+
+  function wordHTML(text, color, rim) {
+    // {x} marks the letter; Chrome keeps the joining across the span
+    return text.replace(/\{([^}]+)\}/g, (_, c) => `<span style="color:${rim}">${c}</span>`);
+  }
+
+  function drawWords(scene, t) {
+    const pop = easeOutBack(prog(t, scene.start, scene.start + 0.6));
+    const isoBeat = (beatsByTarget.iso || []).find((b) => b.t >= scene.start && b.t < scene.end);
+    const wb = [0, 1, 2].map((k) => (beatsByTarget[`word:${k}`] || []).find((b) => b.t >= scene.start && b.t < scene.end));
+    const current = [2, 1, 0].find((k) => wb[k] && t >= wb[k].t);
+    const settle = scene.end - 0.5;
+    const focus = t >= settle ? "all" : current !== undefined ? current : isoBeat && t >= isoBeat.t ? "iso" : "all";
+    const lookOf = (who) => (focus === "all" || focus === who ? { op: 1, sc: focus === who ? 1.05 : 1, glow: focus === who }
+      : { op: 0.4, sc: 0.96, glow: false });
+
+    let html = "";
+    const iso = lookOf("iso"), ei = env("iso", t);
+    if (focus === "iso") html += rings(t, "iso", ISO.x + ISO.w / 2, ISO.y + ISO.w / 2, ISO.w / 2 + 10, scene.rim);
+    html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.rim};left:${ISO.x}px;top:${ISO.y}px;width:${ISO.w}px;height:${ISO.w}px;
+      border-radius:70px;transform:scale(${lerp(0.2, 1, pop) * iso.sc * (1 + 0.05 * ei)});opacity:${clamp(pop * 1.5) * iso.op}">
+      <img src="${glyphImage(scene.letter, scene.rim, ISO.w, 190)}" style="width:${ISO.w}px;height:${ISO.w}px"></div>`;
+    scene.words.forEach((w, k) => {
+      const lk = lookOf(k), e = env(`word:${k}`, t);
+      const x = WORDS.xs[k];
+      const glow = lk.glow ? `, 0 0 0 18px rgba(255,214,120,.45)` : "";
+      html += `<div class="card" style="--c:${scene.rim};left:${x}px;top:${WORDS.y}px;width:${WORDS.w}px;height:${WORDS.h}px;
+        border-radius:60px;flex-direction:column;
+        transform:scale(${lerp(0.2, 1, pop) * lk.sc * (1 + 0.03 * e)});opacity:${clamp(pop * 1.5) * lk.op};
+        box-shadow:0 26px 50px rgba(120,80,30,.16), inset 0 0 0 12px var(--c)${glow}">
+        <div style="position:absolute;top:22px;left:0;right:0;text-align:center;font:700 36px Nunito;color:#9A92A6">${WORD_LABELS[k]}</div>
+        <div dir="rtl" style="font:700 ${fitFont(w, WORDS.w - 70, 150)}px Scheherazade;color:${scene.color};line-height:1;padding-top:40px;white-space:nowrap">
+          ${wordHTML(w, scene.color, scene.rim)}</div></div>`;
+    });
+    const keys = scene.number === 0
+      ? [[scene.start, HOME], [scene.start + 0.35, LIFT], [scene.start + 0.7, wordBelow(0)]]
+      : [[scene.start, wordBelow(2)], [scene.start + 0.6, wordBelow(0)]];
+    wb.forEach((b, k) => { if (b && k > 0) keys.push([b.t - 0.35, wordBelow(k - 1)], [b.t, wordBelow(k)]); });
+    drawPen(t, track(t, keys), current !== undefined ? tap(t, `word:${current}`) : 0);
+    return html;
+  }
+
   function drawTitle(scene, t) {
     const k = easeOutBack(prog(t, scene.start + 0.1, scene.start + 0.8));
     drawPen(t, HOME);
@@ -342,6 +401,18 @@
     drawPen(t, HOME);
     const head = `<div class="big-title" style="top:26px;font-size:170px;letter-spacing:3px">
         Elif<span style="color:#E4572E">-</span>Ba <span style="color:#6B6575;font-size:120px">· ${scene.heading}</span></div>`;
+    if (scene.example) {
+      // the words lesson: one letter, and the three words it sits in
+      const ex = scene.example, W = 540, H = 380, xs = [1330, 690, 50], y = 640;
+      let html = head + `<div class="card" style="--c:${ex.rim};left:810px;top:250px;width:300px;height:300px;border-radius:70px">
+        <img src="${glyphImage(ex.letter, ex.rim, 300, 190)}" style="width:300px;height:300px"></div>`;
+      ex.words.forEach((w, k) => {
+        html += `<div class="card" style="--c:${ex.rim};left:${xs[k]}px;top:${y}px;width:${W}px;height:${H}px;border-radius:60px">
+          <div dir="rtl" style="font:700 ${fitFont(w, W - 70, 190)}px Scheherazade;color:${ex.color};line-height:1;white-space:nowrap">
+          ${wordHTML(w, ex.color, ex.rim)}</div></div>`;
+      });
+      return html;
+    }
     if (!scene.triples) return head + letterGrid(scene, t, 262, 176, null);
     // the harakat lesson: its first four letters, each with all three marks
     return head + scene.triples.map((forms, i) => {
@@ -350,7 +421,8 @@
     }).join("");
   }
 
-  const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, triple: drawTriple, outro: drawOutro, thumb: drawThumb };
+  const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, triple: drawTriple, words: drawWords,
+    outro: drawOutro, thumb: drawThumb };
 
   // ---------------------------------------------------------------- frame
   window.seek = function seek(t) {

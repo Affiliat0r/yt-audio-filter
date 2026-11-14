@@ -5,7 +5,9 @@ richer versions: just the letters — each one shown and said, with pauses in
 between — a whole lesson in one video of five minutes at most. No prompts, no quiz.
 
 Lessons follow the printed Diyanet Elif-Ba (2024), the owner's reference: 1. the
-letters (by name), 3. harekeler — every letter with all three harakat at once,
+letters (by name), 2. the letters inside words (at the start, middle and end;
+three parts, since Diyanet spells each word letter by letter and all 28 would run
+to nine minutes), 3. harekeler — every letter with all three harakat at once,
 اَ اِ اُ, as the book's table shows them. (A fetha-only lesson, the order of
 Diyanet's web course, is kept as ``fetha`` but is not part of the series.)
 
@@ -29,7 +31,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from elifba.curriculum import JE, unit_damme, unit_fetha, unit_kesra
+from elifba.curriculum import JE, unit_damme, unit_fetha, unit_harfler, unit_kesra
 
 ROOT = Path(__file__).resolve().parent
 AUDIO = ROOT / "audio"
@@ -57,6 +59,7 @@ INK = "#2E3A59"
 #: One colour per hareke, the same in every letter, so each mark is recognised by colour too.
 HARAKAT_COLORS = {"fetha": "#E4572E", "kesra": "#1C7CB8", "damme": "#2A9D5B"}
 TRIPLE_GAP = 1.3    # after each of the three sounds: time to say it back
+WORD_GAP = 0.9      # after each spelled word (they are long already: 3.5-5 s)
 
 
 def name_sound(letter: str) -> Path:
@@ -167,12 +170,54 @@ def harekeler_items() -> List[Dict]:
     return items
 
 
+def kelime_items(part: int) -> List[Dict]:
+    """Lesson 2: each letter on its own, then in three words — at the start, in the
+    middle, at the end — with the letter picked out in each word.
+
+    The words and their recordings are Diyanet's ("Harfler ve Şekilleri"); each
+    recording spells its word letter by letter. The letter on its own is named
+    with the same recording as lesson 1 (Diyanet's own recording of alif here
+    says "hemze"). Diyanet's extra hamza rows and repeated peltek rows are left
+    out: the book's table is the 28 letters. Parts: ا-ر, ز-غ, ف-ى (10, 9, 9)."""
+    sek = unit_harfler()[3]
+    folder = AUDIO / "elifba" / "harfler" / "sekilleri"
+    rows: Dict[str, list] = {}
+    for group in sek["groups"]:
+        for row in group["rows"]:
+            first = row["tiles"][0]["arabic"].strip("{}")
+            if first == "ء" or first in rows:
+                continue
+            rows[first] = row["tiles"]
+    letters = {1: JE[:10], 2: JE[10:19], 3: JE[19:]}[part]
+    return [{"text": l, "letter": l, "sound": name_sound(l),
+             "words": [{"text": t["arabic"], "sound": folder / f"{t['sound']}.mp3"} for t in rows[l][1:]]}
+            for l in letters]
+
+
 #: number, items, subtitle on the title card, whether the cards show a coloured hareke
 LESSONS = {
     "harfler": (1, harfler_items, "Harfler", False),
+    "kelime1": (2, lambda: kelime_items(1), "Harfler ve Kelimeler · 1", False),
+    "kelime2": (2, lambda: kelime_items(2), "Harfler ve Kelimeler · 2", False),
+    "kelime3": (2, lambda: kelime_items(3), "Harfler ve Kelimeler · 3", False),
     "harekeler": (3, harekeler_items, "Harekeler", True),
     "fetha": (2, fetha_items, "Fetha", True),
 }
+
+
+def words_segment(s: Script, item: Dict, number: int) -> None:
+    """A letter, named; then the three words it appears in, each spelled by Diyanet."""
+    letter = item["letter"]
+    scene = s.open_scene("words", letter=letter, words=[w["text"] for w in item["words"]], color=INK,
+                         rim=color_of(letter), heavy=letter in HEAVY, number=number)
+    s.wait(APPEAR)
+    s.play(item["sound"], target="iso")
+    s.wait(1.0)
+    for k, w in enumerate(item["words"]):
+        s.play(w["sound"], target=f"word:{k}")
+        s.wait(WORD_GAP)
+    s.wait(0.3)
+    s.close_scene(scene)
 
 
 def triple_segment(s: Script, item: Dict, number: int) -> None:
@@ -221,7 +266,9 @@ def episode(lesson: str = "harfler") -> Dict:
         if i % CHAPTER_EVERY == 0:
             last = items[min(i + CHAPTER_EVERY, len(items)) - 1]
             s.chapters.append({"t": round(s.t, 3), "title": f"{item['text']} – {last['text']}"})
-        if "forms" in item:
+        if "words" in item:
+            words_segment(s, item, i)
+        elif "forms" in item:
             triple_segment(s, item, i)
         else:
             letter_segment(s, item, i, marked)
@@ -236,7 +283,14 @@ def episode(lesson: str = "harfler") -> Dict:
     s.wait(5.0)
     s.close_scene(scene)
 
-    return {"lesson": lesson, "number": number, "subtitle": subtitle, "items": [it["text"] for it in items],
+    # a thumbnail name short enough for one line, and (for the words lesson) an example row
+    thumb_heading = subtitle.replace("Harfler ve Kelimeler", "Kelimeler")
+    if "words" in items[0]:
+        ex = items[1] if len(items) > 1 else items[0]          # ب, ز or ق: a clear, dotted letter
+        scene["example"] = {"letter": ex["letter"], "words": [w["text"] for w in ex["words"]],
+                            "rim": color_of(ex["letter"]), "color": INK}
+    return {"lesson": lesson, "number": number, "subtitle": subtitle, "thumb_heading": thumb_heading,
+            "items": [it["text"] for it in items],
             "duration": round(s.t, 3), "scenes": s.scenes, "audio": s.audio, "beats": s.beats,
             "chapters": s.chapters}
 

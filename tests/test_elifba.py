@@ -131,6 +131,25 @@ def test_harekeler_gives_every_letter_fetha_kesra_damme_from_their_own_units():
     assert ep["duration"] <= MAX_SECONDS
 
 
+@NEEDS_AUDIO
+def test_letters_in_words_covers_all_28_in_three_parts_each_under_five_minutes():
+    seen = []
+    for part in ("kelime1", "kelime2", "kelime3"):
+        ep = episode(part)
+        scenes = [s for s in ep["scenes"] if s["type"] == "words"]
+        seen += [s["letter"] for s in scenes]
+        assert all(len(s["words"]) == 3 for s in scenes)
+        assert ep["duration"] <= MAX_SECONDS, part
+    assert seen == c.JE
+    ep = episode("kelime1")
+    ba = next(s for s in ep["scenes"] if s.get("letter") == "ب")
+    assert ba["words"] == ["{ب}عث", "ع{ب}د", "وه{ب}"]          # start, middle, end
+    words = [a["path"] for a in ep["audio"] if "sekilleri" in a["path"]]
+    assert words[3:6] == [f"audio/elifba/harfler/sekilleri/btn_{n}.mp3" for n in (12, 13, 14)]
+    # the letter on its own is named with lesson 1's recording, so alif stays "Elif"
+    assert ep["audio"][1]["path"] == "audio/elifba/harfler/harfler/btn_1.mp3"
+
+
 def test_script_cursor_advances_past_waits():
     s = Script()
     s.wait(1.5)
