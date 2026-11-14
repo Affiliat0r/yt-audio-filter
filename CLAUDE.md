@@ -410,34 +410,49 @@ Setup, secrets, and deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Elif-Ba videos (`elifba/`, branch feat/elif-ba)
 
-A series of YouTube lessons teaching the Arabic letters to **three-year-olds**.
-YouTube videos only — the HTML/JS is a rendering engine, not a web app.
+YouTube videos teaching the Arabic letters to **three-year-olds**. YouTube only —
+the HTML/JS is a rendering engine, not a web app.
 
 ```bash
-python -m elifba.fetch_audio     # Diyanet recordings -> elifba/audio/ (gitignored)
-python -m elifba.render 1        # episode 1 -> output/elifba/elifba_01.mp4
-python -m elifba.render 1 --stills 15,50   # a few PNG frames, to check a look
+python -m elifba.fetch_audio              # Diyanet recordings -> elifba/audio/ (gitignored)
+python -m elifba.render                   # -> output/elifba/elifba_harfler.mp4
+python -m elifba.render --stills 15,50    # a few PNG frames, to check a look
 ```
 
 | File | Role |
 |---|---|
 | `curriculum.py` | Diyanet's 13-unit Elif-Ba course, ported, with the recording for every tile |
-| `storyboard.py` | A letter group -> timed scenes, audio placements, beats (the didactic design) |
+| `storyboard.py` | The alphabet -> timed scenes, audio placements, beats |
 | `engine/` | `seek(t)` draws any frame as a pure function of time |
 | `render.py` | Playwright + system Edge steps frames into NVENC; audio mixed in numpy |
 
-**The only voice is Diyanet's human recordings** (kuran.diyanet.gov.tr/elifba,
-plus Osman Şahin's besmele). No narrator: the user had the Turkish TTS prompts
-removed. Arabic TTS was tested earlier and rejected (Whisper heard بَ بِ بُ as
-unrelated words). Prompts are visual — icons plus a short Turkish label for the
-parent. The user chose Diyanet's audio knowing the rights question; credit
-Diyanet in each video's description.
+**The format the owner settled on** (after seeing richer versions): all 28
+letters in one video, **5 minutes max** (`MAX_SECONDS`, enforced by render.py and
+a test). Each letter: the card appears, its name is said, a pause to say it back,
+the name again, a pause. Then all letters together and "Aferin!". **No prompts**
+("Dinle" / "Sen söyle" were removed), **no quiz** ("no comparison tests between
+letters"), no narrator. Don't add them back without asking.
 
-**No character with a face.** The guide is a kamış kalem (reed pen) and its divit
-(inkwell) — inanimate, and grounded in Alak 96:1-5 ("kalemle öğreten"). It acts
-as a hoca's pointer: taps the letter as it is said, points at each dot *from
-outside it*, lies flat under the letter or row (right to left) during the child's
-turn. It must never cross a glyph or sit on a dot; check stills for that.
+**The only voice is Diyanet's human recordings** (kuran.diyanet.gov.tr/elifba,
+plus Osman Şahin's besmele). Arabic TTS was tested and rejected (Whisper heard
+بَ بِ بُ as unrelated words); Turkish TTS prompts were removed at the owner's
+request. The owner chose Diyanet's audio knowing the rights question; credit
+Diyanet in the description.
+
+**No character with a face.** The companion is a kamış kalem (reed pen) and its
+divit (inkwell) — inanimate, grounded in Alak 96:1-5 ("kalemle öğreten"). It stands
+just outside the card and taps toward the letter as it is named.
+
+**Nothing may sit on or near a letter that a child could read as part of it.**
+Three toddler-perspective reviews found: a bar beside alif read as a second alif;
+number badges beside dots read as extra dots; a pen lying under a letter read as
+a kasra; a ring above a letter read as a cezm; a dark nib beside a dot read as a
+dot. Check stills of anything new near a card.
+
+**U+06EA renders as a hollow dot under the letter in Scheherazade.** In the
+besmele it made الرَّح۪يمِ read as الرَّجيم ("the accursed"). Displayed Arabic
+uses a plain kasra; the curriculum keeps Diyanet's U+06EA as data, so anything
+that later *displays* long-kesra words must check its rendered frames first.
 
 **Network:** Diyanet refuses the sandboxed shell (403). Run `fetch_audio` from
 PowerShell.
@@ -446,25 +461,8 @@ PowerShell.
 the fetha lesson's thick rows skipping a number). `curriculum.py` ports the
 site's helpers one for one; `tests/test_elifba.py` pins them.
 
-**Dots are found, not hand-placed.** The engine draws the letter on a canvas and
-takes the small ink blobs as its dots, splitting touching dots (ث in this font)
-with k-means. **Nothing small and loose may sit near a letter**: a bar beside alif
-read as a second alif, numbered badges beside the dots read as extra dots (ت
-"with four dots"), and star bursts now fly from *behind* the cards. Dots are
-emphasised with soft glows behind them and a spoken count instead.
-
-**U+06EA renders as a hollow dot under the letter in Scheherazade.** In the
-besmele it made الرَّح۪يمِ read as الرَّجيم ("the accursed"). Displayed Arabic
-uses a plain kasra; the curriculum keeps Diyanet's U+06EA as data, so any later
-unit that *displays* long-kesra words must check its rendered frames first.
-
-**The game is won by dots, not colour**: both cards share one neutral ink, rounds
-pair look-alikes (`game_rounds`: ا/ب warm-up, then ب/ت, ت/ث, ث/ت), and the
-correct side follows `SIDES`, not an alternation a child can learn.
-
-**Reviewing a render**: the audience is a three-year-old. Review as the child
-first (can't read, needs repetition, confused by anything that looks like an
-extra symbol), then the parent, then an Elif-Ba teacher.
+**YouTube chapters** need the first at 0:00 and each at least 10 s; the
+storyboard marks one per row of seven letters, and a test holds it to that.
 
 ### Legacy Streamlit UI (superseded)
 

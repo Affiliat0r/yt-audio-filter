@@ -1,7 +1,7 @@
-"""Film an Elif-Ba episode: storyboard -> HTML engine -> frames + mixed audio -> MP4.
+"""Film the Elif-Ba video: storyboard -> HTML engine -> frames + mixed audio -> MP4.
 
-    python -m elifba.render 1                  # episode 1 -> output/elifba/elifba_01.mp4
-    python -m elifba.render 1 --stills 3,20,95 # just a few frames, for checking a look
+    python -m elifba.render                    # -> output/elifba/elifba_harfler.mp4
+    python -m elifba.render --stills 3,20,95   # just a few frames, for checking a look
 
 The page draws any frame on demand (``seek(t)``), so frames are captured one by
 one rather than screen-recorded: no dropped frames, and identical output every
@@ -24,7 +24,7 @@ from typing import List
 
 import numpy as np
 
-from elifba.storyboard import ROOT, SERIES, episode
+from elifba.storyboard import MAX_SECONDS, ROOT, episode
 
 ENGINE = ROOT / "engine" / "index.html"
 OUT_DIR = ROOT.parent / "output" / "elifba"
@@ -160,12 +160,13 @@ def chapters_text(timeline: dict) -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("episode", type=int)
     ap.add_argument("--stills", help="comma-separated times; write PNGs instead of a video")
     args = ap.parse_args()
 
-    tl = episode(args.episode, SERIES[args.episode - 1])
-    name = f"elifba_{args.episode:02d}"
+    tl = episode()
+    if tl["duration"] > MAX_SECONDS:
+        raise SystemExit(f"{tl['duration']:.0f} s is over the {MAX_SECONDS} s limit")
+    name = "elifba_harfler"
     (OUT_DIR / f"{name}.timeline.json").parent.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / f"{name}.timeline.json").write_text(json.dumps(tl, ensure_ascii=False, indent=1), encoding="utf-8")
     if args.stills:

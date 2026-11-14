@@ -55,32 +55,7 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
   position: absolute; border-radius: 50%; border: 10px solid var(--c); pointer-events: none;
 }
 
-/* ---------- dots diagram ---------- */
-.dots-panel {
-  position: absolute; width: 440px; height: 330px; border-radius: 48px;
-  background: rgba(255, 255, 255, .75); box-shadow: 0 16px 34px rgba(120, 80, 30, .12);
-}
-.dots-panel .body { position: absolute; background: var(--c); border-radius: 30px; opacity: .9; }
-.dots-panel .dot {
-  position: absolute; width: 64px; height: 64px; border-radius: 50%; background: var(--c);
-  box-shadow: 0 0 0 10px rgba(255, 255, 255, .9), 0 8px 18px rgba(0, 0, 0, .15);
-}
-.dots-panel .count {
-  position: absolute; left: 0; right: 0; bottom: 22px; text-align: center;
-  font-size: 54px; font-weight: 700; color: var(--c);
-}
-
-/* ---------- cue bubble (icon + one big word) ---------- */
-.bubble {
-  position: absolute; display: flex; align-items: center; gap: 22px;
-  padding: 26px 46px 26px 30px; border-radius: 80px; background: #fff;
-  box-shadow: 0 18px 36px rgba(120, 80, 30, .16);
-  font-size: 70px; font-weight: 800; color: var(--ink); white-space: nowrap;
-}
-.bubble svg { width: 104px; height: 104px; flex: none; }
-.timer { position: absolute; }
-
-/* ---------- mascot ---------- */
+/* ---------- pen and inkwell ---------- */
 #pen { position: absolute; left: 0; top: 0; filter: drop-shadow(10px 14px 10px rgba(90, 55, 20, .22)); }
 #well-back, #well-front { position: absolute; }
 #well-front { filter: drop-shadow(0 12px 14px rgba(20, 30, 70, .25)); }
@@ -104,9 +79,3 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 .chip .glyph { font-size: 160px; padding-bottom: 22px; text-shadow: none; }
 
 .star { position: absolute; width: 70px; height: 70px; }
-.check {
-  position: absolute; width: 130px; height: 130px; border-radius: 50%; background: var(--green);
-  display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 22px rgba(0, 0, 0, .18);
-}
-.progress { position: absolute; left: 0; right: 0; bottom: 34px; display: flex; justify-content: center; gap: 18px; }
-.progress span { width: 54px; height: 14px; border-radius: 7px; background: rgba(0, 0, 0, .12); }

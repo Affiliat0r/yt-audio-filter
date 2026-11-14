@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from elifba import curriculum as c
-from elifba.storyboard import FAMILIES, SERIES, Script, episode
+from elifba.storyboard import HEARINGS, MAX_SECONDS, Script, episode
 
 AUDIO = Path(c.__file__).resolve().parent / "audio"
 
@@ -69,9 +69,12 @@ def test_every_referenced_recording_is_on_disk_or_known_missing():
     assert absent == []
 
 
-@pytest.mark.skipif(not (AUDIO / "quran").exists(), reason="run python -m elifba.fetch_audio first")
-def test_no_two_sounds_overlap_and_scenes_tile_the_episode():
-    ep = episode(1, SERIES[0])
+NEEDS_AUDIO = pytest.mark.skipif(not (AUDIO / "quran").exists(), reason="run python -m elifba.fetch_audio first")
+
+
+@NEEDS_AUDIO
+def test_no_two_sounds_overlap_and_scenes_tile_the_video():
+    ep = episode()
     spans = sorted((a["t"], a["t"] + a["dur"]) for a in ep["audio"])
     for (a0, a1), (b0, _) in zip(spans, spans[1:]):
         assert b0 >= a1 - 1e-3, "two sounds overlap"
@@ -80,41 +83,22 @@ def test_no_two_sounds_overlap_and_scenes_tile_the_episode():
     assert ep["scenes"][-1]["end"] == pytest.approx(ep["duration"], abs=1e-3)
 
 
-@pytest.mark.skipif(not (AUDIO / "quran").exists(), reason="run python -m elifba.fetch_audio first")
-def test_the_game_pairs_look_alike_letters_when_it_can():
-    ep = episode(1, SERIES[0])
-    rounds = [s for s in ep["scenes"] if s["type"] == "game"]
-    for r in rounds:
-        a, b = r["options"]
-        if r["target"] in "بتث":
-            assert any(a in f and b in f for f in FAMILIES)
+@NEEDS_AUDIO
+def test_all_28_letters_in_order_each_named_twice_within_five_minutes():
+    ep = episode()
+    letters = [s["letter"] for s in ep["scenes"] if s["type"] == "letter"]
+    assert letters == c.JE
+    names = [a["path"] for a in ep["audio"] if "harfler/harfler" in a["path"]]
+    assert names == [f"audio/elifba/harfler/harfler/btn_{i}.mp3" for i in range(1, 29) for _ in range(HEARINGS)]
+    assert ep["duration"] <= MAX_SECONDS
 
 
-def test_game_warms_up_then_pairs_each_letter_with_its_nearest_twin():
-    from elifba.storyboard import game_rounds
-
-    # ت against ث (two dots on top vs three) is the contrast that matters most.
-    assert game_rounds(["ا", "ب", "ت", "ث"]) == [("ا", "ب"), ("ب", "ت"), ("ت", "ث"), ("ث", "ت")]
-
-
-def test_a_repeated_pair_swaps_its_cards_and_no_side_runs_three_times():
-    from elifba.storyboard import answer_sides, game_rounds
-
-    for group in SERIES:
-        rounds = game_rounds(group)
-        sides = answer_sides(rounds)
-        layouts = [(t, o) if s == 0 else (o, t) for (t, o), s in zip(rounds, sides)]
-        for i in range(1, len(rounds)):
-            if set(rounds[i]) == set(rounds[i - 1]):
-                assert layouts[i] != layouts[i - 1], f"{group}: same cards in the same places twice"
-        assert all(not (sides[i] == sides[i - 1] == sides[i - 2]) for i in range(2, len(sides))), group
-
-
-def test_every_series_letter_has_a_dots_description():
-    from elifba.storyboard import DOTS
-
-    assert {l for group in SERIES for l in group} == set(c.JE)
-    assert set(DOTS) == set(c.JE)
+@NEEDS_AUDIO
+def test_youtube_chapters_are_at_least_ten_seconds_apart():
+    ep = episode()
+    ts = [ch["t"] for ch in ep["chapters"]] + [ep["duration"]]
+    assert ts[0] == 0
+    assert all(b - a >= 10 for a, b in zip(ts, ts[1:]))
 
 
 def test_script_cursor_advances_past_waits():
