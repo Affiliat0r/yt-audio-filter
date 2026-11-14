@@ -219,10 +219,14 @@
         transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
   }
 
+  // Prompts are drawn in their own layer, above the pen, so the pen can never cut
+  // through a word on its way somewhere.
+  let bubbles = "", sceneOp = 1;
   function bubble(icon, text, x, y, appear, extra = "") {
     const s = lerp(0.6, 1, easeOutBack(appear));
-    return `<div class="bubble" style="left:${x}px;top:${y}px;opacity:${clamp(appear * 1.6)};
-      transform:scale(${s});transform-origin:0 50%">${ICON[icon]}<span>${text}</span>${extra}</div>`;
+    bubbles += `<div class="layer" style="opacity:${sceneOp}"><div class="bubble" style="left:${x}px;top:${y}px;opacity:${clamp(appear * 1.6)};
+      transform:scale(${s});transform-origin:0 50%">${ICON[icon]}<span>${text}</span>${extra}</div></div>`;
+    return "";
   }
 
   const checkBadge = (x, y, k) =>
@@ -401,11 +405,18 @@
     return lerp(CARD.center, CARD.left, easeInOut(prog(t, listen.start - 0.3, listen.start + 0.3)));
   }
 
-  /** How the pen approaches a dot, by where the dot sits on the letter. */
+  /** How the pen approaches a dot, by where the dot sits on the letter. ``via`` are
+   *  waypoints outside the card, so the pen turns only where it cannot lie across
+   *  the letter, and ``away(d)`` is where it waits just beyond the card's edge. */
   function approach(kind) {
-    if (kind === "dots_below_1") return { dx: 0, dy: 1, a: 180 };    // from below, held from beneath
-    if (kind === "dots_mid_1") return { dx: -1, dy: 0, a: -90 };     // from the open side (ج opens left)
-    return { dx: 0.25, dy: -1, a: 22 };                              // from above
+    const W = CARD.w;
+    const belowRight = { x: W + 60, y: W + 110, a: 180, rel: true };
+    if (kind === "dots_below_1")      // from below, held from beneath
+      return { a: 180, via: [belowRight], away: (d) => ({ x: d.x, y: W + 50, a: 180, rel: true }) };
+    if (kind === "dots_mid_1")        // from the open side: ج opens to the left
+      return { a: 270, via: [belowRight, { x: -60, y: W + 110, a: 180, rel: true }, { x: -70, y: W / 2, a: 270, rel: true }],
+               away: (d) => ({ x: -50, y: d.y, a: 270, rel: true }) };
+    return { a: 22, via: [], away: (d) => ({ x: d.x + 40, y: d.y - 150, a: 22, rel: true }) };   // from above
   }
 
   function letterPenKeys(scene, g) {
@@ -418,22 +429,30 @@
     const n = g.dots.length;
     if (n) {
       const ap = approach(scene.dots);
+      const first = beatIn("dot:0", dots.start, dots.end);
+      // on the way in: through the waypoints, ending just beyond the card's edge
+      let tw = first.t - 0.35 - 0.35 * ap.via.length;
+      for (const w of ap.via) { keys.push([tw, w]); tw += 0.35; }
       g.dots.forEach((d, i) => {
         const b = beatIn(`dot:${i}`, dots.start, dots.end);
         if (!b) return;
-        const len = Math.hypot(ap.dx, ap.dy);
-        const ux = ap.dx / len, uy = ap.dy / len;
-        const near = { x: d.x + ux * (d.r * 0.4), y: d.y + uy * (d.r * 0.4), a: ap.a, rel: true };
-        const away = { x: d.x + ux * 150, y: d.y + uy * 150, a: ap.a, rel: true };
-        keys.push([b.t - 0.3, away], [b.t, near], [b.t + 0.12, near], [b.t + 0.5, away]);
+        // the nib comes in along its own axis to the dot, and backs out the same way
+        const rad = (ap.a * Math.PI) / 180;
+        const near = { x: d.x + Math.sin(rad) * d.r * 0.4, y: d.y - Math.cos(rad) * d.r * 0.4, a: ap.a, rel: true };
+        const away = ap.away(d);
+        keys.push([b.t - 0.3, away], [b.t, near], [b.t + 0.12, near], [b.t + 0.45, away]);
       });
       const last = beatIn(`dot:${n - 1}`, dots.start, dots.end);
-      keys.push([(last ? last.t : dots.start) + 1.0, side]);
+      // on the way out: the waypoints in reverse, then back beside the card
+      let to = last.t + 0.6;
+      for (const w of [...ap.via].reverse()) { keys.push([to, w]); to += 0.35; }
+      keys.push([to + 0.35, side]);
     }
     for (const say of phasesOf(scene, "say")) {
       // the child's turn: the pen goes back to its inkwell — the teacher waits
-      keys.push([say.start + 0.1, side], [say.start + 0.6, LIFT], [say.turn + 0.2, HOME]);
-      keys.push([say.end - 0.75, HOME], [say.end - 0.45, LIFT], [say.end + 0.05, side]);
+      const low = { x: CARD.w + 60, y: CARD.w + 150, a: 22, rel: true };   // under the prompt, not through it
+      keys.push([say.start + 0.05, side], [say.start + 0.45, low], [say.turn + 0.2, HOME]);
+      keys.push([say.end - 0.8, HOME], [say.end - 0.4, low], [say.end + 0.05, side]);
     }
     const praise = phasesOf(scene, "praise")[0];
     keys.push([praise.start + 0.5, LIFT], [scene.end - 0.35, LIFT], [scene.end, HOME]);
@@ -486,7 +505,7 @@
       transform:scale(${lerp(0.2, 1, pop) * (1 + 0.035 * e + hop + pulse)});opacity:${clamp(pop * 1.5)}">
       <div style="position:absolute;inset:0;transform-origin:50% ${g.ink.bottom}px;transform:scale(${1 + 0.09 * e})${
         scene.dots === "alif_tall" && ph.kind === "dots"
-          ? ` scaleY(${lerp(0.45, 1, easeOutBack(prog(t, ph.start + 0.25, ph.start + 1.5)))})` : ""}">
+          ? ` scaleY(${1 + 0.1 * Math.sin(Math.PI * easeInOut(prog(t, ph.start + 0.2, ph.start + 1.4)))})` : ""}">
         ${halos}${glyphLayers(g, 700, dotScale)}</div></div>`;
 
     // a green check after each echo: the same mark the game uses later
@@ -520,7 +539,7 @@
   }
 
   // ---------------------------------------------------------------- game
-  const GAME = { W: 540, Y: 210, XS: [330, 1050] };   // the space below belongs to the pointer
+  const GAME = { W: 540, Y: 240, XS: [330, 1050] };   // the space below belongs to the pointer
   /** Pointing up at a card from beneath it: nib just under its bottom edge, body below. */
   const fromBelow = (x, bottom) => ({ x, y: bottom + 26, a: 180 });
 
@@ -576,7 +595,7 @@
     const askK = prog(t, scene.start + 0.5, scene.start + 0.9);
     if (t < reveal.start) {
       const extra = t >= think.start
-        ? `<div style="position:relative;width:150px;height:150px;margin-left:6px">${timerRing(t, think.start, think.end, 150, "#8E44AD")}</div>` : "";
+        ? `<div style="position:relative;width:120px;height:120px;margin-left:6px">${timerRing(t, think.start, think.end, 120, "#8E44AD")}</div>` : "";
       html += bubble("question", label("which"), 640, 26, askK, extra);
     } else if (scene.round === scene.rounds) {
       html += bubble("star", label("praise"), 760, 26, prog(t, reveal.start + 0.6, reveal.start + 1.0));
@@ -602,17 +621,18 @@
     const { S, y, xs } = recapLayout(scene);
     const at = (i) => fromBelow(xs[i] + S / 2, y + S);
     const keys = [[scene.start, HOME], [scene.start + 0.5, LIFT]];
-    for (const p of scene.phases) {
-      if (p.index === undefined) continue;
-      keys.push([p.start, at(p.index)], [p.end - 0.05, at(p.index)]);
-    }
-    keys.push([scene.end - 0.5, keys[keys.length - 1][1]], [scene.end, HOME]);
+    for (const p of phasesOf(scene, "model")) keys.push([p.start, at(p.index)], [p.end - 0.05, at(p.index)]);
+    // the child's turns: the pen goes home and waits, as in the lessons
+    const yt = phasesOf(scene, "your-turn")[0];
+    keys.push([yt.start + 0.7, HOME]);
     return keys.sort((a, b) => a[0] - b[0]);
   }
 
   function drawRecap(scene, t) {
     const { S, y, xs } = recapLayout(scene);
     const ph = phaseAt(scene, t);
+    const yt = phasesOf(scene, "your-turn")[0];
+    const turnK = yt ? Math.min(easeOutCubic(prog(t, yt.start, yt.start + 0.5)), 1 - easeInOut(prog(t, scene.end - 0.4, scene.end))) : 0;
     let html = "";
     scene.letters.forEach((l, i) => {
       const x = xs[i];
@@ -620,18 +640,25 @@
       const active = ph && ph.index === i;
       const e = env(`recap:${i}`, t);
       const lift = active ? -22 : 0;
+      const pulse = active && ph.kind === "turn" ? 0.04 * Math.sin(2 * Math.PI * 1.3 * (t - ph.start)) : 0;
       html += rings(t, `recap:${i}`, x + S / 2, y + S / 2, S / 2 + 10, scene.colors[i]);
       html += `<div class="chip" style="--c:${scene.colors[i]};left:${x}px;top:${y + lift}px;width:${S}px;height:${S}px;
-        transform:scale(${lerp(0.2, 1, pop) * (1 + 0.06 * e + (active ? 0.08 : 0))});
+        transform:scale(${lerp(0.2, 1, pop) * (1 + 0.06 * e + (active ? 0.08 : 0) + pulse)});
         opacity:${clamp(pop * 1.5) * (ph && ph.index !== undefined && !active ? 0.5 : 1)}">
         <div class="glyph" style="font-size:${S * 0.7}px">${l}</div></div>`;
-      if (active && ph.kind === "turn") {
-        html += `<div style="position:absolute;left:${x + S / 2 - 75}px;top:${y - 190}px;width:150px;height:150px">
-          ${timerRing(t, ph.start, ph.end, 150, scene.colors[i])}</div>`;
+      if (active && turnK > 0) {   // the letter to read gets the light
+        html = `<div style="position:absolute;left:${x + S / 2 - 330}px;top:${y + S / 2 - 330}px;width:660px;height:660px;border-radius:50%;
+          background:radial-gradient(circle, rgba(255,226,160,${0.8 * turnK}) 0%, rgba(255,226,160,0) 62%)"></div>` + html;
       }
     });
-    if (ph && ph.kind === "intro") html += bubble("speaker", label("listen"), 780, 70, prog(t, ph.start, ph.start + 0.4));
-    if (ph && ph.kind === "your-turn") html += bubble("ear", label("say"), 740, 70, prog(t, ph.start, ph.start + 0.4));
+    if (turnK > 0) html = `<div style="position:absolute;inset:0;background:rgba(70,45,20,${0.12 * turnK})"></div>` + html;
+    if (ph && ph.kind === "intro") bubble("speaker", label("listen"), 780, 60, prog(t, ph.start, ph.start + 0.4));
+    if (yt && t >= yt.start) {
+      // the ring lives in the prompt, never above a letter (a circle there is a cezm)
+      const ring = ph && ph.kind === "turn" ? timerRing(t, ph.start, ph.end, 120, scene.colors[ph.index]) : "";
+      bubble("ear", label("say"), 700, 40, prog(t, yt.start, yt.start + 0.4),
+        `<div style="position:relative;width:120px;height:120px;margin-left:6px">${ring}</div>`);
+    }
     scene._pen ||= recapPenKeys(scene);
     const k = ph && ph.index !== undefined ? tap(t, `recap:${ph.index}`) : 0;
     drawPen(t, track(t, scene._pen), k);
@@ -711,6 +738,7 @@
   window.seek = function seek(t) {
     drawBackground(t);
     fxLayer.innerHTML = "";
+    bubbles = "";
     let html = "";
     for (const scene of TL.scenes) {
       if (t < scene.start - 0.001 || t >= scene.end) continue;
@@ -723,11 +751,13 @@
       penOpacity = scene.type === "besmele" ? 0
         : scene.type === "title" ? easeInOut(prog(t, scene.start, scene.start + 0.6))
         : scene.type === "outro" ? op : 1;
+      sceneOp = op;
       const inner = DRAW[scene.type](scene, t);
       html += `<div class="layer" style="opacity:${op}">${inner}</div>`;
       fxLayer.style.opacity = op;
     }
     scenesLayer.innerHTML = html;
+    $("#overlay").innerHTML = bubbles;
   };
 
   window.__duration = TL.duration;

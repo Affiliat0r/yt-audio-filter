@@ -97,6 +97,19 @@ def test_game_warms_up_then_pairs_each_letter_with_its_nearest_twin():
     assert game_rounds(["ا", "ب", "ت", "ث"]) == [("ا", "ب"), ("ب", "ت"), ("ت", "ث"), ("ث", "ت")]
 
 
+def test_a_repeated_pair_swaps_its_cards_and_no_side_runs_three_times():
+    from elifba.storyboard import answer_sides, game_rounds
+
+    for group in SERIES:
+        rounds = game_rounds(group)
+        sides = answer_sides(rounds)
+        layouts = [(t, o) if s == 0 else (o, t) for (t, o), s in zip(rounds, sides)]
+        for i in range(1, len(rounds)):
+            if set(rounds[i]) == set(rounds[i - 1]):
+                assert layouts[i] != layouts[i - 1], f"{group}: same cards in the same places twice"
+        assert all(not (sides[i] == sides[i - 1] == sides[i - 2]) for i in range(2, len(sides))), group
+
+
 def test_every_series_letter_has_a_dots_description():
     from elifba.storyboard import DOTS
 

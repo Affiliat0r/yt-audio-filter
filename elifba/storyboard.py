@@ -83,8 +83,22 @@ PALETTE = ["#E4572E", "#1C7CB8", "#2A9D5B", "#8E44AD", "#E08E0B", "#C2185B", "#0
 #: Diyanet's (and the printed Elif-Ba's) heavy letters, marked with a red rim.
 HEAVY = set("خصضطظغق")
 
-#: Which side the right answer is on, round by round: not a pattern a child can learn.
-SIDES = [1, 0, 0, 1, 0, 1, 1, 0]
+def answer_sides(rounds: Sequence[tuple]) -> List[int]:
+    """Which side (0 left, 1 right) each round's answer goes on.
+
+    Two goals that pull against each other: a pair that comes straight back
+    (ت/ث then ث/ت) must swap its cards, so the child looks at the dots and not at
+    the place — which keeps the answer on the same side; and the answer must not
+    sit on one side long enough to become the rule. So: alternate, except that a
+    repeated pair repeats the side. No side ever comes up more than twice in a row.
+    """
+    sides: List[int] = []
+    for i, (target, other) in enumerate(rounds):
+        if i and {target, other} == set(rounds[i - 1]):
+            sides.append(sides[-1])
+        else:
+            sides.append(1 - sides[-1] if sides else 1)
+    return sides
 
 
 def name_sound(letter: str) -> Path:
@@ -221,8 +235,9 @@ def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
 def game(s: Script, letters: Sequence[str]) -> None:
     s.chapters.append({"t": round(s.t, 3), "title": "Hangisi?"})
     rounds = game_rounds(letters)
+    sides = answer_sides(rounds)
     for i, (target, other) in enumerate(rounds):
-        options = [target, other] if SIDES[i % len(SIDES)] == 0 else [other, target]
+        options = [target, other] if sides[i] == 0 else [other, target]
         scene = s.open_scene("game", options=options, target=target, dots=[DOTS[o] for o in options],
                              round=i + 1, rounds=len(rounds))
         start = s.t
