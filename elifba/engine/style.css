@@ -1,5 +1,5 @@
 @font-face { font-family: "Scheherazade"; src: url("fonts/ScheherazadeNew-Bold.ttf") format("truetype"); font-weight: 700; }
-@font-face { font-family: "Fredoka"; src: url("fonts/Fredoka.ttf") format("truetype"); font-weight: 300 700; }
+@font-face { font-family: "Nunito"; src: url("fonts/Nunito.ttf") format("truetype"); font-weight: 200 1000; }
 
 :root {
   --cream: #FFF8EC;
@@ -18,7 +18,7 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
 #stage {
   position: relative; width: 1920px; height: 1080px; overflow: hidden;
-  font-family: "Fredoka", system-ui, sans-serif; color: var(--ink);
+  font-family: "Nunito", system-ui, sans-serif; color: var(--ink);
   background: linear-gradient(160deg, var(--sky-1) 0%, #FFEFD9 45%, var(--sky-2) 100%);
 }
 
@@ -75,7 +75,7 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
   position: absolute; display: flex; align-items: center; gap: 22px;
   padding: 26px 46px 26px 30px; border-radius: 80px; background: #fff;
   box-shadow: 0 18px 36px rgba(120, 80, 30, .16);
-  font-size: 72px; font-weight: 600; color: var(--ink); white-space: nowrap;
+  font-size: 70px; font-weight: 800; color: var(--ink); white-space: nowrap;
 }
 .bubble svg { width: 104px; height: 104px; flex: none; }
 .timer { position: absolute; }
@@ -84,7 +84,7 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 #mascot { position: absolute; left: 0; top: 0; width: 330px; height: 330px; transform-origin: 50% 100%; }
 
 /* ---------- title / besmele / outro ---------- */
-.big-title { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; color: var(--ink); }
+.big-title { position: absolute; left: 0; right: 0; text-align: center; font-weight: 900; color: var(--ink); }
 .besmele {
   position: absolute; left: 0; right: 0; top: 330px; text-align: center; direction: rtl;
   font-family: "Scheherazade", serif; font-size: 128px; color: #7A4E12;

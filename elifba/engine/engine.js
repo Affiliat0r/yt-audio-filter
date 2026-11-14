@@ -74,10 +74,15 @@
   const STAR_PATH = "M50 6l13 28 30 3-23 20 7 30-27-16-27 16 7-30-23-20 30-3z";
   const CHECK = `<svg viewBox="0 0 100 100" width="84" height="84"><path d="M24 52l17 17 36-38" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-  const cueText = (key) => {
-    const s = (TL.cues[key] || "").replace(/^Şimdi /, "");
-    return s.charAt(0).toLocaleUpperCase("tr") + s.slice(1);
-  };
+  const cueText = (key) => TL.cues[key] || "";
+
+  // When the Turkish voice speaks, the mascot's mouth moves with it.
+  const cueSpans = TL.audio.filter((a) => a.kind === "cue").map((a) => [a.t, a.t + a.dur]);
+  function talking(t) {
+    for (const [a, b] of cueSpans) if (t >= a && t < b) return clamp((t - a) / 0.05) * clamp((b - t) / 0.08);
+    return 0;
+  }
+  let sceneOpacity = 1;   // the mascot fades with the scene that owns it
 
   // ---------------------------------------------------------------- background
   const BLOBS = [
@@ -135,6 +140,7 @@
    * (x, y) is the top-left of its 260px box.
    */
   function drawMascot(t, state, x, y, opacity = 1, look = [0, 0]) {
+    opacity *= sceneOpacity;
     mascotEl.style.opacity = opacity;
     if (opacity <= 0.001) return;
     let bob = Math.sin(t * 2.4) * 6, tilt = 0, jump = 0, squash = 1;
@@ -155,6 +161,14 @@
       armL = -70; armR = 70; mouth = "grin";
     }
     if (state === "think") { lx = Math.sin(t * 2.2) * 7; ly = -5; mouth = "o"; tilt = Math.sin(t * 1.4) * 4; }
+    if (state === "point") {          // looks and points from one card to the other
+      const side = Math.sin(t * 1.6);
+      lx = -9 * side; ly = -3;
+      armL = 40 + 50 * Math.max(0, side); armLy = -20 * Math.max(0, side);
+      armR = -40 - 50 * Math.max(0, -side);
+      tilt = 4 * side;
+    }
+    if (state === "no") { tilt = Math.sin(t * 7) * 9; mouth = "calm"; }
     if (state === "calm") { mouth = "calm"; bob *= 0.5; }
 
     // blink every ~3.6 s, deterministic
@@ -165,8 +179,15 @@
     M("#m-pupilR").setAttribute("cx", 160 + lx); M("#m-pupilR").setAttribute("cy", 130 + ly);
     M("#m-glintL").setAttribute("cx", 108 + lx); M("#m-glintL").setAttribute("cy", 125 + ly);
     M("#m-glintR").setAttribute("cx", 164 + lx); M("#m-glintR").setAttribute("cy", 125 + ly);
-    M("#m-mouth").setAttribute("d", MOUTH[mouth]);
-    M("#m-mouth").setAttribute("fill", mouth === "smile" || mouth === "calm" ? "none" : "#7A2E00");
+    const talk = state === "happy" ? 0 : talking(t);
+    if (talk > 0) {
+      const h = 8 + 26 * talk * (0.45 + 0.55 * Math.abs(Math.sin(t * 17)));
+      M("#m-mouth").setAttribute("d", `M110 168 Q130 ${172 + h} 150 168 Q130 176 110 168 Z`);
+      M("#m-mouth").setAttribute("fill", "#7A2E00");
+    } else {
+      M("#m-mouth").setAttribute("d", MOUTH[mouth]);
+      M("#m-mouth").setAttribute("fill", mouth === "smile" || mouth === "calm" ? "none" : "#7A2E00");
+    }
     M("#m-armL").setAttribute("transform", `translate(0 ${armLy}) rotate(${armL} 42 140)`);
     M("#m-armR").setAttribute("transform", `rotate(${armR} 218 140)`);
     mascotEl.style.transform =
@@ -319,67 +340,58 @@
     return groups.filter((g) => g.length);
   }
 
-  /** Highlights drawn on the big letter during the "dots" phase. Coordinates are card-local. */
-  function dotHighlights(t, phase, scene, g) {
-    let html = "";
-    const k0 = phase.start + 0.3;
-    if (scene.dots === "alif_tall") return "";   // alif itself springs upright; see glyphTransform
-    if (scene.dots === "dots_none") {
-      const k = easeOutCubic(prog(t, k0, k0 + 0.5));
-      const cx = (g.ink.left + g.ink.right) / 2, cy = g.ink.top - 40;
-      html += `<div style="position:absolute;left:${cx - 40}px;top:${cy - 40}px;width:80px;height:80px;border-radius:50%;
-        border:7px dashed #B9B2A6;opacity:${0.8 * k};transform:rotate(${t * 40}deg)"></div>`;
-      return html;
-    }
-    // badges point away from the dots' own centre (or, for a lone dot, from the letter's)
-    const n = g.dots.length;
-    const ox = n > 1 ? g.dots.reduce((s, d) => s + d.x, 0) / n : (g.ink.left + g.ink.right) / 2;
-    const oy = n > 1 ? g.dots.reduce((s, d) => s + d.y, 0) / n : (g.ink.top + g.ink.bottom) / 2;
-    g.dots.forEach((d, i) => {
-      const a = k0 + i * 0.55;
-      const k = easeOutBack(prog(t, a, a + 0.4));
-      const pulse = 1 + 0.07 * Math.sin((t - a) * 7);
-      const r = Math.max(d.r * 1.45, 30) * pulse;
-      html += `<div style="position:absolute;left:${d.x - r}px;top:${d.y - r}px;width:${2 * r}px;height:${2 * r}px;
-        border-radius:50%;border:7px solid #F5B800;background:rgba(245,184,0,.14);
-        transform:scale(${k});opacity:${clamp(k * 2)}"></div>`;
-      let vx = d.x - ox, vy = d.y - oy;
-      const len = Math.hypot(vx, vy) || 1;
-      if (n > 1 && len < 4) { vx = 0; vy = -1; } else { vx /= len; vy /= len; }
-      const bx = d.x + vx * (r + 44), by = d.y + vy * (r + 44);
-      html += `<div style="position:absolute;left:${bx - 30}px;top:${by - 30}px;width:60px;height:60px;border-radius:50%;
-        background:#F5B800;color:#fff;font:700 40px Fredoka;display:flex;align-items:center;justify-content:center;
-        transform:scale(${k});box-shadow:0 6px 12px rgba(0,0,0,.15)">${i + 1}</div>`;
-    });
-    return html;
+  /** Soft glows *behind* the real dots — never a shape of their own that could be
+   *  counted as one more dot. ``strength(i)`` (0..1) drives each glow. */
+  function dotHalos(g, strength) {
+    return g.dots.map((d, i) => {
+      const s = strength(i);
+      if (s <= 0.001) return "";
+      const r = Math.max(d.r * 2.6, 54) * (0.85 + 0.3 * s);
+      return `<div style="position:absolute;left:${d.x - r}px;top:${d.y - r}px;width:${2 * r}px;height:${2 * r}px;
+        border-radius:50%;background:radial-gradient(circle, rgba(255,196,0,${0.8 * s}) 0%,
+        rgba(255,196,0,${0.38 * s}) 42%, rgba(255,196,0,0) 72%)"></div>`;
+    }).join("");
+  }
+
+  /** The beat on ``target`` that starts inside [a, b), or null. */
+  function beatIn(target, a, b) {
+    return (beatsByTarget[target] || []).find((x) => x.t >= a && x.t < b) || null;
   }
 
   // ---------------------------------------------------------------- scenes
   const CARD = { x: 230, y: 180, w: 700 };
+  const NEUTRAL_INK = "#3A3550", NEUTRAL_RIM = "#D3C4A9";
 
   function drawLetter(scene, t) {
     const ph = phaseAt(scene, t) || scene.phases[scene.phases.length - 1];
     const pop = easeOutBack(prog(t, scene.start, scene.start + 0.7));
     const e = env("letter", t);
     const breathe = ph.kind === "turn" || (ph.kind === "say" && t >= ph.turn) ? 0.03 * Math.sin(t * 4) : 0;
-    const wiggle = ph.kind === "dots" ? Math.sin(t * 10) * 2.5 * (1 - prog(t, ph.start, ph.end)) : 0;
     const cx = CARD.x + CARD.w / 2, cy = CARD.y + CARD.w / 2;
 
     const g = glyphImage(scene.letter, scene.color, 700, 430, DOT_COUNT[scene.dots] || 0);
-    const hi = ph.kind === "dots" ? dotHighlights(t, ph, scene, g) : "";
+    let halos = "";
+    if (ph.kind === "dots") {
+      // each dot lights up as it is counted ("Bir! İki! Üç!") and stays softly lit
+      halos = dotHalos(g, (i) => {
+        const b = beatIn(`dot:${i}`, ph.start, ph.end);
+        if (!b || t < b.t) return 0;
+        return Math.max(0.45, env(`dot:${i}`, t));
+      });
+    }
     let html = rings(t, "letter", cx, cy, 330, scene.color);
     html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.color};left:${CARD.x}px;top:${CARD.y}px;
-      transform:scale(${lerp(0.2, 1, pop) * (1 + 0.035 * e)}) rotate(${wiggle}deg);opacity:${clamp(pop * 1.5)}">
+      transform:scale(${lerp(0.2, 1, pop) * (1 + 0.035 * e)});opacity:${clamp(pop * 1.5)}">
       <div style="position:absolute;inset:0;transform-origin:50% ${g.ink.bottom}px;transform:scale(${1 + 0.09 * e + breathe})${
         scene.dots === "alif_tall" && ph.kind === "dots"
           ? ` scaleY(${lerp(0.45, 1, easeOutBack(prog(t, ph.start + 0.25, ph.start + 1.25)))})` : ""}">
-        <img src="${g.url}" style="position:absolute;inset:0;width:700px;height:700px">${hi}</div></div>`;
+        ${halos}<img src="${g.url}" style="position:absolute;inset:0;width:700px;height:700px"></div></div>`;
 
     const bx = 1080, byy = 560;
     let state = "idle", look = [-6, 0];
     if (ph.kind === "meet") { state = "wave"; }
     if (ph.kind === "dots") {
-      state = "look"; look = [-8, -4];
+      state = scene.dots === "dots_none" ? "no" : "look"; look = [-8, -4];
     } else if (["listen", "echo"].includes(ph.kind)) {
       html += bubble("ear", cueText("listen"), bx, byy, prog(t, ph.start, ph.start + 0.4));
       state = "listen";
@@ -389,7 +401,7 @@
       const sayPhase = says.find((p) => t >= p.start && t < p.end) || says[0];
       const text = cueText(says.indexOf(sayPhase) === 1 ? "say_again" : "say");
       const ring = t >= sayPhase.turn ? timerRing(t, sayPhase.turn, sayPhase.end, 150, scene.color) : "";
-      html += bubble("talk", text, bx, byy, prog(t, sayPhase.start, sayPhase.start + 0.4),
+      html += bubble("talk", text, 1010, byy, prog(t, sayPhase.start, sayPhase.start + 0.4),
         `<div style="position:relative;width:150px;height:150px;margin-left:6px">${ring}</div>`);
       state = "encourage";
     } else if (ph.kind === "praise") {
@@ -413,7 +425,7 @@
     scene.options.forEach((opt, i) => {
       const isTarget = opt === scene.target;
       const pop = easeOutBack(prog(t, scene.start + i * 0.15, scene.start + 0.6 + i * 0.15));
-      const wob = ph.kind === "think" ? Math.sin(t * 5 + i * Math.PI) * 3 : 0;
+      const wob = ph.kind === "think" ? Math.sin(t * 5 + i * Math.PI) * 2.5 : 0;
       let scale = lerp(0.2, 1, pop), op = clamp(pop * 1.5), glow = "";
       if (t >= reveal.start) {
         if (isTarget) { scale *= 1 + 0.1 * rk; glow = `, 0 0 0 26px rgba(47,168,102,${0.35 * clamp(rk)})`; }
@@ -421,11 +433,19 @@
       }
       const e = isTarget ? env("answer", t) : 0;
       const cx = XS[i] + W / 2, cy = Y + W / 2;
+      // same neutral ink on both cards: only the dots can tell them apart
+      const g = glyphImage(opt, NEUTRAL_INK, W, 330, DOT_COUNT[scene.dots[i]] || 0);
+      let halos = "";
+      if (isTarget && t >= reveal.start) {
+        const b = beatIn("reveal-dots", reveal.start, reveal.end);
+        if (b && t >= b.t) halos = dotHalos(g, () => Math.max(0.5, env("reveal-dots", t)));
+      }
       if (isTarget) html += rings(t, "answer", cx, cy, 250, "#2FA866");
-      html += `<div class="card" style="--c:${scene.colors[i]};left:${XS[i]}px;top:${Y}px;width:${W}px;height:${W}px;
-        border-radius:80px;transform:scale(${scale}) rotate(${wob}deg);opacity:${op};
+      html += `<div class="card" style="--c:${t >= reveal.start && isTarget ? "#2FA866" : NEUTRAL_RIM};left:${XS[i]}px;top:${Y}px;
+        width:${W}px;height:${W}px;border-radius:80px;transform:scale(${scale}) rotate(${wob}deg);opacity:${op};
         box-shadow:0 26px 50px rgba(120,80,30,.18), inset 0 0 0 14px var(--c)${glow}">
-        <div class="glyph" style="font-size:360px;padding-bottom:46px;transform:scale(${1 + 0.08 * e})">${opt}</div></div>`;
+        <div style="position:absolute;inset:0;transform:scale(${1 + 0.08 * e})">${halos}
+          <img src="${g.url}" style="position:absolute;inset:0;width:${W}px;height:${W}px"></div></div>`;
       if (isTarget && t >= reveal.start) {
         html += `<div class="check" style="left:${XS[i] + W - 100}px;top:${Y - 30}px;transform:scale(${rk})">${CHECK}</div>`;
         fxLayer.innerHTML += stars(t, reveal.start + 0.1, cx, cy, 12, 420);
@@ -436,11 +456,11 @@
     if (t >= think.start && t < reveal.start) {
       extra = `<div style="position:relative;width:150px;height:150px;margin-left:6px">${timerRing(t, think.start, think.end, 150, "#8E44AD")}</div>`;
     }
-    if (t < reveal.start) html += bubble("question", cueText("which"), 760, 790, askK, extra);
+    if (t < reveal.start) html += bubble("question", cueText("which_show"), 560, 790, askK, extra);
     else html += bubble("star", cueText("this_one"), 790, 790, prog(t, reveal.start, reveal.start + 0.4));
     html += `<div class="progress">${Array.from({ length: scene.rounds }, (_, i) =>
       `<span style="${i < scene.round ? "background:#8E44AD" : ""}"></span>`).join("")}</div>`;
-    const state = t >= reveal.start ? "happy" : ph.kind === "think" ? "think" : "listen";
+    const state = t >= reveal.start ? "happy" : "point";
     drawMascot(t, state, 1560, 700);
     return html;
   }
@@ -468,7 +488,7 @@
       }
     });
     let state = "idle";
-    if (ph && ph.kind === "intro") { html += bubble("star", cueText("recap"), 560, 780, prog(t, ph.start, ph.start + 0.4)); state = "wave"; }
+    if (ph && ph.kind === "intro") { html += bubble("ear", cueText("first_listen"), 700, 780, prog(t, ph.start, ph.start + 0.4)); state = "listen"; }
     if (ph && ph.kind === "your-turn") { html += bubble("talk", cueText("say"), 700, 780, prog(t, ph.start, ph.start + 0.4)); state = "encourage"; }
     if (ph && ph.kind === "turn") state = "encourage";
     if (ph && (ph.kind === "model" || ph.kind === "echo")) state = "listen";
@@ -504,7 +524,7 @@
     const k = easeInOut(prog(t, scene.start + 0.1, scene.start + 1.4));
     drawMascot(t, "calm", 1600, 780, 0);
     return `<div class="frame" style="opacity:${k}"></div>
-      <div class="besmele" style="opacity:${k};transform:translateY(${(1 - k) * 20}px)">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّح۪يمِ</div>
+      <div class="besmele" style="opacity:${k};transform:translateY(${(1 - k) * 20}px)">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ</div>
       <div class="big-title" style="top:650px;font-size:46px;font-weight:500;color:#8A6A3A;opacity:${k * 0.9}">
         Bismillâhirrahmânirrahîm</div>`;
   }
@@ -515,25 +535,28 @@
     html += chipsRow(scene, t, 470, 220, true);
     fxLayer.innerHTML += stars(t, scene.start + 0.2, 960, 240, 16, 700);
     fxLayer.innerHTML += stars(t, scene.start + 1.6, 960, 240, 16, 700);
-    drawMascot(t, "happy", 795, 690);
+    const settle = (scene.phases || []).find((p) => p.kind === "settle");
+    drawMascot(t, settle && t >= settle.start ? "wave" : "happy", 795, 690);
     return html;
   }
 
   const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, game: drawGame, recap: drawRecap, outro: drawOutro };
 
   // ---------------------------------------------------------------- frame
-  const FADE = 0.35;
   window.seek = function seek(t) {
     drawBackground(t);
     fxLayer.innerHTML = "";
     let html = "";
     let any = false;
     for (const scene of TL.scenes) {
-      if (t < scene.start - 0.001 || t >= scene.end + FADE) continue;
-      // A scene owns the frame until the next starts; it fades out over FADE after its end.
-      const op = t < scene.end ? 1 : 1 - easeInOut(prog(t, scene.end, scene.end + FADE));
+      if (t < scene.start - 0.001 || t >= scene.end) continue;
+      // One scene at a time: it fades out over its own last moments, and the next
+      // grows in after it has gone — never one letter on top of another.
+      const fade = scene.type === "outro" ? 1.2 : 0.3;
+      sceneOpacity = 1 - easeInOut(prog(t, scene.end - fade, scene.end));
       const inner = DRAW[scene.type](scene, t);
-      html += `<div class="layer" style="opacity:${op}">${inner}</div>`;
+      html += `<div class="layer" style="opacity:${sceneOpacity}">${inner}</div>`;
+      fxLayer.style.opacity = sceneOpacity;
       any = true;
     }
     if (!any) drawMascot(t, "idle", 1600, 780, 0);
@@ -542,5 +565,5 @@
 
   window.__duration = TL.duration;
   window.__ready = document.fonts.ready.then(() =>
-    Promise.all([document.fonts.load('700 100px "Scheherazade"', "ب"), document.fonts.load('600 60px "Fredoka"', "A")]));
+    Promise.all([document.fonts.load('700 100px "Scheherazade"', "ب"), document.fonts.load('800 60px "Nunito"', "Şş")]));
 })();

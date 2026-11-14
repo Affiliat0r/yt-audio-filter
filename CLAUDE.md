@@ -442,8 +442,23 @@ site's helpers one for one; `tests/test_elifba.py` pins them.
 
 **Dots are found, not hand-placed.** The engine draws the letter on a canvas and
 takes the small ink blobs as its dots, splitting touching dots (ث in this font)
-with k-means. Do not add strokes beside a letter as decoration: a bar next to
-alif reads as a second alif.
+with k-means. **Nothing small and loose may sit near a letter**: a bar beside alif
+read as a second alif, numbered badges beside the dots read as extra dots (ت
+"with four dots"), and star bursts now fly from *behind* the cards. Dots are
+emphasised with soft glows behind them and a spoken count instead.
+
+**U+06EA renders as a hollow dot under the letter in Scheherazade.** In the
+besmele it made الرَّح۪يمِ read as الرَّجيم ("the accursed"). Displayed Arabic
+uses a plain kasra; the curriculum keeps Diyanet's U+06EA as data, so any later
+unit that *displays* long-kesra words must check its rendered frames first.
+
+**The game is won by dots, not colour**: both cards share one neutral ink, rounds
+pair look-alikes (`game_rounds`: ا/ب warm-up, then ب/ت, ت/ث, ث/ت), and the
+correct side follows `SIDES`, not an alternation a child can learn.
+
+**Reviewing a render**: the audience is a three-year-old. Review as the child
+first (can't read, needs repetition, confused by anything that looks like an
+extra symbol), then the parent, then an Elif-Ba teacher.
 
 ### Legacy Streamlit UI (superseded)
 

@@ -90,6 +90,13 @@ def test_the_game_pairs_look_alike_letters_when_it_can():
             assert any(a in f and b in f for f in FAMILIES)
 
 
+def test_game_warms_up_then_pairs_each_letter_with_its_nearest_twin():
+    from elifba.storyboard import game_rounds
+
+    # ت against ث (two dots on top vs three) is the contrast that matters most.
+    assert game_rounds(["ا", "ب", "ت", "ث"]) == [("ا", "ب"), ("ب", "ت"), ("ت", "ث"), ("ث", "ت")]
+
+
 def test_every_series_letter_has_a_dots_description():
     from elifba.storyboard import DOTS
 

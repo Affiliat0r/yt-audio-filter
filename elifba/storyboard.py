@@ -33,8 +33,16 @@ AUDIO = ROOT / "audio"
 BESMELE = AUDIO / "quran" / "besmele_osmansahin.mp3"
 
 GAP = 0.35          # breath between two sounds
-CHILD_TURN = 2.6    # minimum silent turn for the child to answer
-THINK = 3.2         # silent time to pick in the game
+FIRST_TURN = 3.8    # the child's first go at a new letter: toddlers take ~1 s to start
+CHILD_TURN = 3.2    # later turns
+RECAP_TURN = 3.0
+THINK = 4.0         # silent time to point at a card in the game
+
+#: How many dots each description counts out.
+DOT_COUNT = {"dots_below_1": 1, "dots_above_1": 1, "dots_mid_1": 1, "dots_above_2": 2, "dots_above_3": 3}
+
+#: Which side the right answer is on, round by round: not a pattern a child can learn.
+SIDES = [1, 0, 0, 1, 0, 1, 1, 0]
 
 #: What to say about each letter's dots ("noktası"), a cue key from voice.CUES.
 DOTS = {
@@ -125,13 +133,27 @@ class Script:
 
 
 def _partner(letter: str, pool: Sequence[str]) -> str:
-    """The letter in ``pool`` most easily confused with ``letter``."""
-    for fam in FAMILIES:
-        if letter in fam:
-            for other in pool:
-                if other != letter and other in fam:
-                    return other
-    return next(o for o in pool if o != letter)
+    """The letter in ``pool`` most easily confused with ``letter``.
+
+    A look-alike from the same shape family, preferring the *next* one in the
+    group (so ب/ت, then ت/ث — the hardest pair, two dots against three), else
+    the previous one. A letter with no look-alike is paired with its neighbour.
+    """
+    i = list(pool).index(letter)
+    fam = next((f for f in FAMILIES if letter in f), set())
+    after = [o for o in pool[i + 1:] if o in fam]
+    before = [o for o in reversed(pool[:i]) if o in fam]
+    if after or before:
+        return (after or before)[0]
+    return pool[i + 1] if i + 1 < len(pool) else pool[i - 1]
+
+
+def game_rounds(letters: Sequence[str]) -> List[tuple]:
+    """(target, distractor) per round: a warm-up with a letter that has no
+    look-alike first, then each look-alike against its nearest twin."""
+    plain = [l for l in letters if not any(l in f for f in FAMILIES)]
+    rest = [l for l in letters if l not in plain]
+    return [(t, _partner(t, letters)) for t in plain + rest]
 
 
 def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
@@ -148,7 +170,11 @@ def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
 
     start = s.t
     s.cue(DOTS[letter])
-    s.wait(0.8)
+    s.wait(0.3)
+    for i in range(DOT_COUNT.get(DOTS[letter], 0)):   # "Bir! ... İki! ... Üç!", each dot lit as it is counted
+        s.play(cue_path(f"count_{i + 1}"), target=f"dot:{i}", kind="cue")
+        s.wait(0.45)
+    s.wait(0.5)
     s.phase(scene, "dots", start)
 
     start = s.t
@@ -159,12 +185,12 @@ def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
         s.wait(0.55)
     s.phase(scene, "listen", start)
 
-    for say_cue in ("say", "say_again"):
+    for say_cue, turn_len in (("say", FIRST_TURN), ("say_again", CHILD_TURN)):
         start = s.t
         s.cue(say_cue)
         s.wait(GAP)
         turn = s.t
-        s.wait(max(CHILD_TURN, duration(sound) + 1.6))
+        s.wait(max(turn_len, duration(sound) + 1.6))
         s.phase(scene, "turn", turn)
         s.phase(scene, "say", start, turn=round(turn, 3))
         start = s.t
@@ -181,17 +207,17 @@ def letter_segment(s: Script, letter: str, color: str, number: int) -> None:
 
 def game(s: Script, letters: Sequence[str], colors: Dict[str, str]) -> None:
     s.chapters.append({"t": round(s.t, 3), "title": "Hangisi?"})
-    order = list(letters[1:]) + [letters[0]] if len(letters) > 2 else list(letters)
-    for i, target in enumerate(order):
-        other = _partner(target, letters)
-        options = [target, other] if i % 2 == 0 else [other, target]
-        scene = s.open_scene("game", options=options, target=target, colors=[colors[o] for o in options],
-                             round=i + 1, rounds=len(order))
+    rounds = game_rounds(letters)
+    for i, (target, other) in enumerate(rounds):
+        options = [target, other] if SIDES[i % len(SIDES)] == 0 else [other, target]
+        # Both cards in the same neutral ink: the dots must be the only clue, not the colour.
+        scene = s.open_scene("game", options=options, target=target, dots=[DOTS[o] for o in options],
+                             round=i + 1, rounds=len(rounds))
         start = s.t
-        s.wait(0.6)
-        s.cue("which")
-        s.wait(GAP)
-        s.play(name_sound(target), target="ask")
+        s.wait(0.7)
+        s.play(name_sound(target), target="ask")          # the word first: "Bâ ..."
+        s.wait(0.25)
+        s.cue("which_show")                                # "... hangisi? Göster!"
         s.phase(scene, "ask", start)
         start = s.t
         s.wait(THINK)
@@ -200,8 +226,12 @@ def game(s: Script, letters: Sequence[str], colors: Dict[str, str]) -> None:
         s.cue("this_one")
         s.wait(0.2)
         s.play(name_sound(target), target="answer")
+        s.wait(0.3)
+        n_dots = DOT_COUNT.get(DOTS[target], 0)
+        if n_dots:                                         # say *why*: "Üstünde iki nokta!"
+            s.play(cue_path(DOTS[target]), target="reveal-dots", kind="cue")
         s.wait(0.6)
-        if i == len(order) - 1:
+        if i == len(rounds) - 1:
             s.cue("praise_3")
             s.wait(0.5)
         s.phase(scene, "reveal", start)
@@ -213,7 +243,7 @@ def recap(s: Script, letters: Sequence[str], colors: Dict[str, str]) -> None:
     scene = s.open_scene("recap", letters=list(letters), colors=[colors[l] for l in letters])
     start = s.t
     s.wait(0.5)
-    s.cue("recap")
+    s.cue("first_listen")     # say what actually happens: the model reads first, then the child
     s.wait(0.5)
     s.phase(scene, "intro", start)
     for i, letter in enumerate(letters):            # model reads the row
@@ -227,7 +257,7 @@ def recap(s: Script, letters: Sequence[str], colors: Dict[str, str]) -> None:
     s.phase(scene, "your-turn", start)
     for i, letter in enumerate(letters):            # child reads it, each echoed
         start = s.t
-        s.wait(max(2.2, duration(name_sound(letter)) + 1.2))
+        s.wait(max(RECAP_TURN, duration(name_sound(letter)) + 1.4))
         s.phase(scene, "turn", start, index=i)
         start = s.t
         s.play(name_sound(letter), target=f"recap:{i}")
@@ -259,11 +289,16 @@ def episode(number: int, letters: Sequence[str]) -> Dict:
 
     scene = s.open_scene("outro", letters=list(letters), colors=[colors[l] for l in letters])
     s.chapters.append({"t": scene["start"], "title": "Aferin!"})
+    start = s.t
     s.wait(0.4)
     s.cue("outro")
     s.wait(0.5)
     s.cue("goodbye")
-    s.wait(2.0)
+    s.wait(1.6)
+    s.phase(scene, "celebrate", start)
+    start = s.t
+    s.wait(2.2)                # the mascot lands and waves; everything fades out gently
+    s.phase(scene, "settle", start)
     s.close_scene(scene)
 
     return {"episode": number, "letters": list(letters), "duration": round(s.t, 3), "scenes": s.scenes,
