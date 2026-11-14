@@ -408,6 +408,43 @@ Setup, secrets, and deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
   Miss it and the probe fails silently and everything falls back to "any
   machine".
 
+## Elif-Ba videos (`elifba/`, branch feat/elif-ba)
+
+A series of YouTube lessons teaching the Arabic letters to **three-year-olds**.
+YouTube videos only — the HTML/JS is a rendering engine, not a web app.
+
+```bash
+python -m elifba.fetch_audio     # Diyanet recordings -> elifba/audio/ (gitignored)
+python -m elifba.voice           # Turkish cue lines (TTS) -> elifba/audio/tts/
+python -m elifba.render 1        # episode 1 -> output/elifba/elifba_01.mp4
+python -m elifba.render 1 --stills 15,50   # a few PNG frames, to check a look
+```
+
+| File | Role |
+|---|---|
+| `curriculum.py` | Diyanet's 13-unit Elif-Ba course, ported, with the recording for every tile |
+| `storyboard.py` | A letter group -> timed scenes, audio placements, beats (the didactic design) |
+| `engine/` | `seek(t)` draws any frame as a pure function of time |
+| `render.py` | Playwright + system Edge steps frames into NVENC; audio mixed in numpy |
+
+**Every Arabic sound is a human recording from Diyanet** (kuran.diyanet.gov.tr/elifba,
+plus Osman Şahin's besmele). Arabic TTS was tested and rejected: Whisper heard the
+harakat drill بَ بِ بُ as unrelated words. Only the short Turkish prompts ("Dinle!",
+"Şimdi sen söyle!") are TTS. The user chose Diyanet's audio knowing the rights
+question; credit Diyanet in each video's description.
+
+**Network:** Diyanet and the Edge speech service both refuse the sandboxed shell
+(403 / connection reset). Run `fetch_audio` and `voice` from PowerShell.
+
+**Sound numbering is positional** (`btn_1..N` by tile order, with quirks such as
+the fetha lesson's thick rows skipping a number). `curriculum.py` ports the
+site's helpers one for one; `tests/test_elifba.py` pins them.
+
+**Dots are found, not hand-placed.** The engine draws the letter on a canvas and
+takes the small ink blobs as its dots, splitting touching dots (ث in this font)
+with k-means. Do not add strokes beside a letter as decoration: a bar next to
+alif reads as a second alif.
+
 ### Legacy Streamlit UI (superseded)
 
 `src/yt_audio_filter/streamlit_app.py` still runs

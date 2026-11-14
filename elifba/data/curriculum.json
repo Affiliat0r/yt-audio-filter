@@ -1,0 +1,7870 @@
+[
+ {
+  "number": 1,
+  "key": "harfler",
+  "title": "Harfler",
+  "lessons": [
+   {
+    "chapter": "harfler",
+    "lesson": "harfler",
+    "title": "Harfler",
+    "description": null,
+    "descriptionSound": null,
+    "groups": [
+     {
+      "ritmikSound": "harfler_ritmik",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "ب"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ت"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ث"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "ج"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "ح"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "خ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "د"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "ذ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "ر"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "ز"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "س"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "ش"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ص"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ض"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "ط"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "ظ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "ع"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "غ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ف"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "ق"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "ك"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "ل"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "م"
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "ن"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_26",
+          "arabic": "هـ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "و"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ى"
+         }
+        ]
+       }
+      ],
+      "note": "Bazı elif-ba kitaplarında bir harf olarak gösterilen ( لا ) müstakil bir harf olmayıp, ( ل ) ve ( ا ) harflerinden oluşan bir yazım şeklidir.",
+      "noteSound": "aciklama"
+     }
+    ],
+    "id": "harfler/harfler"
+   },
+   {
+    "chapter": "harfler",
+    "lesson": "isimleri",
+    "title": "Harfler ve İsimleri",
+    "description": "Aşağıdaki tabloda sarı satırda harflerin şekilleri, beyaz satırda ise isimleri yer almaktadır. Harflerin isimlerini uzman rehberliğinde öğreniniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "type": "names",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "ب"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ت"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ث"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "ج"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "الف"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "با"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تا"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جيم"
+         }
+        ],
+        "gray": true,
+        "names": true
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "ح"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "خ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "د"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "ذ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "ر"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حا"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "خا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "دال"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "ذال"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "را"
+         }
+        ],
+        "gray": true,
+        "names": true
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "ز"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "س"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "ش"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ص"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ض"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "زاى"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "سين"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "شين"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "صاد"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ضاد"
+         }
+        ],
+        "gray": true,
+        "names": true
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "ط"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "ظ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "ع"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "غ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ف"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "طا"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "ظا"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "عين"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "غين"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "فا"
+         }
+        ],
+        "gray": true,
+        "names": true
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "ق"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "ك"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "ل"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "م"
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "ن"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "قاف"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "كاف"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "لام"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "ميم"
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "نون"
+         }
+        ],
+        "gray": true,
+        "names": true
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_26",
+          "arabic": "هـ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "و"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_26",
+          "arabic": "ها"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "واو"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "يا"
+         }
+        ],
+        "gray": true,
+        "names": true
+       }
+      ]
+     }
+    ],
+    "id": "harfler/isimleri"
+   },
+   {
+    "chapter": "harfler",
+    "lesson": "sesleri",
+    "title": "Harfler ve Sesleri",
+    "description": null,
+    "descriptionSound": null,
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "aciklama",
+      "ritmikSound": "ince_ritmik",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "ب"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ت"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ث"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "ج"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "ح"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "د"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "ر"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "ز"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "س"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "ش"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "ع"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ف"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ك"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "ل"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "م"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "ن"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "هـ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "و"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ى"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "aciklama2",
+      "ritmikSound": "kalin_ritmik",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "ص"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "ض"
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "ط"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_26",
+          "arabic": "ظ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "غ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ق"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "harfler/sesleri"
+   },
+   {
+    "chapter": "harfler",
+    "lesson": "sekilleri",
+    "title": "Harfler ve Şekilleri",
+    "description": "Arapça'da harfler, kelimede bulunduğu yere göre (başta – ortada – sonda) şekil olarak bazı küçük farklılıklar taşır. Bu farklılıkları kavrama çalışması, Kur’an kelimeleri üzerinde yapılmalı ve şekil itibariyle harfler tam olarak öğrenilmeden diğer adımlara geçilmemelidir.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "aciklama2",
+      "type": "positions",
+      "headers": [
+       {
+        "sound": "harf",
+        "arabic": "Harf",
+        "header": true
+       },
+       {
+        "sound": "basinda",
+        "arabic": "Başta",
+        "header": true
+       },
+       {
+        "sound": "ortasinda",
+        "arabic": "Ortada",
+        "header": true
+       },
+       {
+        "sound": "sonunda",
+        "arabic": "Sonda",
+        "header": true
+       }
+      ],
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "{ا}",
+          "position": 0
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "{ا}مر",
+          "position": 1
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "س{ا}ل",
+          "position": 2
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "نب{ا}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "{ء}",
+          "position": 0
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "{ء}انذر",
+          "position": 1
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "ي{ئ}س",
+          "position": 2
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "سو{ء}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "{ء}",
+          "position": 0,
+          "repeat": true
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "{أ}بعث",
+          "position": 1
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "ت{ؤ}من",
+          "position": 2
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "سي{ئ}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_1000",
+          "arabic": "{ب}",
+          "position": 0
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "{ب}عث",
+          "position": 1
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "ع{ب}د",
+          "position": 2
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "وه{ب}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_15",
+          "arabic": "{ت}",
+          "position": 0
+         },
+         {
+          "sound": "btn_16",
+          "arabic": "{ت}رك",
+          "position": 1
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "اع{ت}دوا",
+          "position": 2
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "سك{ت} جن{ة}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_19",
+          "arabic": "{ث}",
+          "position": 0
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "{ث}بت",
+          "position": 1
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "م{ث}ل",
+          "position": 2
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رف{ث}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_23",
+          "arabic": "{ج}",
+          "position": 0
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "{ج}عل",
+          "position": 1
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "تع{ج}ب",
+          "position": 2
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "الح{ج}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_27",
+          "arabic": "{ح}",
+          "position": 0
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "{ح}ذر",
+          "position": 1
+         },
+         {
+          "sound": "btn_29",
+          "arabic": "يج{ح}د",
+          "position": 2
+         },
+         {
+          "sound": "btn_30",
+          "arabic": "فت{ح}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_31",
+          "arabic": "{د}",
+          "position": 0
+         },
+         {
+          "sound": "btn_32",
+          "arabic": "{د}خل",
+          "position": 1
+         },
+         {
+          "sound": "btn_33",
+          "arabic": "ع{د}د",
+          "position": 2
+         },
+         {
+          "sound": "btn_34",
+          "arabic": "وع{د}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_35",
+          "arabic": "{ذ}",
+          "position": 0
+         },
+         {
+          "sound": "btn_36",
+          "arabic": "{ذ}را",
+          "position": 1
+         },
+         {
+          "sound": "btn_37",
+          "arabic": "ك{ذ}لك",
+          "position": 2
+         },
+         {
+          "sound": "btn_38",
+          "arabic": "نب{ذ}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_39",
+          "arabic": "{ر}",
+          "position": 0
+         },
+         {
+          "sound": "btn_40",
+          "arabic": "{ر}جع",
+          "position": 1
+         },
+         {
+          "sound": "btn_41",
+          "arabic": "ف{ر}ض",
+          "position": 2
+         },
+         {
+          "sound": "btn_42",
+          "arabic": "ام{ر}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_43",
+          "arabic": "{ز}",
+          "position": 0
+         },
+         {
+          "sound": "btn_44",
+          "arabic": "{ز}عم",
+          "position": 1
+         },
+         {
+          "sound": "btn_45",
+          "arabic": "ن{ز}ل",
+          "position": 2
+         },
+         {
+          "sound": "btn_46",
+          "arabic": "بر{ز}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_47",
+          "arabic": "{س}",
+          "position": 0
+         },
+         {
+          "sound": "btn_48",
+          "arabic": "{س}ال",
+          "position": 1
+         },
+         {
+          "sound": "btn_49",
+          "arabic": "ف{س}جد",
+          "position": 2
+         },
+         {
+          "sound": "btn_50",
+          "arabic": "عب{س}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_51",
+          "arabic": "{ش}",
+          "position": 0
+         },
+         {
+          "sound": "btn_52",
+          "arabic": "{ش}كر",
+          "position": 1
+         },
+         {
+          "sound": "btn_53",
+          "arabic": "ي{ش}عر",
+          "position": 2
+         },
+         {
+          "sound": "btn_54",
+          "arabic": "بط{ش}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_55",
+          "arabic": "{ع}",
+          "position": 0
+         },
+         {
+          "sound": "btn_56",
+          "arabic": "{ع}بد",
+          "position": 1
+         },
+         {
+          "sound": "btn_57",
+          "arabic": "ل{ع}ن",
+          "position": 2
+         },
+         {
+          "sound": "btn_58",
+          "arabic": "من{ع}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_59",
+          "arabic": "{ف}",
+          "position": 0
+         },
+         {
+          "sound": "btn_60",
+          "arabic": "{ف}وقع",
+          "position": 1
+         },
+         {
+          "sound": "btn_61",
+          "arabic": "ك{ف}ر",
+          "position": 2
+         },
+         {
+          "sound": "btn_62",
+          "arabic": "خل{ف}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_63",
+          "arabic": "{ك}",
+          "position": 0
+         },
+         {
+          "sound": "btn_64",
+          "arabic": "{ك}سب",
+          "position": 1
+         },
+         {
+          "sound": "btn_65",
+          "arabic": "م{ك}ر",
+          "position": 2
+         },
+         {
+          "sound": "btn_66",
+          "arabic": "من{ك}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_67",
+          "arabic": "{ل}",
+          "position": 0
+         },
+         {
+          "sound": "btn_68",
+          "arabic": "{ل}برز",
+          "position": 1
+         },
+         {
+          "sound": "btn_69",
+          "arabic": "خ{ل}ع",
+          "position": 2
+         },
+         {
+          "sound": "btn_70",
+          "arabic": "جع{ل}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_71",
+          "arabic": "{م}",
+          "position": 0
+         },
+         {
+          "sound": "btn_72",
+          "arabic": "{م}ثل",
+          "position": 1
+         },
+         {
+          "sound": "btn_73",
+          "arabic": "يط{م}ع",
+          "position": 2
+         },
+         {
+          "sound": "btn_74",
+          "arabic": "لم{م}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_75",
+          "arabic": "{ن}",
+          "position": 0
+         },
+         {
+          "sound": "btn_76",
+          "arabic": "{ن}ظر",
+          "position": 1
+         },
+         {
+          "sound": "btn_77",
+          "arabic": "م{ن}ع",
+          "position": 2
+         },
+         {
+          "sound": "btn_78",
+          "arabic": "بط{ن}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_79",
+          "arabic": "{هـ}",
+          "position": 0
+         },
+         {
+          "sound": "btn_80",
+          "arabic": "{ه}لك",
+          "position": 1
+         },
+         {
+          "sound": "btn_81",
+          "arabic": "ف{ه}م",
+          "position": 2
+         },
+         {
+          "sound": "btn_82",
+          "arabic": "وج{ه}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_83",
+          "arabic": "{و}",
+          "position": 0
+         },
+         {
+          "sound": "btn_84",
+          "arabic": "{و}عد",
+          "position": 1
+         },
+         {
+          "sound": "btn_85",
+          "arabic": "ع{و}د",
+          "position": 2
+         },
+         {
+          "sound": "btn_86",
+          "arabic": "دل{و}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_87",
+          "arabic": "{ى}",
+          "position": 0
+         },
+         {
+          "sound": "btn_88",
+          "arabic": "{ي}تيم",
+          "position": 1
+         },
+         {
+          "sound": "btn_89",
+          "arabic": "خ{ي}ر",
+          "position": 2
+         },
+         {
+          "sound": "btn_90",
+          "arabic": "لق{ى}",
+          "position": 3
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "aciklama3",
+      "type": "positions",
+      "headers": [
+       {
+        "sound": "harf",
+        "arabic": "Harf",
+        "header": true
+       },
+       {
+        "sound": "basinda",
+        "arabic": "Başta",
+        "header": true
+       },
+       {
+        "sound": "ortasinda",
+        "arabic": "Ortada",
+        "header": true
+       },
+       {
+        "sound": "sonunda",
+        "arabic": "Sonda",
+        "header": true
+       }
+      ],
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_91",
+          "arabic": "{خ}",
+          "position": 0
+         },
+         {
+          "sound": "btn_92",
+          "arabic": "{خ}لق",
+          "position": 1
+         },
+         {
+          "sound": "btn_93",
+          "arabic": "في{خ}رج",
+          "position": 2
+         },
+         {
+          "sound": "btn_94",
+          "arabic": "ونف{خ}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_95",
+          "arabic": "{ص}",
+          "position": 0
+         },
+         {
+          "sound": "btn_96",
+          "arabic": "{ص}دق",
+          "position": 1
+         },
+         {
+          "sound": "btn_97",
+          "arabic": "ن{ص}ف",
+          "position": 2
+         },
+         {
+          "sound": "btn_98",
+          "arabic": "نك{ص}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_99",
+          "arabic": "{ض}",
+          "position": 0
+         },
+         {
+          "sound": "btn_100",
+          "arabic": "{ض}ل",
+          "position": 1
+         },
+         {
+          "sound": "btn_101",
+          "arabic": "ت{ض}ع",
+          "position": 2
+         },
+         {
+          "sound": "btn_102",
+          "arabic": "ببع{ض}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_103",
+          "arabic": "{ط}",
+          "position": 0
+         },
+         {
+          "sound": "btn_104",
+          "arabic": "{ط}بع",
+          "position": 1
+         },
+         {
+          "sound": "btn_105",
+          "arabic": "ف{ط}ر",
+          "position": 2
+         },
+         {
+          "sound": "btn_106",
+          "arabic": "خل{ط}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_107",
+          "arabic": "{ظ}",
+          "position": 0
+         },
+         {
+          "sound": "btn_108",
+          "arabic": "{ظ}هر",
+          "position": 1
+         },
+         {
+          "sound": "btn_109",
+          "arabic": "ن{ظ}ر",
+          "position": 2
+         },
+         {
+          "sound": "btn_110",
+          "arabic": "غل{ظ}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_111",
+          "arabic": "{غ}",
+          "position": 0
+         },
+         {
+          "sound": "btn_112",
+          "arabic": "{غ}ضب",
+          "position": 1
+         },
+         {
+          "sound": "btn_113",
+          "arabic": "ف{غ}فر",
+          "position": 2
+         },
+         {
+          "sound": "btn_114",
+          "arabic": "بل{غ}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_115",
+          "arabic": "{ق}",
+          "position": 0
+         },
+         {
+          "sound": "btn_116",
+          "arabic": "{ق}دم",
+          "position": 1
+         },
+         {
+          "sound": "btn_117",
+          "arabic": "س{ق}ر",
+          "position": 2
+         },
+         {
+          "sound": "btn_118",
+          "arabic": "فس{ق}",
+          "position": 3
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Peltek Harfler",
+      "titleSound": "peltek",
+      "type": "positions",
+      "headers": [
+       {
+        "sound": "harf",
+        "arabic": "Harf",
+        "header": true
+       },
+       {
+        "sound": "basinda",
+        "arabic": "Başta",
+        "header": true
+       },
+       {
+        "sound": "ortasinda",
+        "arabic": "Ortada",
+        "header": true
+       },
+       {
+        "sound": "sonunda",
+        "arabic": "Sonda",
+        "header": true
+       }
+      ],
+      "preNote": "Arapça'da harfler kalın ve ince olmak üzere ikiye ayrılır. Bu harflerin üç tanesi peltek olarak telaffuz edilir. Peltek harflerin iki tanesi ince, bir tanesi ise kalın seslidir.",
+      "preNoteSound": "peltekaciklama",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_119",
+          "arabic": "{ث}",
+          "position": 0
+         },
+         {
+          "sound": "btn_120",
+          "arabic": "{ث}بت",
+          "position": 1
+         },
+         {
+          "sound": "btn_121",
+          "arabic": "م{ث}ل",
+          "position": 2
+         },
+         {
+          "sound": "btn_122",
+          "arabic": "رف{ث}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_123",
+          "arabic": "{ذ}",
+          "position": 0
+         },
+         {
+          "sound": "btn_124",
+          "arabic": "{ذ}را",
+          "position": 1
+         },
+         {
+          "sound": "btn_125",
+          "arabic": "ك{ذ}لك",
+          "position": 2
+         },
+         {
+          "sound": "btn_126",
+          "arabic": "نب{ذ}",
+          "position": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_127",
+          "arabic": "{ظ}",
+          "position": 0
+         },
+         {
+          "sound": "btn_128",
+          "arabic": "{ظ}هر",
+          "position": 1
+         },
+         {
+          "sound": "btn_129",
+          "arabic": "ن{ظ}ر",
+          "position": 2
+         },
+         {
+          "sound": "btn_130",
+          "arabic": "غل{ظ}",
+          "position": 3
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "harfler/sekilleri"
+   },
+   {
+    "chapter": "harfler",
+    "lesson": "pekistirme",
+    "title": "Pekiştirme",
+    "description": "Şekil olarak benzeyen harfler, nokta sayısına ve noktanın harfin neresinde yer aldığına dikkat edildiğinde kolaylıkla ayırt edilebilir. Bu durumu da göz önünde bulundurarak, aşağıdaki kelimelerde yer alan harflerin isimlerini söyleyiniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "{هؤلاء}"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "يؤمن"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "نسئ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "{فقد}"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "نبذ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "فغوى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "{برز}"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ثمر"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "شجر"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "{سحر}"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "حجر"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "صبر"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "{جثيا}"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "يشكر"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ينفق"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "{ضحى}"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "طلق"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "لظى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_19",
+          "arabic": "{يتلو}"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "فخار"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "فلق"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "{هلك}"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "ملك"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "اوفوا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "{قتل}"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "تنفذ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "ينبغى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_28",
+          "arabic": "{غضب}"
+         },
+         {
+          "sound": "btn_29",
+          "arabic": "لاتينا"
+         },
+         {
+          "sound": "btn_30",
+          "arabic": "يبصرون"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_31",
+          "arabic": "{اليم}"
+         },
+         {
+          "sound": "btn_32",
+          "arabic": "تاويلا"
+         },
+         {
+          "sound": "btn_33",
+          "arabic": "دون"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_34",
+          "arabic": "{قدحا}"
+         },
+         {
+          "sound": "btn_35",
+          "arabic": "ذلك"
+         },
+         {
+          "sound": "btn_36",
+          "arabic": "يذكر"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_37",
+          "arabic": "{رضى}"
+         },
+         {
+          "sound": "btn_38",
+          "arabic": "يرسل"
+         },
+         {
+          "sound": "btn_39",
+          "arabic": "زنيم"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_40",
+          "arabic": "{يزكى}"
+         },
+         {
+          "sound": "btn_41",
+          "arabic": "ودعك"
+         },
+         {
+          "sound": "btn_42",
+          "arabic": "موعد"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "harfler/pekistirme"
+   }
+  ]
+ },
+ {
+  "number": 2,
+  "key": "fetha",
+  "title": "Fetha",
+  "lessons": [
+   {
+    "chapter": "fetha",
+    "lesson": "fetha",
+    "title": "Fetha",
+    "description": "Fetha hareke, harfin üstünde yer alır ve harflere \"e\" sesi verir. Aşağıdaki harfleri önce tek tek, daha sonra ise beşli guruplar halinde ritmik usulle, uzatmadan okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "aciklama2",
+      "rows": [
+       {
+        "ritmikSound": "satir_1",
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اَ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بَ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تَ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثَ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جَ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_2",
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حَ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دَ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذَ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زَ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سَ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_3",
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شَ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عَ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كَ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لَ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_4",
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مَ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هَـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وَ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىَ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "aciklama3",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "خَ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "رَ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "غَ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "قَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_30",
+          "arabic": "صَ"
+         },
+         {
+          "sound": "btn_31",
+          "arabic": "ضَ"
+         },
+         {
+          "sound": "btn_32",
+          "arabic": "طَ"
+         },
+         {
+          "sound": "btn_33",
+          "arabic": "ظَ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fetha/fetha"
+   },
+   {
+    "chapter": "fetha",
+    "lesson": "uygulama",
+    "title": "Fetha Uygulama",
+    "description": "Aşağıdaki kelimeleri ritmik usulle okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اَمَرَ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "سَاَلَ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ثَمَرَ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "بَعَثَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_5",
+          "arabic": "نَبَذَ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "وَهَبَ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "سَكَتَ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "بَدَاَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_9",
+          "arabic": "فَتَحَ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "تَرَكَ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "خَتَمَ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عَدَدَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "جَعَلَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "مَثَلَ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "رَفَثَ"
+         },
+         {
+          "sound": "btn_16",
+          "arabic": "حَذَرَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_17",
+          "arabic": "شَجَرَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "عَبَدَ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "خَلَقَ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "اَحَدَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "وَعَدَ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "ذَرَاَ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "نَزَلَ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "كَسَبَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "دَخَلَ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "رَجَعَ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "شَرَحَ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "وَجَهَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_29",
+          "arabic": "فَرَضَ"
+         },
+         {
+          "sound": "btn_30",
+          "arabic": "عَبَسَ"
+         },
+         {
+          "sound": "btn_31",
+          "arabic": "بَلَغَ"
+         },
+         {
+          "sound": "btn_32",
+          "arabic": "زَعَمَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_33",
+          "arabic": "صَدَقَ"
+         },
+         {
+          "sound": "btn_34",
+          "arabic": "هَلَكَ"
+         },
+         {
+          "sound": "btn_35",
+          "arabic": "لَعَنَ"
+         },
+         {
+          "sound": "btn_36",
+          "arabic": "غَضَبَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_37",
+          "arabic": "بَطَشَ"
+         },
+         {
+          "sound": "btn_38",
+          "arabic": "ضَرَبَ"
+         },
+         {
+          "sound": "btn_39",
+          "arabic": "حَضَرَ"
+         },
+         {
+          "sound": "btn_40",
+          "arabic": "عَرَضَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_41",
+          "arabic": "طَبَعَ"
+         },
+         {
+          "sound": "btn_42",
+          "arabic": "نَكَصَ"
+         },
+         {
+          "sound": "btn_43",
+          "arabic": "خَلَطَ"
+         },
+         {
+          "sound": "btn_44",
+          "arabic": "ظَهَرَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_45",
+          "arabic": "مَكَرَ"
+         },
+         {
+          "sound": "btn_46",
+          "arabic": "غَلَظَ"
+         },
+         {
+          "sound": "btn_47",
+          "arabic": "عَشَرَ"
+         },
+         {
+          "sound": "btn_48",
+          "arabic": "كَفَرَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_49",
+          "arabic": "فَطَرَ"
+         },
+         {
+          "sound": "btn_50",
+          "arabic": "قَدَمَ"
+         },
+         {
+          "sound": "btn_51",
+          "arabic": "سَقَرَ"
+         },
+         {
+          "sound": "btn_52",
+          "arabic": "جَرَمَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_53",
+          "arabic": "بَطَنَ"
+         },
+         {
+          "sound": "btn_54",
+          "arabic": "مَنَعَ"
+         },
+         {
+          "sound": "btn_55",
+          "arabic": "مَثَلَ"
+         },
+         {
+          "sound": "btn_56",
+          "arabic": "نَظَرَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_57",
+          "arabic": "فَصَلَ"
+         },
+         {
+          "sound": "btn_58",
+          "arabic": "وَاَخَذَ"
+         },
+         {
+          "sound": "btn_59",
+          "arabic": "وَجَمَعَ"
+         },
+         {
+          "sound": "btn_60",
+          "arabic": "فَفَسَقَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_61",
+          "arabic": "فَصَرَفَ"
+         },
+         {
+          "sound": "btn_62",
+          "arabic": "وَنَفَخَ"
+         },
+         {
+          "sound": "btn_63",
+          "arabic": "فَحَشَرَ"
+         },
+         {
+          "sound": "btn_64",
+          "arabic": "ظَلَمَكَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_65",
+          "arabic": "فَسَجَدَ"
+         },
+         {
+          "sound": "btn_66",
+          "arabic": "لَذَهَبَ"
+         },
+         {
+          "sound": "btn_67",
+          "arabic": "فَوَقَعَ"
+         },
+         {
+          "sound": "btn_68",
+          "arabic": "فَخَلَفَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_69",
+          "arabic": "لَجَعَلَ"
+         },
+         {
+          "sound": "btn_70",
+          "arabic": "فَغَفَرَ"
+         },
+         {
+          "sound": "btn_71",
+          "arabic": "فَنَظَرَ"
+         },
+         {
+          "sound": "btn_72",
+          "arabic": "سَاَلَكَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_73",
+          "arabic": "لَبَرَزَ"
+         },
+         {
+          "sound": "btn_74",
+          "arabic": "فَخَرَجَ"
+         },
+         {
+          "sound": "btn_75",
+          "arabic": "فَهَزَمَ"
+         },
+         {
+          "sound": "btn_76",
+          "arabic": "وَكَفَرَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_77",
+          "arabic": "عَقَبَةَ"
+         },
+         {
+          "sound": "btn_78",
+          "arabic": "فَعَدَلَكَ"
+         },
+         {
+          "sound": "btn_79",
+          "arabic": "وَوَجَدَكَ"
+         },
+         {
+          "sound": "btn_80",
+          "arabic": "جَعَلَ لَكَ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fetha/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 3,
+  "key": "fethanin-uzatilmasi",
+  "title": "Fetha'nın Uzatılması",
+  "lessons": [
+   {
+    "chapter": "fethanin-uzatilmasi",
+    "lesson": "fethanin-uzatilmasi",
+    "title": "Fetha'nın Uzatılması",
+    "description": "Fetha harekeli harfin uzatılarak okunması gerektiği, sol yanında bulunan **harekesiz elif harfi**nden veya harfin üzerindeki **dikey fethadan** anlaşılır. Fetha uzatıldığında **\"e\"** sesi **\"â\"** sesine dönüştürülür.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "ritmikSound": "satir_1",
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ءَا-اٰ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بَا-بٰ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تَا-تٰ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثَا-ثٰ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جَا-جٰ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_2",
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حَا-حٰ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دَا-دٰ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذَا-ذٰ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زَا-زٰ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سَا-سٰ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_3",
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شَا-شٰ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عَا-عٰ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فَا-فٰ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كَا-كٰ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لَا-لٰ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_4",
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مَا-مٰ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نَا-نٰ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هَا-هٰـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وَا-وٰ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يَا-يٰ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "rows": [
+       {
+        "ritmikSound": "satir_5",
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خَا-خٰ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رَا-رٰ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غَا-غٰ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قَا-قٰ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_6",
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صَا-صٰ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضَا-ضٰ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طَا-طٰ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظَا-ظٰ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fethanin-uzatilmasi/fethanin-uzatilmasi"
+   },
+   {
+    "chapter": "fethanin-uzatilmasi",
+    "lesson": "karsilastirma",
+    "title": "Karşılaştırma",
+    "description": "Aşağıdaki fetha harekeli harfleri önce tek tek, daha sonra beşli gruplar halinde **ritmik** usulle, **uzatarak** okuyunuz. Bir harfin iki konumunu okuduktan sonra diğer harfe geçiniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اَ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بَ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تَ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثَ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اٰ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بَا"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تَا"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثَا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حَ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دَ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذَ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زَ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حَا"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دَا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذَا"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زَا"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شَ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عَ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كَ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شَا"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عَا"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فَا"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كَا"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مَ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هَـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وَ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مَا"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نَا"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هَا"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وَا"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يَا"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خَ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رَ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غَ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خَا"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رَا"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غَا"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صَ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضَ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طَ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صَا"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضَا"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طَا"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظَا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fethanin-uzatilmasi/karsilastirma"
+   },
+   {
+    "chapter": "fethanin-uzatilmasi",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki kelimeleri fetha harekenin uzatılmayan ve uzatılan konumlarına dikkat ederek ve sesinizi güzel kullanarak okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "كَمَا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "جَوَابَ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "بَلَغَا"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "كَلَامَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_5",
+          "arabic": "لَكَانَ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "اَحَاطَ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "اَخَانَا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "وَاثَابَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_9",
+          "arabic": "رَمَضَانَ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "وَقَاتَلَ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "فَسَاهَمَ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "فَوَجَدَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "لَفَسَدَتَا"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "مَا كَتَبَ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "فَلَا رَفَثَ"
+         },
+         {
+          "sound": "btn_16",
+          "arabic": "فَمَا جَعَلَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_17",
+          "arabic": "قَالَ مَعَاذَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "وَمَا مَنَعَنَا"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "خَافَ عَذَابَ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "وَضَرَبَ لَنَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "فَمَا كَانَ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "جَعَلَ لَكَ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "جَاوَزَا قَالَ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قَالَ لَا تَخَافَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "بَلٰى"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "عَسٰى"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "عَلٰى"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "فَهَدٰى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_29",
+          "arabic": "فَاٰوٰى"
+         },
+         {
+          "sound": "btn_30",
+          "arabic": "دَحٰيهَا"
+         },
+         {
+          "sound": "btn_31",
+          "arabic": "قَضٰيهَا"
+         },
+         {
+          "sound": "btn_32",
+          "arabic": "فَنَادٰيهَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_33",
+          "arabic": "مَا سَعٰى"
+         },
+         {
+          "sound": "btn_34",
+          "arabic": "وَمَا بَنٰيهَا"
+         },
+         {
+          "sound": "btn_35",
+          "arabic": "وَمَا قَلٰى"
+         },
+         {
+          "sound": "btn_36",
+          "arabic": "وَمَا طَحٰيهَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_37",
+          "arabic": "يَتَوٰرٰى"
+         },
+         {
+          "sound": "btn_38",
+          "arabic": "مَتٰى هٰذَا"
+         },
+         {
+          "sound": "btn_39",
+          "arabic": "حَيٰوةَ"
+         },
+         {
+          "sound": "btn_40",
+          "arabic": "صَلٰوةَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_41",
+          "arabic": "زَكٰوةَ"
+         },
+         {
+          "sound": "btn_42",
+          "arabic": "وَمَنٰوةَ"
+         },
+         {
+          "sound": "btn_43",
+          "arabic": "تَظٰهَرَا"
+         },
+         {
+          "sound": "btn_44",
+          "arabic": "مَا عٰهَدَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_45",
+          "arabic": "وَهٰمٰنَ"
+         },
+         {
+          "sound": "btn_46",
+          "arabic": "جٰهَدَاكَ"
+         },
+         {
+          "sound": "btn_47",
+          "arabic": "تَبٰرَكَ"
+         },
+         {
+          "sound": "btn_48",
+          "arabic": "لَنَا خَطٰيٰنَا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fethanin-uzatilmasi/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 4,
+  "key": "fetha-tenvin",
+  "title": "Fetha'nın Tenvini",
+  "lessons": [
+   {
+    "chapter": "fetha-tenvin",
+    "lesson": "fetha-tenvin",
+    "title": "Fetha'nın Tenvini (İki Fetha)",
+    "description": "Tenvin, bir harfin sesine **\"n\"** sesi ilave etmektir. Fetha'daki **\"e\"** sesi tenvinle **\"en\"** sesine dönüşür.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "ritmikSound": "satir_1",
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اً"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بًا"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تًا"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثًا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جًا"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_2",
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حًا"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دًا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذًا"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زًا"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سًا"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_3",
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شًا"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عًا"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فًا"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كًا"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لاً"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_4",
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مًا"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نًا"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هًا"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وًا"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يًا"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "rows": [
+       {
+        "ritmikSound": "satir_5",
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خًا"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رًا"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غًا"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قًا"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_6",
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صًا"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضًا"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طًا"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظًا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fetha-tenvin/fetha-tenvin"
+   },
+   {
+    "chapter": "fetha-tenvin",
+    "lesson": "karsilastirma",
+    "title": "Karşılaştırma",
+    "description": "Fetha'nın uzatılmayan, uzatılan ve tenvinli konumlarını, aralarındaki farklılıkları gözlemleyerek, **ritmik** usulle okuyunuz. Bir harfin üç konumunu okuduktan sonra diğer harfe geçiniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اَ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بَ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تَ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثَ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اٰ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بَا"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تَا"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثَا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اً"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بًا"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تًا"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثًا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جًا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حَ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دَ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذَ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زَ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حَا"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دَا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذَا"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زَا"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حًا"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دًا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذًا"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زًا"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سًا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شَ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عَ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كَ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شَا"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عَا"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فَا"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كَا"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شًا"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عًا"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فًا"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كًا"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لاً"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مَ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هَـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وَ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مَا"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نَا"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هَا"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وَا"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مًا"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نًا"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هًا"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وًا"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يًا"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خَ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رَ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غَ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خَا"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رَا"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غَا"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خًا"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رًا"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غًا"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قًا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صَ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضَ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طَ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظَ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صَا"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضَا"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طَا"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظَا"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صًا"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضًا"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طًا"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظًا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fetha-tenvin/karsilastirma"
+   },
+   {
+    "chapter": "fetha-tenvin",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki kelimeleri fethanın uzatılmayan, uzatılan ve tenvinli konumlarına dikkat ederek uzman rehberliğinde okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "مَرَحًا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "سَوَاءً"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "خَطَاً"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "مَطَرًا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "زَ بَدًا"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "حَرَسًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "قَصَصًا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "مَالًا"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "حَرَجًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "مَفَازًا"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "جَنَفًا"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "غَدَقًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "دَرَكًا"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "سَكَنًا"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "سَفَهًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "زَكٰوةً"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "وَقَارًا"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "ضَلٰلًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_19",
+          "arabic": "مَعَاشًا"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "شَطَطًا"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "طَبَقًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "وَحَنَانًا"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "كَانَ عَرَضًا"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "هٰذَا لَبَلَاغًا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "fetha-tenvin/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 5,
+  "key": "kesra",
+  "title": "Kesra",
+  "lessons": [
+   {
+    "chapter": "kesra",
+    "lesson": "kesra",
+    "title": "Kesra",
+    "description": "Kesra hareke harfin altında yer alır ve bütün harflere \"i\" sesi verir. Tablodaki kesra harekeli harfleri uzatmadan, önce tek tek, daha sonra beşli gruplar halinde ritmik usulle, uzatmadan okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اِ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بِ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تِ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثِ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جِ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حِ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دِ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذِ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "رِ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "زِ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "سِ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "شِ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "عِ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "فِ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "كِ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "لِ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "مِ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "نِ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "هِـ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "وِ"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ىِ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "aciklama2",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خِ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غِ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قِ"
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "صِ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_26",
+          "arabic": "ضِ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طِ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظِ"
+         }
+        ]
+       }
+      ],
+      "preNote": "Kalın harfleri \"i\" sesi ile okurken, harfin kalınlık özelliğini bozmamaya özen gösteriniz."
+     }
+    ],
+    "id": "kesra/kesra"
+   },
+   {
+    "chapter": "kesra",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki kelimeleri uzman rehberliğinde okuyarak bilgilerinizi pekiştiriniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "بِهَا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "اِلٰى"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "اَمِنَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "ضِرَارًا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "ءَاِذَا"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "فَفَزِعَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "بَاطِلًا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "سَلٰسِلَ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "عِبَادِنَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "ذِرَاعًا"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "وَمَغَارِبَهَا"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "مَنَازِلَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "فَطَفِقَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "خِيَانَتَكَ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لِعِبَادِىَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "خَائِفًا"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "وَلَا جِدَالَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "سَفَرِنَا هٰذَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_19",
+          "arabic": "خَلَقَ ظِلَالًا"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "بِهٰذَا مَثَلاً"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "اِلٰى صِرَاطِ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "kesra/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 6,
+  "key": "kesranin-uzatilmasi",
+  "title": "Kesra'nın Uzatılması",
+  "lessons": [
+   {
+    "chapter": "kesranin-uzatilmasi",
+    "lesson": "kesranin-uzatilmasi",
+    "title": "Kesra'nın Uzatılması",
+    "description": "Kesra harekeden sonra gelen **harekesiz ya harfi ve dikey kesra** harfin uzatılarak okunması gerektiğini ifade eder.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "preNote": "Aşağıdaki kesra harekeli harfleri önce tek tek, daha sonra beşli guruplar halinde ritmik usulle, uzatarak okuyunuz.",
+      "preNoteSound": "aciklama_2",
+      "rows": []
+     },
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ا۪ى"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "ب۪ى"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ت۪ى"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ث۪ى"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "ج۪ى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "ح۪ى"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "د۪ى"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذ۪ى"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "ر۪ى"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "ز۪ى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "س۪ى"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "ش۪ى"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "ع۪ى"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ف۪ى"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ك۪ى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "ل۪ى"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "م۪ى"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "ن۪ى"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "ه۪ى"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "و۪ى"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ي۪ى"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خ۪ى"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غ۪ى"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "ق۪ى"
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "ص۪ى"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_26",
+          "arabic": "ض۪ى"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "ط۪ى"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظ۪ى"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "kesranin-uzatilmasi/kesranin-uzatilmasi"
+   },
+   {
+    "chapter": "kesranin-uzatilmasi",
+    "lesson": "karsilastirma",
+    "title": "Karşılaştırma",
+    "description": "Aşağıdaki harfleri, kesranın uzatılmayan ve uzatılan konumları arasındaki farkı mukâyese ederek **ritmik** usulle okuyunuz. Bir harfin iki konumunu okuduktan sonra diğer harfe geçiniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اِ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بِ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تِ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثِ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ا۪"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "ب۪ى"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ت۪ى"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ث۪ى"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "ج۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حِ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دِ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذِ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "رِ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "زِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "ح۪ى"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "د۪ى"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذ۪ى"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "ر۪ى"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "ز۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "سِ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "شِ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "عِ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "فِ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "كِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "س۪ى"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "ش۪ى"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "ع۪ى"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ف۪ى"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ك۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "لِ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "مِ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "نِ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "هِـ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "وِ"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ىِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "ل۪ى"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "م۪ى"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "ن۪ى"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "ه۪ى"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "و۪ى"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ي۪ى"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خِ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غِ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خ۪ى"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غ۪ى"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "ق۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صِ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضِ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طِ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "ص۪ى"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ض۪ى"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "ط۪ى"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظ۪ى"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "kesranin-uzatilmasi/karsilastirma"
+   },
+   {
+    "chapter": "kesranin-uzatilmasi",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki kelimeleri kesranın uzatılan ve uzatılmayan konumlarını gözlemleyerek okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ف۪يهِ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بِه۪"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ق۪يلَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "ح۪ينَ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "هٰذِه۪"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "ذٰلِكَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "شَه۪يدًا"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "فَرِح۪ينَ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "بِاَخ۪يكَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "خَل۪يفَةً"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "فَفَر۪يقًا"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عِض۪ينَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "بِبَن۪يهِ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "سَب۪يل۪ى"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "كَافِر۪ينَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "لَكَب۪يرَةً"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "بِخَارِج۪ينَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "اَفَعَي۪ينَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_19",
+          "arabic": "ثَلٰث۪ينَ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "فَخَش۪ينَا"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "س۪يرَتَهَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "بِقَم۪يص۪ى"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "شَيٰط۪ينَ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "لَحَافِظ۪ينَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "نَف۪يرًا"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "شَاكِر۪ينَ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "لَط۪يفًا خَب۪يرًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_28",
+          "arabic": "قَالَ سَاٰو۪ى"
+         },
+         {
+          "sound": "btn_29",
+          "arabic": "وَاِذَا ق۪يلَ"
+         },
+         {
+          "sound": "btn_30",
+          "arabic": "سِن۪ينَ دَاَبًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_31",
+          "arabic": "خٰلِد۪ينَ ف۪يهَا"
+         },
+         {
+          "sound": "btn_32",
+          "arabic": "كَانَ ضَع۪يفًا"
+         },
+         {
+          "sound": "btn_33",
+          "arabic": "ذ۪ى ثَلٰثِ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_34",
+          "arabic": "ف۪ى عِبَاد۪ى"
+         },
+         {
+          "sound": "btn_35",
+          "arabic": "م۪يثَاقًا غَل۪يظًا"
+         },
+         {
+          "sound": "btn_36",
+          "arabic": "عَل۪يمًا حَك۪يمًا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "kesranin-uzatilmasi/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 7,
+  "key": "kesranin-tenvini",
+  "title": "Kesra'nın Tenvini",
+  "lessons": [
+   {
+    "chapter": "kesranin-tenvini",
+    "lesson": "kesranin-tenvini",
+    "title": "Kesra'nın Tenvini (İki Kesra)",
+    "description": "**Tenvin** bir harfin sesine **\"n\"** sesi ilave etmektir. Kesra harekedeki **\"i\"** sesi, tenvinle **\"in\"** sesine dönüşür.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اٍ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بٍ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تٍ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثٍ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حٍ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دٍ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذٍ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "رٍ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "زٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "سٍ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "شٍ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "عٍ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "فٍ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "كٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "لٍ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "مٍ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "نٍ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "هٍـ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "وٍ"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ىٍ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خٍ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غٍ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قٍ"
+         },
+         {
+          "sound": "btn_25",
+          "arabic": "صٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_26",
+          "arabic": "ضٍ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طٍ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظٍ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "kesranin-tenvini/kesranin-tenvini"
+   },
+   {
+    "chapter": "kesranin-tenvini",
+    "lesson": "karsilastirma",
+    "title": "Karşılaştırma",
+    "description": "Kesranın uzatılmayan, uzatılan ve tenvinli konumunu mukâyese ederek **ritmik** usulle okuyunuz. Bir harfin üç konumunu okuduktan sonra diğer harfe geçiniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اِ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بِ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تِ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثِ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "ا۪"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "ب۪ى"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "ت۪ى"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ث۪ى"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "ج۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اٍ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بٍ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تٍ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثٍ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جٍ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حِ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دِ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذِ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "رِ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "زِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "ح۪ى"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "د۪ى"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذ۪ى"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "ر۪ى"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "ز۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حٍ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دٍ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذٍ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "رٍ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "زٍ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "سِ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "شِ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "عِ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "فِ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "كِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "س۪ى"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "ش۪ى"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "ع۪ى"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ف۪ى"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ك۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "سٍ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "شٍ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "عٍ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "فٍ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "كٍ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "لِ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "مِ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "نِ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "هِـ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "وِ"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ىِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "ل۪ى"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "م۪ى"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "ن۪ى"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "ه۪ى"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "و۪ى"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ي۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "لٍ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "مٍ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "نٍ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "هٍـ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "وٍ"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "ىٍ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خِ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غِ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خ۪ى"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غ۪ى"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "ق۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_22",
+          "arabic": "خٍ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غٍ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قٍ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صِ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضِ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طِ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظِ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "ص۪ى"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ض۪ى"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "ط۪ى"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظ۪ى"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صٍ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضٍ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طٍ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظٍ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "kesranin-tenvini/karsilastirma"
+   },
+   {
+    "chapter": "kesranin-tenvini",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşagıdaki kelimeleri harekelerine dikkat ederek okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "فَلَكٍ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "د۪ينٍ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "وَاقِعٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "بِاَخٍ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "حَمَاٍ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "تَرَاضٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "بِخَارِ جٍ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "يٰبِسَاتٍ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "بِحَف۪يظٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "غَوَاشٍ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "بِغَضَبٍ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "ح۪ينَئِذٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "لَف۪ى نَع۪يمٍ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "بِبَاسِطٍ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "ح۪ينَ مَنَاصٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "ف۪ى فَلَكٍ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "ف۪ى حَد۪يثٍ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "عَذَابٍ غَل۪يظٍ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "kesranin-tenvini/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 8,
+  "key": "damme",
+  "title": "Damme",
+  "lessons": [
+   {
+    "chapter": "damme",
+    "lesson": "damme",
+    "title": "Damme",
+    "description": "Damme hareke ince sesli harflere **\"ü – u arası\"** bir ses; kalın sesli harflere ise **\"u\"** sesi verir. Aşağıdaki damme harekeli harfleri önce tek tek, daha sonra beşli gruplar halinde **ritmik** usulle, uzatmadan okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "ritmikSound": "satir_1",
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اُ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بُ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تُ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثُ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جُ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_2",
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حُ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دُ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذُ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زُ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سُ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_3",
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شُ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عُ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فُ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كُ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لُ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_4",
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مُ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نُ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هُـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وُ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىُ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "rows": [
+       {
+        "ritmikSound": "satir_5",
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خُ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رُ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غُ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قُ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_6",
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صُ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضُ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طُ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظُ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "damme/damme"
+   },
+   {
+    "chapter": "damme",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki kelimeleri harekelerine dikkat ederek okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اُمَمٍ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "كُتُبٍ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "عِبَادُ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "اُنَاسٍ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "سُبُلَ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "وَطُبِعَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "اُكُلٍ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "مَفَاتِحُ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "تَخَاصُمُ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "وَوُضِعَ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "يُؤَاخِذُ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "ف۪ى ظُلَلٍ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "بِمَا تَعِدُنَا"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كَمَا سُئِلَ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "خُطُوٰتِ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "بِغُلَامٍ عَل۪يمٍ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "فَلَا جُنَاحَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "فَاِذَا نُفِخَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_19",
+          "arabic": "ف۪يهَا مَنٰفِعُ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "وَاِذَا قُرِئَ"
+         },
+         {
+          "sound": "btn_21",
+          "arabic": "يَه۪يجُ فَتَرٰيهُ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "damme/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 9,
+  "key": "dammenin-uzatilmasi",
+  "title": "Damme'nin Uzatılması",
+  "lessons": [
+   {
+    "chapter": "dammenin-uzatilmasi",
+    "lesson": "dammenin-uzatilmasi",
+    "title": "Damme'nin Uzatılması",
+    "description": "Damme'den sonra gelen **\"harekesiz Vâv harfi\"** uzatma işlevi görür. Aşağıdaki tabloda yer alan damme harekeli harfleri önce tek tek, daha sonra beşli guruplar halinde **ritmik** usulle, **uzatarak** okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "ritmikSound": "satir_1",
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اُو"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بُو"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تُو"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثُو"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جُو"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_2",
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حُو"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دُو"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذُو"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زُو"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سُو"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_3",
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شُو"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عُو"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فُو"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كُو"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لُو"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_4",
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مُو"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نُو"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هُو"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وُو"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يُو"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "rows": [
+       {
+        "ritmikSound": "satir_5",
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خُو"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رُو"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غُو"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قُو"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_6",
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صُو"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضُو"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طُو"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظُو"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "dammenin-uzatilmasi/dammenin-uzatilmasi"
+   },
+   {
+    "chapter": "dammenin-uzatilmasi",
+    "lesson": "karsilastirma",
+    "title": "Karşılaştırma",
+    "description": "Tablodaki damme harekelerin uzatılmayan ve uzatılan konumlarını mukâyese ederek **ritmik** usulle okuyunuz. Bir harfin iki konumunu okuduktan sonra diğer harfe geçiniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اُ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بُ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تُ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثُ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اُو"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بُو"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تُو"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثُو"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حُ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دُ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذُ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زُ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حُو"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دُو"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذُو"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زُو"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شُ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عُ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فُ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كُ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شُو"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عُو"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فُو"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كُو"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مُ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نُ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هُـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وُ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مُو"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نُو"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هُو"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وُو"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يُو"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خُ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رُ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غُ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خُو"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رُو"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غُو"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صُ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضُ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طُ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صُو"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضُو"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طُو"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظُو"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "dammenin-uzatilmasi/karsilastirma"
+   },
+   {
+    "chapter": "dammenin-uzatilmasi",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki kelimeleri harflerin uzatılmayan ve uzatılan konumlarına dikkat ederek rehber eşliğinde okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "هُودًا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "رُوح۪ى"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تَكُونُ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "يَرِثُونَ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "عَلٰى نُورٍ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "صٰبِرُونَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "يَغُوصُونَ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "فَذُوقُوهُ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "يَتَغَامَزُونَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "سَتَجِدُونَ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "وَلَا فُسُوقَ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "خَلَطُوا عَمَلًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "وَذَرُوا مَا بَقِىَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ظُهُورُهُمَا"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "اَفَلَا تُوقِنُونَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "وَكَانَ اَبُوهُمَا"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "فَقَالُوا سَلٰمًا"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "يُر۪يدُوا خِيَانَتَكَ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "dammenin-uzatilmasi/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 10,
+  "key": "dammenin-tenvini",
+  "title": "Damme'nin Tenvini",
+  "lessons": [
+   {
+    "chapter": "dammenin-tenvini",
+    "lesson": "dammenin-tenvini",
+    "title": "Damme'nin Tenvini (İki Damme)",
+    "description": "Harfin sesine **\"n\"** sesi ilave etmek olan **tenvin**, damme harekedeki **\"u\"** sesini **\"un\"** sesine dönüştürür.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "rows": [
+       {
+        "ritmikSound": "satir_1",
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اٌ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بٌ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تٌ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثٌ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جٌ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_2",
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حٌ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دٌ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذٌ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زٌ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سٌ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_3",
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شٌ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عٌ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فٌ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كٌ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لٌ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_4",
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مٌ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نٌ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هٌـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وٌ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىٌ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "rows": [
+       {
+        "ritmikSound": "satir_5",
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خٌ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رٌ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غٌ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قٌ"
+         }
+        ]
+       },
+       {
+        "ritmikSound": "satir_6",
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صٌ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضٌ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طٌ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظٌ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "dammenin-tenvini/dammenin-tenvini"
+   },
+   {
+    "chapter": "dammenin-tenvini",
+    "lesson": "karsilastirma",
+    "title": "Karşılaştırma",
+    "description": "Damme'nin uzatılmayan, uzatılan ve tenvinli konumlarını mukâyese ederek **ritmik** usulle okuyunuz. Bir harfin üç konumunu okuduktan sonra diğer harfe geçiniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "title": "İnce Sesli Harfler",
+      "titleSound": "baslik2",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اُ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بُ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تُ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثُ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اُو"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بُو"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تُو"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثُو"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اٌ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "بٌ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "تٌ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "ثٌ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "جٌ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حُ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دُ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذُ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زُ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حُو"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دُو"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذُو"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زُو"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "حٌ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "دٌ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "ذٌ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "زٌ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "سٌ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شُ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عُ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فُ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كُ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شُو"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عُو"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فُو"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كُو"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "شٌ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "عٌ"
+         },
+         {
+          "sound": "btn_13",
+          "arabic": "فٌ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "كٌ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "لٌ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مُ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نُ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هُـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وُ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مُو"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نُو"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هُو"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وُو"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "يُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "مٌ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نٌ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "هٌـ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "وٌ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "ىٌ"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "title": "Kalın Sesli Harfler",
+      "titleSound": "baslik3",
+      "type": "sets",
+      "rows": [
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خُ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رُ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غُ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خُو"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رُو"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غُو"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "خٌ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رٌ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "غٌ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "قٌ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صُ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضُ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طُ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظُ"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صُو"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضُو"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طُو"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظُو"
+         }
+        ]
+       },
+       {
+        "set": true,
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "صٌ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "ضٌ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "طٌ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "ظٌ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "dammenin-tenvini/karsilastirma"
+   },
+   {
+    "chapter": "dammenin-tenvini",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Tablodaki kelimeleri, harekelerin bütün konumlarına dikkat ederek okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "كُتُبٌ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "رَسُولٌ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "دَافِعٌ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "شَرَابٌ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "غَفُورٌ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "رِجَالٌ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "حَم۪يمٌ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "حَرَجٌ اِذَا"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "لَعَل۪يمٌ حَل۪يمٌ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "وَحُورٌ ع۪ينٌ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "وَلَا خِلَالٌ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "مُتَشٰبِهٰتٌ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "كَانَ رِجَالٌ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "سَرَقَ اَخٌ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "عَذَابٌ عَظ۪يمٌ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "عَجُوزٌ عَق۪يمٌ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "كَانَ ل۪ى قَر۪ينٌ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "عَز۪يزٌ حَك۪يمٌ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "dammenin-tenvini/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 11,
+  "key": "cezm",
+  "title": "Cezm",
+  "lessons": [
+   {
+    "chapter": "cezm",
+    "lesson": "cezm",
+    "title": "Cezm (Harflerin Birleştirilmesi)",
+    "description": "Cezm, üzerinde bulunduğu harfi kendinden önceki harfin harekesiyle birleştirir. Cezimli harf aynı zamanda **\"sakin harf\"** olarak da ifade edilir.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "type": "build",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "اَصَ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "اَصْ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "اَصْلَحَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "وِرَ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "وِرْ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "وِرْدًا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "يَئِسَ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "يَئِسْ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "يَئِسْنَ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "فَحُكَ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "فَحُكْ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "فَحُكْمُ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "اِذَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "اِذْ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "اِذْ قَامُوا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "cezm/cezm"
+   },
+   {
+    "chapter": "cezm",
+    "lesson": "kavrama",
+    "title": "Kavrama",
+    "description": "Aşağıdaki cezimli harfleri bir önceki harfin harekesini **uzatmadan**, rehber eşliğinde okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "بِئْ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "تِبْ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "مُتْ"
+         },
+         {
+          "sound": "btn_4",
+          "arabic": "هَثْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_5",
+          "arabic": "يَجْ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "يَحْ"
+         },
+         {
+          "sound": "btn_7",
+          "arabic": "سِخْ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "قَدْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_9",
+          "arabic": "عُذْ"
+         },
+         {
+          "sound": "btn_10",
+          "arabic": "صِرْ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "وَزْ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "بِسْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "خَشْ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "فَصْ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "رِضْ"
+         },
+         {
+          "sound": "btn_16",
+          "arabic": "شَطْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_17",
+          "arabic": "تُظْ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "نَعْ"
+         },
+         {
+          "sound": "btn_19",
+          "arabic": "مَغْ"
+         },
+         {
+          "sound": "btn_20",
+          "arabic": "غُفْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_21",
+          "arabic": "فَقْ"
+         },
+         {
+          "sound": "btn_22",
+          "arabic": "رَكْ"
+         },
+         {
+          "sound": "btn_23",
+          "arabic": "زُلْ"
+         },
+         {
+          "sound": "btn_24",
+          "arabic": "هُمْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_25",
+          "arabic": "مَنْ"
+         },
+         {
+          "sound": "btn_26",
+          "arabic": "صِهْ"
+         },
+         {
+          "sound": "btn_27",
+          "arabic": "اَوْ"
+         },
+         {
+          "sound": "btn_28",
+          "arabic": "وَىْ"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "cezm/kavrama"
+   },
+   {
+    "chapter": "cezm",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki kelimeleri uzman rehberliğinde okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "لَمْ"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "وِزْرٌ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "اِفْكٌ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "فَاَوْفِ"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "اَثْقَالَهَا"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "مَخْذُولاً"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "غَضْبٰنَ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "اُخْرِجَتْ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "فَلَا تُشْمِتْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "قُلْ اَرَاَيْتُمْ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "مُسْلِمُونَ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "قُلْ ف۪يهِمَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "تَسْتَعْجِلُونَ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "ذٰلِكُمْ اِصْر۪ى"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "تُغْنِىَ عَنْهُمْ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "وَاِلٰهُكُمْ وَاحِدٌ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "مِنَ الْوِلْدَانِ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "سَاُر۪يكُمْ اٰيٰ۪تى"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "cezm/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 12,
+  "key": "sedde",
+  "title": "Şedde",
+  "lessons": [
+   {
+    "chapter": "sedde",
+    "lesson": "sedde",
+    "title": "Şedde",
+    "description": "Şedde mutlaka bir hareke ile birlikte bulunur ve bulunduğu harfi bir önceki harf ile birleştirip sesi bölmeden tekrar okutur. Bu durum, Türkçemizde iki sessiz harfin yan yana gelmesine benzer. (Sı**hh**at, di**kk**at, ku**ll**uk, be**ll**ek, ce**nn**et vb.)",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "type": "split",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "تَزُّ",
+          "parts": [
+           "زْ",
+           "زُ"
+          ]
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "حُرِّ",
+          "parts": [
+           "رْ",
+           "رِ"
+          ]
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "فَكُّ",
+          "parts": [
+           "كْ",
+           "كُ"
+          ]
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "مَرُّو",
+          "parts": [
+           "رْ",
+           "رُو"
+          ]
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "اِنَّا",
+          "parts": [
+           "نْ",
+           "نَا"
+          ]
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "مِمَّ",
+          "parts": [
+           "مْ",
+           "مَ"
+          ]
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "مِنِّى",
+          "parts": [
+           "نْ",
+           "نِى"
+          ]
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "صَفًّا",
+          "parts": [
+           "فْ",
+           "فًا"
+          ]
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "كُلٌّ",
+          "parts": [
+           "لْ",
+           "لٌ"
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "sedde/sedde"
+   },
+   {
+    "chapter": "sedde",
+    "lesson": "uygulama",
+    "title": "Uygulama",
+    "description": "Aşağıdaki şeddeli kelimeleri harekelerine dikkat ederek, uzman rehberliğinde inceleyiniz ve okuyunuz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "مِمَّا"
+         },
+         {
+          "sound": "btn_2",
+          "arabic": "عَدَّ"
+         },
+         {
+          "sound": "btn_3",
+          "arabic": "كُلٌّ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "تَوَّابًا"
+         },
+         {
+          "sound": "btn_5",
+          "arabic": "تَبَّتْ"
+         },
+         {
+          "sound": "btn_6",
+          "arabic": "تَطَّلِعُ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "يَمُدُّهُمْ"
+         },
+         {
+          "sound": "btn_8",
+          "arabic": "يُكَذِّبُ"
+         },
+         {
+          "sound": "btn_9",
+          "arabic": "مُسْتَقَرٌّ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "فَصَلِّ لِرَبِّكَ"
+         },
+         {
+          "sound": "btn_11",
+          "arabic": "سَحَّارٍ عَل۪يمٍ"
+         },
+         {
+          "sound": "btn_12",
+          "arabic": "وَلَا يَحُضُّ"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "وَيَحِقَّ الْقَوْلُ"
+         },
+         {
+          "sound": "btn_14",
+          "arabic": "اِمَّا يُعَذِّبُهُمْ"
+         },
+         {
+          "sound": "btn_15",
+          "arabic": "بِاٰيٰتِ رَبِّنَا"
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_16",
+          "arabic": "فَسَوّٰيهُنَّ سَبْعَ"
+         },
+         {
+          "sound": "btn_17",
+          "arabic": "نُسَبِّحُ بِحَمْدِكَ"
+         },
+         {
+          "sound": "btn_18",
+          "arabic": "مِمَّا ذُكِّرُوا"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "sedde/uygulama"
+   }
+  ]
+ },
+ {
+  "number": 13,
+  "key": "pekistirme",
+  "title": "Pekiştirme",
+  "lessons": [
+   {
+    "chapter": "pekistirme",
+    "lesson": "pekistirme",
+    "title": "Pekiştirme",
+    "description": "Buraya kadar öğrendiklerinizi aşağıdaki ayetlerde pekiştiriniz.",
+    "descriptionSound": "aciklama",
+    "groups": [
+     {
+      "type": "ayet",
+      "reference": "Mürselât, 1-13",
+      "rows": [
+       {
+        "tiles": [
+         {
+          "sound": "btn_1",
+          "arabic": "وَالْمُرْسَلٰتِ عُرْفًاۙ",
+          "ayah": 1
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_2",
+          "arabic": "فَالْعٰصِفٰتِ عَصْفًاۙ",
+          "ayah": 2
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_3",
+          "arabic": "وَالنّٰشِرٰتِ نَشْرًاۙ",
+          "ayah": 3
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_4",
+          "arabic": "فَالْفٰرِقٰتِ فَرْقًاۙ",
+          "ayah": 4
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_5",
+          "arabic": "فَالْمُلْقِيٰتِ ذِكْرًاۙ",
+          "ayah": 5
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_6",
+          "arabic": "عُذْرًا اَوْ نُذْرًاۙ",
+          "ayah": 6
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_7",
+          "arabic": "اِنَّمَا تُوعَدُونَ لَوٰقِعٌۜ",
+          "ayah": 7
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_8",
+          "arabic": "فَاِذَا النُّجُومُ طُمِسَتْۙ",
+          "ayah": 8
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_9",
+          "arabic": "وَاِذَا السَّمَٓاءُ فُرِجَتْۙ",
+          "ayah": 9
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_10",
+          "arabic": "وَاِذَا الْجِبَالُ نُسِفَتْۙ",
+          "ayah": 10
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_11",
+          "arabic": "وَاِذَا الرُّسُلُ اُقِّتَتْۜ",
+          "ayah": 11
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_12",
+          "arabic": "لِاَىِّ يَوْمٍ اُجِّلَتْۜ",
+          "ayah": 12
+         }
+        ]
+       },
+       {
+        "tiles": [
+         {
+          "sound": "btn_13",
+          "arabic": "لِيَوْمِ الْفَصْلِۚ",
+          "ayah": 13
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": "pekistirme/pekistirme"
+   }
+  ]
+ }
+]
