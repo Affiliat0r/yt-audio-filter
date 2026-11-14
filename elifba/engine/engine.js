@@ -243,6 +243,57 @@
     return html;
   }
 
+  // ---------------------------------------------------------------- one letter, three harakat
+  // A wide card with the three forms side by side, read right to left (fetha,
+  // kesra, damme). The form being said is lifted and lit; the others step back.
+  // The pen points at it from below — nib up, body below the card — and moves
+  // right to left with the sounds.
+  const TRI = { x: 210, y: 200, w: 1500, h: 570 };
+  const formX = (k) => TRI.x + TRI.w * (5 - 2 * k) / 6;              // k=0 rightmost
+  const below = (k) => ({ x: formX(k), y: TRI.y + TRI.h + 26, a: 180 });
+
+  function tripleCard(forms, color, rim, heavy, x, y, w, h, look) {
+    const box = Math.min(h - 40, w / 3);
+    let html = `<div class="card ${heavy ? "heavy" : ""}" style="--c:${rim};left:${x}px;top:${y}px;width:${w}px;height:${h}px;
+      border-radius:${h * 0.16}px">`;
+    forms.forEach((f, k) => {
+      const cx = w * (5 - 2 * k) / 6, cy = h / 2;
+      const { op = 1, sc = 1, glow = 0 } = look ? look(k) : {};
+      if (glow > 0) html += `<div style="position:absolute;left:${cx - box * 0.62}px;top:${cy - box * 0.62}px;width:${box * 1.24}px;height:${box * 1.24}px;
+        border-radius:50%;background:radial-gradient(circle, rgba(255,214,120,${0.55 * glow}) 0%, rgba(255,214,120,0) 68%)"></div>`;
+      html += `<img src="${glyphImage(f.text, color, Math.round(box), Math.round(box * 0.66), f.mark)}" style="position:absolute;
+        left:${cx - box / 2}px;top:${cy - box / 2}px;width:${box}px;height:${box}px;opacity:${op};transform:scale(${sc});
+        filter:drop-shadow(0 8px 0 rgba(0,0,0,.06))">`;
+    });
+    return html + "</div>";
+  }
+
+  function drawTriple(scene, t) {
+    const pop = easeOutBack(prog(t, scene.start, scene.start + 0.6));
+    const beats = [0, 1, 2].map((k) => (beatsByTarget[`form:${k}`] || []).find((b) => b.t >= scene.start && b.t < scene.end));
+    const current = [2, 1, 0].find((k) => beats[k] && t >= beats[k].t);       // the last one said
+    const settle = scene.end - 0.6;
+    const look = (k) => {
+      if (current === undefined || t >= settle) return {};
+      const e = env(`form:${k}`, t);
+      return k === current ? { op: 1, sc: 1.08 + 0.06 * e, glow: 1 } : { op: 0.4, sc: 0.94 };
+    };
+    let html = "";
+    if (current !== undefined) html += rings(t, `form:${current}`, formX(current), TRI.y + TRI.h / 2, 180, scene.rim);
+    html += `<div style="position:absolute;inset:0;transform-origin:960px ${TRI.y + TRI.h / 2}px;
+      transform:scale(${lerp(0.2, 1, pop)});opacity:${clamp(pop * 1.5)}">
+      ${tripleCard(scene.forms, scene.color, scene.rim, scene.heavy, TRI.x, TRI.y, TRI.w, TRI.h, look)}</div>`;
+    // the pointer: lifts out of the inkwell for the first letter, then glides back to
+    // the right for each new letter and follows the sounds right to left
+    const keys = scene.number === 0
+      ? [[scene.start, HOME], [scene.start + 0.35, LIFT], [scene.start + 0.7, below(0)]]
+      : [[scene.start, below(2)], [scene.start + 0.6, below(0)]];
+    beats.forEach((b, k) => { if (b && k > 0) keys.push([b.t - 0.3, below(k - 1)], [b.t, below(k)]); });
+    const k = current === undefined ? -1 : current;
+    drawPen(t, track(t, keys), k >= 0 ? tap(t, `form:${k}`) : 0);
+    return html;
+  }
+
   function drawTitle(scene, t) {
     const k = easeOutBack(prog(t, scene.start + 0.1, scene.start + 0.8));
     drawPen(t, HOME);
@@ -287,14 +338,19 @@
 
   /** The video's thumbnail: its name, and every card of the lesson. */
   function drawThumb(scene, t) {
-    penOpacity = 0;            // the grid needs the whole frame
+    penOpacity = 0;            // the cards need the whole frame
     drawPen(t, HOME);
-    return `<div class="big-title" style="top:26px;font-size:170px;letter-spacing:3px">
-        Elif<span style="color:#E4572E">-</span>Ba <span style="color:#6B6575;font-size:120px">· ${scene.heading}</span></div>`
-      + letterGrid(scene, t, 262, 176, null);
+    const head = `<div class="big-title" style="top:26px;font-size:170px;letter-spacing:3px">
+        Elif<span style="color:#E4572E">-</span>Ba <span style="color:#6B6575;font-size:120px">· ${scene.heading}</span></div>`;
+    if (!scene.triples) return head + letterGrid(scene, t, 262, 176, null);
+    // the harakat lesson: its first four letters, each with all three marks
+    return head + scene.triples.map((forms, i) => {
+      const col = 1 - (i % 2), row = Math.floor(i / 2);      // right to left, top to bottom
+      return tripleCard(forms, scene.colors[i], scene.rims[i], false, 120 + col * 860, 270 + row * 400, 820, 360, null);
+    }).join("");
   }
 
-  const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, outro: drawOutro, thumb: drawThumb };
+  const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, triple: drawTriple, outro: drawOutro, thumb: drawThumb };
 
   // ---------------------------------------------------------------- frame
   window.seek = function seek(t) {

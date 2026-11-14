@@ -113,6 +113,24 @@ def test_fetha_lesson_is_thin_letters_then_thick_with_the_books_ya():
     assert ep["duration"] <= MAX_SECONDS
 
 
+@NEEDS_AUDIO
+def test_harekeler_gives_every_letter_fetha_kesra_damme_from_their_own_units():
+    ep = episode("harekeler")
+    triples = [s for s in ep["scenes"] if s["type"] == "triple"]
+    assert len(triples) == 28
+    assert [f["text"] for f in triples[1]["forms"]] == ["بَ", "بِ", "بُ"]
+    assert [f["text"] for f in triples[27]["forms"]] == ["يَ", "يِ", "يُ"]   # the book's dotted ya
+    paths = [a["path"] for a in ep["audio"] if "/elifba/" in a["path"] and "harfler" not in a["path"]]
+    assert len(paths) == 84
+    assert paths[3:6] == ["audio/elifba/fetha/fetha/btn_2.mp3", "audio/elifba/kesra/kesra/btn_2.mp3",
+                          "audio/elifba/damme/damme/btn_2.mp3"]
+    # ra is thick with fetha and damme but thin with kesra in Diyanet's units: three different slots
+    ra = paths[9 * 3:9 * 3 + 3]
+    assert ra == ["audio/elifba/fetha/fetha/btn_26.mp3", "audio/elifba/kesra/kesra/btn_9.mp3",
+                  "audio/elifba/damme/damme/btn_22.mp3"]
+    assert ep["duration"] <= MAX_SECONDS
+
+
 def test_script_cursor_advances_past_waits():
     s = Script()
     s.wait(1.5)

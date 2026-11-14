@@ -4,7 +4,10 @@ The audience is about three years old. What the owner asked for, after seeing
 richer versions: just the letters — each one shown and said, with pauses in
 between — a whole lesson in one video of five minutes at most. No prompts, no quiz.
 
-Lessons follow Diyanet's Elif-Ba order: 1. the letters (by name), 2. fetha, ...
+Lessons follow the printed Diyanet Elif-Ba (2024), the owner's reference: 1. the
+letters (by name), 3. harekeler — every letter with all three harakat at once,
+اَ اِ اُ, as the book's table shows them. (A fetha-only lesson, the order of
+Diyanet's web course, is kept as ``fetha`` but is not part of the series.)
 
 * one letter on screen at a time, very large, with its own colour;
 * the only voice is Diyanet's human recording of each letter's name (and the
@@ -26,7 +29,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from elifba.curriculum import JE, unit_fetha
+from elifba.curriculum import JE, unit_damme, unit_fetha, unit_kesra
 
 ROOT = Path(__file__).resolve().parent
 AUDIO = ROOT / "audio"
@@ -50,6 +53,10 @@ CHAPTER_EVERY = 7
 MARK_COLOR = "#E4572E"
 #: Lessons that teach a mark draw the letters themselves in one calm ink.
 INK = "#2E3A59"
+
+#: One colour per hareke, the same in every letter, so each mark is recognised by colour too.
+HARAKAT_COLORS = {"fetha": "#E4572E", "kesra": "#1C7CB8", "damme": "#2A9D5B"}
+TRIPLE_GAP = 1.3    # after each of the three sounds: time to say it back
 
 
 def name_sound(letter: str) -> Path:
@@ -130,11 +137,56 @@ def fetha_items() -> List[Dict]:
     return items
 
 
+def _recordings(unit) -> Dict[str, tuple]:
+    """letter -> (text as Diyanet writes it, recording) for one of Diyanet's hareke units."""
+    les = unit()[0]
+    folder = AUDIO / "elifba" / les["chapter"] / les["lesson"]
+    out = {}
+    for group in les["groups"]:
+        for row in group["rows"]:
+            for tile in row["tiles"]:
+                out[base_letter(tile["arabic"])] = (tile["arabic"], folder / f"{tile['sound']}.mp3")
+    return out
+
+
+def harekeler_items() -> List[Dict]:
+    """Lesson 3 of the printed Elif-Ba: every letter, in alphabet order, with fetha,
+    kesra and damme together — read right to left, اَ اِ اُ. Each recording comes
+    from Diyanet's own unit for that hareke. Ya is written dotted (يَ يِ يُ) as in
+    the book."""
+    units = {"fetha": _recordings(unit_fetha), "kesra": _recordings(unit_kesra), "damme": _recordings(unit_damme)}
+    items = []
+    for letter in JE:
+        forms = []
+        for hareke, rec in units.items():
+            text, sound = rec[letter]
+            if letter == "ى":
+                text = "ي" + text[1:]
+            forms.append({"text": text, "sound": sound, "hareke": hareke})
+        items.append({"text": letter, "letter": letter, "forms": forms})
+    return items
+
+
 #: number, items, subtitle on the title card, whether the cards show a coloured hareke
 LESSONS = {
     "harfler": (1, harfler_items, "Harfler", False),
+    "harekeler": (3, harekeler_items, "Harekeler", True),
     "fetha": (2, fetha_items, "Fetha", True),
 }
+
+
+def triple_segment(s: Script, item: Dict, number: int) -> None:
+    """One letter with its three harakat: each said in turn, right to left, a pause after each."""
+    letter = item["letter"]
+    forms = [{"text": f["text"], "mark": HARAKAT_COLORS[f["hareke"]]} for f in item["forms"]]
+    scene = s.open_scene("triple", forms=forms, color=INK, rim=color_of(letter),
+                         heavy=letter in HEAVY, number=number)
+    s.wait(APPEAR)
+    for k, f in enumerate(item["forms"]):
+        s.play(f["sound"], target=f"form:{k}")
+        s.wait(TRIPLE_GAP)
+    s.wait(0.4)
+    s.close_scene(scene)
 
 
 def letter_segment(s: Script, item: Dict, number: int, marked: bool) -> None:
@@ -169,12 +221,18 @@ def episode(lesson: str = "harfler") -> Dict:
         if i % CHAPTER_EVERY == 0:
             last = items[min(i + CHAPTER_EVERY, len(items)) - 1]
             s.chapters.append({"t": round(s.t, 3), "title": f"{item['text']} – {last['text']}"})
-        letter_segment(s, item, i, marked)
+        if "forms" in item:
+            triple_segment(s, item, i)
+        else:
+            letter_segment(s, item, i, marked)
 
     # the closing five seconds stay inside the last chapter: YouTube wants 10 s or more each
     scene = s.open_scene("outro", texts=[it["text"] for it in items],
                          colors=[INK if marked else color_of(it["letter"]) for it in items],
-                         rims=[color_of(it["letter"]) for it in items], mark=MARK_COLOR if marked else None)
+                         rims=[color_of(it["letter"]) for it in items],
+                         mark=MARK_COLOR if marked and "forms" not in items[0] else None,
+                         triples=[[{"text": f["text"], "mark": HARAKAT_COLORS[f["hareke"]]} for f in it["forms"]]
+                                  for it in items[:4]] if "forms" in items[0] else None)
     s.wait(5.0)
     s.close_scene(scene)
 
