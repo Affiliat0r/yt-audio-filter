@@ -152,6 +152,27 @@ def test_only_the_words_lesson_may_run_past_five_minutes():
     assert LESSON_MAX_SECONDS == {"kelime": 720}
 
 
+def test_every_spelled_word_has_one_timing_per_letter_in_order():
+    from elifba.spelling import letters_of
+    from elifba.storyboard import SPELLING, kelime_items
+
+    for item in kelime_items(0):
+        for w in item["words"]:
+            segs = SPELLING[w["sound"].name]
+            assert len(segs) == len(letters_of(w["text"])), w["text"]
+            assert all(a < b for a, b in segs)
+            assert all(b1 <= a2 for (_, b1), (a2, _) in zip(segs, segs[1:]))
+
+
+@NEEDS_AUDIO
+def test_the_words_scene_carries_letter_timings_inside_each_word():
+    ep = episode("kelime")
+    ba = next(s for s in ep["scenes"] if s.get("letter") == "ب")
+    word0 = next(a for a in ep["audio"] if a["path"].endswith("sekilleri/btn_12.mp3"))
+    first, last = ba["spell"][0][0], ba["spell"][0][-1]
+    assert word0["t"] <= first[0] and last[1] <= word0["t"] + word0["dur"] + 0.05
+
+
 def test_script_cursor_advances_past_waits():
     s = Script()
     s.wait(1.5)

@@ -16,22 +16,34 @@ printed Diyanet Elif-Ba (2024).
 `fetha` (fetha only, in the order of Diyanet's web course) also exists but is
 not part of the series.
 
-Every video opens with the besmele, recited, and ends with all the letters
-together and "Aferin!".
+Every video opens with the besmele, recited, and ends with "Aferin!".
+
+## The look
+
+A soft 3D clay diorama at golden hour: an Ottoman tulip garden in layered
+parallax, with domes and minarets on the horizon. The camera glides right to
+left — the way Arabic is read — from tulip to tulip. Each tulip blooms, its
+letter rises out of it in clay, bounces each time its name is said, then flies
+up into a bunting that fills across the top as the lesson goes on. At the end
+night falls, a crescent moon rises and lanterns float up.
+
+In ders 2 the word cards light up the letter being said, in time with
+Diyanet's spelling, so a child can follow which letter is read.
 
 ## What is in a video, and what is deliberately not
 
 - **Sound:** only human recordings from Diyanet (kuran.diyanet.gov.tr/elifba),
   and Osman Şahin's besmele. No narrator, no music, no sound effects. Arabic
   text-to-speech was tried and rejected: it garbles isolated letters and harakat.
-- **Companion:** a reed pen (kamış kalem) with its inkwell (divit), pointing at
-  what is being said. No character with a face.
+- **No characters, no faces, no creatures** — the world is flowers, sky and buildings.
 - **Simple by design:** no prompts, no quiz, five minutes at most (ders 2 is the
   one longer exception, at the owner's request).
 - **Nothing near a letter that a child could read as part of it.** Reviews from
   a three-year-old's point of view found that a stroke beside alif read as a
   second alif, badges beside dots read as extra dots, a pen under a letter read
-  as a kasra, and a ring above a letter read as a cezm. Check stills of any change.
+  as a kasra, and a ring above a letter read as a cezm. The garden keeps the sky
+  behind the letters empty for the same reason: a minaret behind a letter reads
+  as an alif. Check stills of any change.
 - **Harakat in colour** wherever they are taught: fetha red-orange, kesra blue,
   damme green.
 
@@ -39,6 +51,7 @@ together and "Aferin!".
 
 ```bash
 python -m elifba.fetch_audio                       # once: Diyanet's recordings -> elifba/audio/
+python -m elifba.spelling                          # once: letter timings for ders 2 -> data/spelling.json
 python -m elifba.render harekeler --stills 12,40   # check a few frames first
 python -m elifba.render harekeler                  # -> output/elifba/elifba_harekeler.mp4
 python -m elifba.render harekeler --thumbnail      # -> output/elifba/elifba_harekeler_thumb.jpg
@@ -55,7 +68,8 @@ takes roughly its own length to render.
 |---|---|
 | `curriculum.py` | Diyanet's 13-unit course, ported, with the recording for every tile. Sounds are numbered by position (`btn_1..N`), with quirks such as a skipped number in the fetha lesson; the port follows the site's helpers one for one. |
 | `storyboard.py` | `LESSONS`: turns a lesson into timed scenes, audio placements, "beats" (when a sound starts) and YouTube chapters. |
-| `engine/` | `index.html` + `engine.js` + `style.css`. `seek(t)` draws any frame as a pure function of time, so rendering is exact and repeatable. Letters are drawn on a canvas so the ink is centred and harakat can be coloured. |
+| `engine/` | `index.html` + `engine.js` + `style.css`. `seek(t)` draws any frame on one canvas as a pure function of time, so rendering is exact and repeatable. Letters are modelled as clay sprites (extrusion, rim light, gloss) with harakat in their own colours; ders 2's word cards are DOM so a letter inside a word can be lit while the word stays joined. |
+| `spelling.py` | When each letter is said in ders 2's spelled words: Diyanet's letter-name recordings, laid end to end, aligned to each word by DTW on MFCCs. |
 | `render.py` | Steps the page through every frame with Playwright, pipes JPEGs into FFmpeg (NVENC), mixes the audio in numpy (each clip levelled, then loudness-normalised). |
 | `fetch_audio.py` | Downloads every recording the curriculum refers to. |
 

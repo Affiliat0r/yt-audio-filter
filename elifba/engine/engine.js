@@ -1,27 +1,32 @@
-/* Elif-Ba video engine.
+/* Elif-Ba video engine — "the tulip garden".
  *
- * Draws one frame of the video for any time t. Nothing here runs on a clock:
- * every position, size and opacity is computed from t and the timeline, so
- * render.py can step through frames one by one and get the same video every time.
+ * Draws one frame of a lesson for any time t, on one canvas. Nothing runs on a
+ * clock: every position, colour and opacity is computed from t and the
+ * timeline, so render.py can step through frames one by one and get the same
+ * video every time.
  *
  *   window.__TIMELINE   the storyboard (set before this script runs)
  *   window.seek(t)      draw the frame at t seconds
  *
- * The only companion is a kamış kalem (reed pen) with its divit (inkwell) — no
- * character, no face; "Oku! ... kalemle öğreten Rabbin" (Alak 96:1-5). It stands
- * just outside the card and taps toward the letter as its name is said. It never
- * crosses a letter.
+ * The look: a soft 3D "clay" diorama at golden hour — an Ottoman tulip garden
+ * with domes and minarets on the horizon, in layered parallax. The camera
+ * glides right to left (the way Arabic is read) from tulip to tulip; each tulip
+ * blooms and its letter rises out of it, bounces each time Diyanet says its
+ * name, then flies up into a bunting that fills across the top as the lesson
+ * goes on. At the end night falls, a crescent rises, lanterns float up.
+ *
+ * Rules carried over from the toddler reviews: no faces or creatures; nothing
+ * small near a letter that could be read as part of it (no sparkles or
+ * particles around letters: emphasis is light — a halo and a bounce).
  */
 (() => {
   "use strict";
 
   const TL = window.__TIMELINE;
-  const $ = (sel) => document.querySelector(sel);
-  const scenesLayer = $("#scenes");
-  const fxLayer = $("#fx");
-  const penEl = $("#pen");
-  const wellBack = $("#well-back");
-  const wellFront = $("#well-front");
+  const W = 1920, H = 1080;
+  const cv = document.getElementById("world");
+  const ctx = cv.getContext("2d");
+  const overlay = document.getElementById("overlay");
 
   // ---------------------------------------------------------------- maths
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -33,419 +38,966 @@
     const c1 = 1.70158, c3 = c1 + 1;
     return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
   };
+  const hash = (n) => {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+
+  // ---------------------------------------------------------------- colour
+  const rgb = (hex) => { const v = parseInt(hex.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; };
+  const mix = (a, b, k) => a.map((x, i) => x + (b[i] - x) * k);
+  const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+  /** Lighten (amt > 0, toward white) or darken (amt < 0, toward black). */
+  const shade = (hex, amt) => (amt >= 0 ? mix(rgb(hex), [255, 255, 255], amt) : mix(rgb(hex), [0, 0, 0], -amt));
 
   // ---------------------------------------------------------------- beats
   const beatsByTarget = {};
   for (const b of TL.beats) (beatsByTarget[b.target] ||= []).push(b);
-
+  const beatsIn = (target, a, b) => (beatsByTarget[target] || []).filter((x) => x.t >= a && x.t < b);
   function beatAt(target, t, tail = 0.35) {
-    const list = beatsByTarget[target];
-    if (!list) return null;
-    for (const b of list) if (t >= b.t && t < b.t + b.dur + tail) return b;
+    for (const b of beatsByTarget[target] || []) if (t >= b.t && t < b.t + b.dur + tail) return b;
     return null;
   }
-
-  /** Loudness-like envelope of the sound on ``target``: fast attack, slow fall. */
+  /** Loudness-like envelope of the sound on ``target``. */
   function env(target, t) {
     const b = beatAt(target, t);
     if (!b) return 0;
     const k = t - b.t;
-    const attack = clamp(k / 0.07);
     const body = k < b.dur ? 1 - 0.45 * (k / b.dur) : 0.55 * (1 - (k - b.dur) / 0.35);
-    return clamp(attack * body);
+    return clamp(clamp(k / 0.07) * body);
   }
-
-  // ---------------------------------------------------------------- background
-  const BLOBS = [
-    [180, 160, 260, "#FFD8A8"], [1720, 220, 200, "#C8EBDD"], [1500, 930, 300, "#FFE3EC"],
-    [300, 900, 230, "#D8ECFF"], [960, 60, 160, "#FFF0B8"], [1080, 1010, 180, "#E5DCFA"],
-  ];
-  const blobEls = BLOBS.map(([, , r, c]) => {
-    const d = document.createElement("div");
-    d.className = "blob";
-    Object.assign(d.style, { width: `${r}px`, height: `${r}px`, background: c, opacity: 0.55 });
-    $("#blobs").appendChild(d);
-    return d;
-  });
-  function drawBackground(t) {
-    BLOBS.forEach(([x, y, r], i) => {
-      const dx = Math.sin(t * 0.21 + i * 1.7) * 26, dy = Math.cos(t * 0.17 + i * 2.3) * 20;
-      blobEls[i].style.transform = `translate(${x - r / 2 + dx}px, ${y - r / 2 + dy}px)`;
-    });
-    $("#pattern").style.transform = `translate(${(t * 6) % 120}px, ${(t * 3) % 120}px)`;
-  }
-
-  // ---------------------------------------------------------------- the pen and its inkwell
-  // Pen artwork is 80x520 units, drawn at 0.8 scale; its nib tip is at (40, 512).
-  // Angle a: 0 = nib straight down, body above it.
-  const PEN_W = 64, PEN_H = 416, TIP_X = 32, TIP_Y = 409.6;
-  penEl.setAttribute("width", PEN_W);
-  penEl.setAttribute("height", PEN_H);
-  penEl.setAttribute("viewBox", "0 0 80 520");
-  penEl.innerHTML = `
-    <defs>
-      <linearGradient id="reed" x1="0" x2="1">
-        <stop offset="0" stop-color="#E7B866"/><stop offset=".45" stop-color="#C98E3C"/><stop offset="1" stop-color="#94601F"/>
-      </linearGradient>
-      <linearGradient id="nib" x1="0" x2="1">
-        <stop offset="0" stop-color="#6B4A2A"/><stop offset="1" stop-color="#3B2614"/>
-      </linearGradient>
-    </defs>
-    <path d="M22 26 Q40 6 58 26 L58 372 Q57 404 50 432 L30 432 Q23 404 22 372 Z" fill="url(#reed)"/>
-    <path d="M27 30 L27 368" stroke="#FFF3D6" stroke-width="4" stroke-linecap="round" opacity=".45"/>
-    <path d="M22 132 Q40 140 58 132 M22 262 Q40 270 58 262" stroke="#7A4A18" stroke-width="3" fill="none" opacity=".45"/>
-    <path d="M30 432 Q40 440 50 432 L43.5 506 Q40 516 36.5 506 Z" fill="url(#nib)"/>
-    <path d="M40 452 L40 500" stroke="#F6E2B0" stroke-width="1.6" opacity=".55"/>`;
-  wellBack.innerHTML = `<ellipse cx="110" cy="40" rx="56" ry="16" fill="#120D22"/>`;
-  wellFront.innerHTML = `
-    <defs><linearGradient id="glaze" x1="0" x2="1">
-      <stop offset="0" stop-color="#2F5597"/><stop offset=".5" stop-color="#1F3A6E"/><stop offset="1" stop-color="#132447"/></linearGradient></defs>
-    <path d="M54 40 Q40 60 36 90 Q34 150 110 156 Q186 150 184 90 Q180 60 166 40 Q110 62 54 40 Z" fill="url(#glaze)"/>
-    <path d="M44 84 Q110 104 176 84" stroke="#C9962B" stroke-width="7" fill="none"/>
-    <path d="M110 112 q-14 -14 0 -26 q14 12 0 26 Z M92 114 q-10 -6 -6 -18 M128 114 q10 -6 6 -18"
-      fill="#E8C66A" stroke="#E8C66A" stroke-width="3" stroke-linecap="round"/>
-    <path d="M54 40 Q110 62 166 40" stroke="#E2B04A" stroke-width="7" fill="none" stroke-linecap="round"/>
-    <path d="M50 56 Q46 76 48 96" stroke="#fff" stroke-width="6" opacity=".25" fill="none" stroke-linecap="round"/>`;
-  const WELL = { x: 1600, y: 880 };           // top-left of the inkwell artwork (220x170)
-  const HOME = { x: WELL.x + 110, y: WELL.y + 76, a: 14 };      // nib down in the ink
-  const LIFT = { x: WELL.x + 110, y: WELL.y - 40, a: 14 };      // just lifted out
-  for (const el of [wellBack, wellFront]) {
-    el.style.left = `${WELL.x}px`;
-    el.style.top = `${WELL.y}px`;
-  }
-
-  /** Interpolate a pose along [[time, pose], ...]. Holds at both ends. */
-  function track(t, keys) {
-    if (t <= keys[0][0]) return keys[0][1];
-    for (let i = 1; i < keys.length; i++) {
-      if (t < keys[i][0]) {
-        const [t0, p0] = keys[i - 1], [t1, p1] = keys[i];
-        const k = easeInOut(prog(t, t0, t1));
-        return { x: lerp(p0.x, p1.x, k), y: lerp(p0.y, p1.y, k), a: lerp(p0.a, p1.a, k) };
-      }
+  /** A springy squash-and-stretch after each beat on ``target`` in [a, b). */
+  function bounce(target, t, a, b) {
+    let v = 0;
+    for (const x of beatsIn(target, a, b)) {
+      const k = t - x.t;
+      if (k >= 0 && k < 1.4) v += Math.exp(-4.5 * k) * Math.sin(13 * k);
     }
-    return keys[keys.length - 1][1];
+    return v;
   }
 
-  /** A quick tap toward the letter while ``target`` sounds. */
-  function tap(t, target) {
-    const b = beatAt(target, t, 0);
-    if (!b) return 0;
-    return Math.sin(Math.PI * clamp((t - b.t) / 0.28));
-  }
-
-  let penOpacity = 1;
-  function drawPen(t, pose, tapK = 0) {
-    penEl.style.opacity = penOpacity;
-    wellBack.style.opacity = wellFront.style.opacity = penOpacity;
-    const rad = (pose.a * Math.PI) / 180;
-    const x = pose.x - Math.sin(rad) * 18 * tapK, y = pose.y + Math.cos(rad) * 18 * tapK;   // the nib moves the way it points
-    const a = pose.a + 0.8 * Math.sin(t * 1.3);     // a living hand is never quite still
-    penEl.style.transformOrigin = `${TIP_X}px ${TIP_Y}px`;
-    penEl.style.transform = `translate(${x - TIP_X}px, ${y - TIP_Y}px) rotate(${a}deg)`;
-  }
-
-  // ---------------------------------------------------------------- fx
-  const STAR_PATH = "M50 6l13 28 30 3-23 20 7 30-27-16-27 16 7-30-23-20 30-3z";
-  function stars(t, t0, cx, cy, n = 12, spread = 420, colors = ["#F5B800", "#FF7A59", "#4FC3F7", "#7ED957"]) {
-    const k = (t - t0) / 1.4;
-    if (k < 0 || k > 1) return "";
-    let html = "";
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + 0.3 * Math.sin(i * 12.9898);
-      const dist = spread * easeOutCubic(k) * (0.7 + 0.3 * ((i * 7) % 5) / 4);
-      const x = cx + Math.cos(a) * dist, y = cy + Math.sin(a) * dist - 60 * k;
-      const s = (1 - k) * (0.8 + 0.6 * ((i * 3) % 4) / 3);
-      html += `<svg class="star" viewBox="0 0 100 100" style="left:${x - 35}px;top:${y - 35}px;
-        transform:scale(${s}) rotate(${k * 200 + i * 30}deg);opacity:${1 - k * k}">
-        <path d="${STAR_PATH}" fill="${colors[i % colors.length]}"/></svg>`;
-    }
-    return html;
-  }
-
-  /** Soft rings spreading from the card while its name sounds. */
-  function rings(t, target, cx, cy, base, color) {
-    const b = beatAt(target, t, 0.5);
-    if (!b) return "";
-    let html = "";
-    for (let i = 0; i < 3; i++) {
-      const k = ((t - b.t) * 0.9 + i / 3) % 1;
-      const fade = clamp(1 - (t - b.t - b.dur) / 0.5);
-      const r = base + k * 170;
-      html += `<div class="ring" style="--c:${color};left:${cx - r}px;top:${cy - r}px;width:${2 * r}px;height:${2 * r}px;
-        opacity:${(1 - k) * 0.45 * fade};border-width:${10 - 6 * k}px"></div>`;
-    }
-    return html;
-  }
-
-  // ---------------------------------------------------------------- the letter, drawn once per colour
-  // Drawn on a canvas so the ink itself is centred in the card (a text box would
-  // centre the advance width, which leaves letters like ى or ر visibly off-centre).
-  // With ``markColor``, the harakat are drawn in their own colour: the whole text
-  // in markColor first, then the bare letter over it in ``color`` — what is left
-  // showing in markColor is exactly the mark.
+  // ---------------------------------------------------------------- the lesson's stations
   const HARAKAT = /[ً-ْٰ۪ٖ]/g;
-  const glyphCache = {};
-  function glyphImage(letter, color, box, fontPx, markColor = null) {
-    const key = `${letter}|${color}|${box}|${fontPx}|${markColor}`;
-    if (glyphCache[key]) return glyphCache[key];
-    const cv = document.createElement("canvas");
-    cv.width = cv.height = box;
-    const ctx = cv.getContext("2d");
-    ctx.direction = "rtl";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-    // A tall letter with a mark on it (غَ) can outgrow the card: shrink only those,
-    // so the ink always fits inside 76% of the box. Everything else keeps its size.
-    ctx.font = `700 ${fontPx}px "Scheherazade"`;
-    let m = ctx.measureText(letter);
-    const fit = Math.min(1, (0.76 * box) / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent),
-      (0.76 * box) / (m.actualBoundingBoxLeft + m.actualBoundingBoxRight));
-    if (fit < 1) {
-      ctx.font = `700 ${Math.floor(fontPx * fit)}px "Scheherazade"`;
-      m = ctx.measureText(letter);
+  const scenes = TL.scenes;
+  const stations = scenes.filter((s) => s.type === "letter" || s.type === "triple" || s.type === "words");
+  stations.forEach((s, i) => {
+    s.idx = i;
+    s.base = s.letter || (s.text || s.forms[0].text).replace(HARAKAT, "");
+  });
+  const N = stations.length;
+  const STEP = 1700;
+  const stationX = (i) => -i * STEP;          // the camera travels left: right to left, as Arabic reads
+  const TITLE_X = STEP;
+  const firstStart = stations.length ? stations[0].start : 0;
+  const lastEnd = stations.length ? stations[N - 1].end : TL.duration;
+  const sceneAt = (t) => scenes.find((s) => t >= s.start && t < s.end) || scenes[scenes.length - 1];
+
+  const TULIPS = ["#E8505B", "#F28AA0", "#F6B93B", "#9D7BD8", "#F3722C", "#E56399", "#5FA8D3"];
+  const CLAY_INK = "#3E4A7A";                  // letters that carry coloured harakat
+
+  // ---------------------------------------------------------------- camera and time of day
+  function camera(t) {
+    const sc = sceneAt(t);
+    let x = TITLE_X, y = 0;
+    if (sc.type === "besmele") y = -430;
+    else if (sc.type === "title") y = lerp(-430, 0, easeInOut(prog(t, sc.start, sc.start + 1.8)));
+    else if (sc.type === "outro") { x = stationX(N - 1); y = lerp(0, -430, easeInOut(prog(t, sc.start + 0.4, sc.start + 2.6))); }
+    else {
+      const prev = sc.idx === 0 ? TITLE_X : stationX(sc.idx - 1);
+      x = lerp(prev, stationX(sc.idx), easeInOut(prog(t, sc.start, sc.start + 1.15)));
     }
-    const inkW = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
-    const inkH = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
-    const x = (box - inkW) / 2 + m.actualBoundingBoxLeft, y = (box - inkH) / 2 + m.actualBoundingBoxAscent;
-    if (markColor) {
-      ctx.fillStyle = markColor;
-      ctx.fillText(letter, x, y);
-      ctx.fillStyle = color;
-      ctx.fillText(letter.replace(HARAKAT, ""), x, y);
-    } else {
-      ctx.fillStyle = color;
-      ctx.fillText(letter, x, y);
+    return { x, y };
+  }
+
+  /** 0 = soft morning, 0.75 = golden hour (the lesson runs between), 1 = night (the ending). */
+  function dayK(t) {
+    const sc = sceneAt(t);
+    if (sc.type === "besmele" || sc.type === "title") return 0;
+    if (sc.type === "outro") return lerp(0.75, 1, easeInOut(prog(t, sc.start, sc.start + 2.4)));
+    return 0.75 * prog(t, firstStart, lastEnd);
+  }
+
+  const SKY = {
+    morning: { top: "#8EC5F5", mid: "#CFE8FA", hor: "#FFE7CC" },
+    golden: { top: "#7FA6E6", mid: "#FFD2A4", hor: "#FFAD84" },
+    night: { top: "#121944", mid: "#33296A", hor: "#A6607A" },
+  };
+  function skyAt(k) {
+    const [a, b, f] = k <= 0.75 ? [SKY.morning, SKY.golden, k / 0.75] : [SKY.golden, SKY.night, (k - 0.75) / 0.25];
+    return { top: mix(rgb(a.top), rgb(b.top), f), mid: mix(rgb(a.mid), rgb(b.mid), f), hor: mix(rgb(a.hor), rgb(b.hor), f) };
+  }
+  const nightOf = (k) => clamp((k - 0.75) / 0.25);
+
+  // ---------------------------------------------------------------- sky
+  function drawSky(t, cam, k) {
+    const s = skyAt(k);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, css(s.top));
+    g.addColorStop(0.5, css(s.mid));
+    g.addColorStop(0.82, css(s.hor));
+    g.addColorStop(1, css(s.hor));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    const night = nightOf(k);
+    // the sun, sinking slowly through the lesson
+    // high in the top-right corner, clear of every place a letter can stand
+    const sx = W - 170, sy = 175 + 120 * Math.min(1, k / 0.8) - cam.y * 0.05;
+    if (night < 1) {
+      ctx.save();
+      ctx.globalAlpha = 1 - night;
+      // light rays, turning very slowly
+      ctx.translate(sx, sy);
+      ctx.rotate(t * 0.02);
+      for (let i = 0; i < 14; i++) {
+        ctx.rotate((Math.PI * 2) / 14);
+        const rg = ctx.createLinearGradient(0, 0, 900, 0);
+        rg.addColorStop(0, "rgba(255,244,214,0.16)");
+        rg.addColorStop(1, "rgba(255,244,214,0)");
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(900, -55);
+        ctx.lineTo(900, 55);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = 1 - night;
+      const glow = ctx.createRadialGradient(sx, sy, 40, sx, sy, 380);
+      glow.addColorStop(0, "rgba(255,246,222,0.95)");
+      glow.addColorStop(0.3, "rgba(255,226,170,0.45)");
+      glow.addColorStop(1, "rgba(255,210,150,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(sx - 380, sy - 380, 760, 760);
+      ctx.fillStyle = "rgba(255,250,232,1)";
+      ctx.beginPath();
+      ctx.arc(sx, sy, 92, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
-    return (glyphCache[key] = cv.toDataURL("image/png"));
+    if (night > 0) drawMoon(t, night, cam);
   }
 
-  // ---------------------------------------------------------------- scenes
-  const CARD = { x: 610, y: 180, w: 700 };
-  // just outside the card's right edge, leaning away: it taps toward the letter, never across it
-  const SIDE = { x: CARD.x + CARD.w + 16, y: CARD.y + CARD.w / 2, a: 22 };
-
-  function drawLetter(scene, t) {
-    const pop = easeOutBack(prog(t, scene.start, scene.start + 0.6));
-    const e = env("letter", t);
-    const cx = CARD.x + CARD.w / 2, cy = CARD.y + CARD.w / 2;
-    const url = glyphImage(scene.text, scene.color, CARD.w, 430, scene.mark);
-    let html = rings(t, "letter", cx, cy, 330, scene.rim);
-    html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.rim};left:${CARD.x}px;top:${CARD.y}px;
-      transform:scale(${lerp(0.2, 1, pop) * (1 + 0.035 * e)});opacity:${clamp(pop * 1.5)}">
-      <img src="${url}" style="position:absolute;inset:0;width:${CARD.w}px;height:${CARD.w}px;
-        transform:scale(${1 + 0.09 * e});filter:drop-shadow(0 10px 0 rgba(0,0,0,.07))"></div>`;
-    // the first letter: the pen lifts out of its inkwell; after that it stays beside the card
-    const keys = scene.number === 0
-      ? [[scene.start, HOME], [scene.start + 0.35, LIFT], [scene.start + 0.65, SIDE]]
-      : [[scene.start, SIDE]];
-    drawPen(t, track(t, keys), tap(t, "letter"));
-    return html;
+  const moonCanvas = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 360;
+    const m = c.getContext("2d");
+    const g = m.createRadialGradient(180, 180, 60, 180, 180, 180);
+    g.addColorStop(0, "rgba(255,240,190,0.55)");
+    g.addColorStop(1, "rgba(255,240,190,0)");
+    m.fillStyle = g;
+    m.fillRect(0, 0, 360, 360);
+    const d = document.createElement("canvas");
+    d.width = d.height = 360;
+    const dm = d.getContext("2d");
+    dm.fillStyle = "#FFF1C2";
+    dm.beginPath();
+    dm.arc(180, 180, 88, 0, Math.PI * 2);
+    dm.fill();
+    dm.globalCompositeOperation = "destination-out";
+    dm.beginPath();
+    dm.arc(214, 160, 80, 0, Math.PI * 2);
+    dm.fill();
+    m.drawImage(d, 0, 0);
+    return c;
+  })();
+  function drawMoon(t, night, cam) {
+    ctx.save();
+    ctx.globalAlpha = night;
+    const y = 250 + 120 * (1 - night) - (cam.y + 430) * 0.05;
+    ctx.translate(W * 0.76, y);
+    ctx.rotate(-0.35);
+    ctx.drawImage(moonCanvas, -180, -180);
+    ctx.restore();
   }
 
-  // ---------------------------------------------------------------- one letter, three harakat
-  // A wide card with the three forms side by side, read right to left (fetha,
-  // kesra, damme). The form being said is lifted and lit; the others step back.
-  // The pen points at it from below — nib up, body below the card — and moves
-  // right to left with the sounds.
-  const TRI = { x: 210, y: 200, w: 1500, h: 570 };
-  const formX = (k) => TRI.x + TRI.w * (5 - 2 * k) / 6;              // k=0 rightmost
-  const below = (k) => ({ x: formX(k), y: TRI.y + TRI.h + 26, a: 180 });
-
-  function tripleCard(forms, color, rim, heavy, x, y, w, h, look) {
-    const box = Math.min(h - 40, w / 3);
-    let html = `<div class="card ${heavy ? "heavy" : ""}" style="--c:${rim};left:${x}px;top:${y}px;width:${w}px;height:${h}px;
-      border-radius:${h * 0.16}px">`;
-    forms.forEach((f, k) => {
-      const cx = w * (5 - 2 * k) / 6, cy = h / 2;
-      const { op = 1, sc = 1, glow = 0 } = look ? look(k) : {};
-      if (glow > 0) html += `<div style="position:absolute;left:${cx - box * 0.62}px;top:${cy - box * 0.62}px;width:${box * 1.24}px;height:${box * 1.24}px;
-        border-radius:50%;background:radial-gradient(circle, rgba(255,214,120,${0.55 * glow}) 0%, rgba(255,214,120,0) 68%)"></div>`;
-      html += `<img src="${glyphImage(f.text, color, Math.round(box), Math.round(box * 0.66), f.mark)}" style="position:absolute;
-        left:${cx - box / 2}px;top:${cy - box / 2}px;width:${box}px;height:${box}px;opacity:${op};transform:scale(${sc});
-        filter:drop-shadow(0 8px 0 rgba(0,0,0,.06))">`;
-    });
-    return html + "</div>";
+  // ---------------------------------------------------------------- clouds (pre-drawn, soft clay)
+  const cloudSprites = [0, 1, 2, 3].map((v) => {
+    const c = document.createElement("canvas");
+    c.width = 520;
+    c.height = 240;
+    const m = c.getContext("2d");
+    const puffs = 6 + v;
+    for (let i = 0; i < puffs; i++) {
+      const px = 90 + (340 * i) / (puffs - 1) + (hash(v * 31 + i) - 0.5) * 30;
+      const r = 50 + 55 * Math.sin((Math.PI * i) / (puffs - 1)) + hash(v * 7 + i) * 18;
+      const py = 150 - r * 0.35;
+      const g = m.createLinearGradient(0, py - r, 0, py + r);
+      g.addColorStop(0, "#FFFFFF");
+      g.addColorStop(0.65, "#FFF4EC");
+      g.addColorStop(1, "#F2D5C9");
+      m.fillStyle = g;
+      m.beginPath();
+      m.arc(px, py, r, 0, Math.PI * 2);
+      m.fill();
+    }
+    return c;
+  });
+  // Clouds keep to two bands — high up behind the bunting, and low along the
+  // horizon — so the sky behind the letters stays clear: no edges near a letter.
+  function drawClouds(t, cam, k) {
+    const span = W + 900, night = nightOf(k);
+    for (let i = 0; i < 8; i++) {
+      const base = i * 520 + hash(i) * 300;
+      let x = (base - cam.x * 0.08 + t * 9) % span;
+      if (x < 0) x += span;
+      x -= 450;
+      const high = i % 2 === 0;
+      const s = high ? 0.45 + hash(i + 3) * 0.3 : 0.55 + hash(i + 3) * 0.35;
+      const y = (high ? -40 + hash(i + 9) * 50 : 520 + hash(i + 9) * 70) - cam.y * 0.18;
+      ctx.save();
+      ctx.globalAlpha = (0.9 - 0.25 * hash(i + 5)) * (1 - 0.55 * night);
+      ctx.drawImage(cloudSprites[i % 4], x, y, 520 * s, 240 * s);
+      ctx.restore();
+    }
   }
 
-  function drawTriple(scene, t) {
-    const pop = easeOutBack(prog(t, scene.start, scene.start + 0.6));
-    const beats = [0, 1, 2].map((k) => (beatsByTarget[`form:${k}`] || []).find((b) => b.t >= scene.start && b.t < scene.end));
-    const current = [2, 1, 0].find((k) => beats[k] && t >= beats[k].t);       // the last one said
-    const settle = scene.end - 0.6;
-    const look = (k) => {
-      if (current === undefined || t >= settle) return {};
-      const e = env(`form:${k}`, t);
-      return k === current ? { op: 1, sc: 1.08 + 0.06 * e, glow: 1 } : { op: 0.4, sc: 0.94 };
+  // ---------------------------------------------------------------- the horizon: domes and minarets
+  function mosque(x, base, s, fill) {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    // body
+    ctx.rect(x - 150 * s, base - 70 * s, 300 * s, 70 * s);
+    // semi-domes
+    ctx.ellipse(x - 105 * s, base - 70 * s, 55 * s, 48 * s, 0, Math.PI, 0);
+    ctx.ellipse(x + 105 * s, base - 70 * s, 55 * s, 48 * s, 0, Math.PI, 0);
+    // drum and great dome
+    ctx.rect(x - 92 * s, base - 110 * s, 184 * s, 42 * s);
+    ctx.ellipse(x, base - 110 * s, 96 * s, 92 * s, 0, Math.PI, 0);
+    ctx.fill();
+    // finial
+    ctx.fillRect(x - 3 * s, base - 232 * s, 6 * s, 32 * s);
+    // minarets
+    for (const mx of [-215, 215]) {
+      const cx = x + mx * s;
+      ctx.fillRect(cx - 11 * s, base - 300 * s, 22 * s, 300 * s);
+      ctx.fillRect(cx - 17 * s, base - 215 * s, 34 * s, 8 * s);
+      ctx.fillRect(cx - 15 * s, base - 270 * s, 30 * s, 7 * s);
+      ctx.beginPath();
+      ctx.moveTo(cx - 12 * s, base - 300 * s);
+      ctx.lineTo(cx, base - 372 * s);
+      ctx.lineTo(cx + 12 * s, base - 300 * s);
+      ctx.fill();
+    }
+  }
+  function drawHorizon(t, cam, k) {
+    const par = 0.22, s = skyAt(k);
+    const haze = css(mix(mix(rgb("#B6A6DA"), s.hor, 0.35), [40, 30, 80], nightOf(k) * 0.55));
+    const baseY = 760 - cam.y * par * 0.9;
+    // far ridge
+    ctx.fillStyle = haze;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 40) {
+      const wx = cam.x + (x - W / 2) / par;
+      ctx.lineTo(x, baseY + 10 * Math.sin(wx * 0.0011) + 6 * Math.sin(wx * 0.0031));
+    }
+    ctx.lineTo(W, H);
+    ctx.fill();
+    const from = Math.floor((cam.x - W / 2 / par) / 2600) - 1, to = Math.ceil((cam.x + W / 2 / par) / 2600) + 1;
+    for (let m = from; m <= to; m++) {
+      const wx = m * 2600 + hash(m) * 900;
+      const x = (wx - cam.x) * par + W / 2;
+      if (x < -500 || x > W + 500) continue;
+      mosque(x, baseY + 6, 0.36 + hash(m + 40) * 0.14, haze);   // minaret tops stay below y ~ 620
+    }
+  }
+
+  // ---------------------------------------------------------------- hills, cypresses, meadow
+  function cypress(x, base, h, dark, light) {
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.moveTo(x, base - h);
+    ctx.bezierCurveTo(x + h * 0.2, base - h * 0.7, x + h * 0.17, base - h * 0.1, x, base);
+    ctx.bezierCurveTo(x - h * 0.17, base - h * 0.1, x - h * 0.2, base - h * 0.7, x, base - h);
+    ctx.fill();
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.moveTo(x, base - h);
+    ctx.bezierCurveTo(x - h * 0.2, base - h * 0.7, x - h * 0.17, base - h * 0.1, x, base);
+    ctx.bezierCurveTo(x - h * 0.06, base - h * 0.3, x - h * 0.08, base - h * 0.7, x, base - h);
+    ctx.fill();
+  }
+
+  function hillLayer(cam, par, baseY, amp1, f1, amp2, f2, top, bottom) {
+    const yAt = (wx) => baseY - cam.y * par + amp1 * Math.sin(wx * f1 + 1) + amp2 * Math.sin(wx * f2 + 2);
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W + 20; x += 20) ctx.lineTo(x, yAt(cam.x + (x - W / 2) / par));
+    ctx.lineTo(W, H);
+    const g = ctx.createLinearGradient(0, baseY - 60 - cam.y * par, 0, H);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    ctx.fillStyle = g;
+    ctx.fill();
+    return yAt;
+  }
+
+  function drawHills(t, cam, k) {
+    const night = nightOf(k), dim = (hex, a) => css(mix(shade(hex, a || 0), [30, 30, 70], night * 0.6));
+    // middle hills with cypress rows
+    const par = 0.45;
+    const midY = hillLayer(cam, par, 800, 38, 0.0021, 22, 0.0049, dim("#A9D795"), dim("#8CC27F"));
+    const from = Math.floor((cam.x - W / par) / 430), to = Math.ceil((cam.x + W / par) / 430);
+    for (let c = from; c <= to; c++) {
+      if (hash(c + 77) < 0.35) continue;
+      const wx = c * 430 + hash(c) * 200;
+      const x = (wx - cam.x) * par + W / 2;
+      if (x < -100 || x > W + 100) continue;
+      const h = 95 + hash(c + 3) * 70;
+      cypress(x, midY(wx) + 12, h, dim("#3F7D52"), dim("#5E9E6B"));
+    }
+    // the near meadow, with small tulips far below the letters
+    const par2 = 0.75;
+    const nearY = hillLayer(cam, par2, 905, 24, 0.0031, 13, 0.0077, dim("#A4DA8C"), dim("#7DBF69"));
+    const f2 = Math.floor((cam.x - W / par2) / 70), t2 = Math.ceil((cam.x + W / par2) / 70);
+    for (let c = f2; c <= t2; c++) {
+      if (hash(c + 5) < 0.55) continue;
+      const wx = c * 70 + hash(c + 1) * 50;
+      const x = (wx - cam.x) * par2 + W / 2;
+      if (x < -20 || x > W + 20) continue;
+      const y = nearY(wx) + 28 + hash(c + 2) * 70;
+      const col = TULIPS[Math.floor(hash(c + 8) * TULIPS.length)];
+      ctx.strokeStyle = dim("#5C9E52");
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 22);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.fillStyle = css(mix(rgb(col), [40, 30, 70], night * 0.5));
+      ctx.beginPath();
+      ctx.ellipse(x, y - 4, 7, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // the ground the big tulips stand in
+    hillLayer(cam, 1.0, 985, 10, 0.004, 6, 0.011, dim("#83C46E"), dim("#5FA552"));
+  }
+
+  function drawGrass(t, cam, k) {
+    const night = nightOf(k), par = 1.3;
+    ctx.fillStyle = css(mix(rgb("#4E8F45"), [20, 25, 50], night * 0.6));
+    const from = Math.floor((cam.x - W / par) / 26), to = Math.ceil((cam.x + W / par) / 26);
+    for (let c = from; c <= to; c++) {
+      const wx = c * 26;
+      const x = (wx - cam.x) * par + W / 2;
+      if (x < -40 || x > W + 40) continue;
+      const h = 40 + hash(c) * 60, lean = Math.sin(t * 1.2 + c * 0.7) * 6 + (hash(c + 1) - 0.5) * 16;
+      const base = H + 8 - cam.y * par;
+      ctx.beginPath();
+      ctx.moveTo(x - 7, base);
+      ctx.quadraticCurveTo(x + lean * 0.4, base - h * 0.6, x + lean, base - h);
+      ctx.quadraticCurveTo(x + lean * 0.3 + 2, base - h * 0.5, x + 7, base);
+      ctx.fill();
+    }
+  }
+
+  // ---------------------------------------------------------------- tulips
+  function petal(w, h) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-w * 0.62, -h * 0.08, -w * 0.56, -h * 0.82, 0, -h);
+    ctx.bezierCurveTo(w * 0.56, -h * 0.82, w * 0.62, -h * 0.08, 0, 0);
+  }
+
+  /** A big tulip. Returns where its cup opens, for the letter to rise from. */
+  function tulip(x, ground, height, cupW, color, open, sway, night) {
+    const dim = (c, a = 1) => css(mix(c, [30, 30, 70], night * 0.55), a);
+    const top = { x: x + sway, y: ground - height };
+    // stem and leaves
+    ctx.strokeStyle = dim(rgb("#4F9A4A"));
+    ctx.lineWidth = 14;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, ground);
+    ctx.quadraticCurveTo(x - sway * 0.3, ground - height * 0.5, top.x, top.y);
+    ctx.stroke();
+    for (const side of [-1, 1]) {
+      const lg = ctx.createLinearGradient(x, ground, x + side * 120, ground - 160);
+      lg.addColorStop(0, dim(rgb("#4E9A47")));
+      lg.addColorStop(1, dim(rgb("#7CC46E")));
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      ctx.moveTo(x, ground);
+      ctx.bezierCurveTo(x + side * 110, ground - 40, x + side * 120, ground - 140, x + side * (40 + sway * 0.2), ground - height * 0.62);
+      ctx.bezierCurveTo(x + side * 40, ground - 100, x + side * 20, ground - 30, x, ground);
+      ctx.fill();
+    }
+    // the cup: back petal, then two side petals that open
+    const ph = cupW * 1.1, pw = cupW * 0.82, c = rgb(color);
+    const angle = 0.08 + 0.42 * open;
+    ctx.save();
+    ctx.translate(top.x, top.y + 10);
+    const grad = (a) => {
+      const g = ctx.createLinearGradient(0, -ph, 0, 0);
+      g.addColorStop(0, dim(mix(c, [255, 255, 255], 0.28 + a)));
+      g.addColorStop(1, dim(mix(c, [0, 0, 0], 0.18)));
+      return g;
     };
-    let html = "";
-    if (current !== undefined) html += rings(t, `form:${current}`, formX(current), TRI.y + TRI.h / 2, 180, scene.rim);
-    html += `<div style="position:absolute;inset:0;transform-origin:960px ${TRI.y + TRI.h / 2}px;
-      transform:scale(${lerp(0.2, 1, pop)});opacity:${clamp(pop * 1.5)}">
-      ${tripleCard(scene.forms, scene.color, scene.rim, scene.heavy, TRI.x, TRI.y, TRI.w, TRI.h, look)}</div>`;
-    // the pointer: lifts out of the inkwell for the first letter, then glides back to
-    // the right for each new letter and follows the sounds right to left
-    const keys = scene.number === 0
-      ? [[scene.start, HOME], [scene.start + 0.35, LIFT], [scene.start + 0.7, below(0)]]
-      : [[scene.start, below(2)], [scene.start + 0.6, below(0)]];
-    beats.forEach((b, k) => { if (b && k > 0) keys.push([b.t - 0.3, below(k - 1)], [b.t, below(k)]); });
-    const k = current === undefined ? -1 : current;
-    drawPen(t, track(t, keys), k >= 0 ? tap(t, `form:${k}`) : 0);
-    return html;
+    ctx.fillStyle = grad(-0.1);
+    petal(pw * 0.9, ph * 0.98);
+    ctx.fill();
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.rotate(side * angle);
+      ctx.translate(side * pw * 0.12, 0);
+      ctx.fillStyle = grad(0.05);
+      petal(pw, ph);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.beginPath();
+      ctx.ellipse(-side * pw * 0.12, -ph * 0.62, pw * 0.1, ph * 0.22, side * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+    return { x: top.x, y: top.y - ph * 0.55 };
   }
 
-  // ---------------------------------------------------------------- a letter inside words
-  // The letter on its own at the top; below it three words with that letter at the
-  // start, in the middle and at the end (right to left), the letter picked out in
-  // its colour. The card being spelled is lit; the pen points at it from below.
-  const WORDS = { y: 450, w: 500, h: 350, xs: [1300, 710, 120] };     // başta, ortada, sonda
-  const WORD_LABELS = ["Başta", "Ortada", "Sonda"];
-  const ISO = { x: 810, y: 60, w: 300 };
-  const wordBelow = (k) => ({ x: WORDS.xs[k] + WORDS.w / 2, y: WORDS.y + WORDS.h + 26, a: 180 });
+  // ---------------------------------------------------------------- clay letters
+  // Each letter is modelled once on its own canvas: an extruded body, a rim of
+  // light along the top-left edges, a gradient face and a soft gloss. Harakat,
+  // where taught, are their own colour: the whole text is drawn in the mark's
+  // colour, the bare letter over it — what stays visible in that colour is the mark.
+  const spriteCache = {};
+  function clay(text, { font = "700 400px Scheherazade", color = "#E4572E", mark = null, depth = 16 } = {}) {
+    const key = `${text}|${font}|${color}|${mark}|${depth}`;
+    if (spriteCache[key]) return spriteCache[key];
+    const probe = document.createElement("canvas").getContext("2d");
+    probe.font = font;
+    probe.direction = /[؀-ۿ]/.test(text) ? "rtl" : "ltr";
+    probe.textAlign = "left";
+    const m = probe.measureText(text);
+    const inkW = Math.ceil(m.actualBoundingBoxLeft + m.actualBoundingBoxRight);
+    const inkH = Math.ceil(m.actualBoundingBoxAscent + m.actualBoundingBoxDescent);
+    const pad = 28;
+    const c = document.createElement("canvas");
+    c.width = inkW + pad * 2 + depth;
+    c.height = inkH + pad * 2 + depth;
+    const g = c.getContext("2d");
+    g.font = font;
+    g.direction = probe.direction;
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
+    const ox = pad + m.actualBoundingBoxLeft, oy = pad + m.actualBoundingBoxAscent;
+    const bare = text.replace(HARAKAT, "");
+    const paint = (dx, dy, baseFill, markFill) => {
+      if (mark) {
+        g.fillStyle = markFill;
+        g.fillText(text, ox + dx, oy + dy);
+        g.fillStyle = baseFill;
+        g.fillText(bare, ox + dx, oy + dy);
+      } else {
+        g.fillStyle = baseFill;
+        g.fillText(text, ox + dx, oy + dy);
+      }
+    };
+    const sideB = css(shade(color, -0.42)), sideM = mark ? css(shade(mark, -0.4)) : null;
+    for (let i = depth; i >= 1; i--) {
+      const k = i / depth;
+      paint(i * 0.45, i, css(mix(shade(color, -0.42), shade(color, -0.25), 1 - k)), mark ? css(mix(shade(mark, -0.4), shade(mark, -0.2), 1 - k)) : null);
+    }
+    paint(-2.5, -2.5, css(shade(color, 0.6)), mark ? css(shade(mark, 0.6)) : null);       // rim light
+    const face = (hex) => {
+      const lg = g.createLinearGradient(0, pad, 0, pad + inkH);
+      lg.addColorStop(0, css(shade(hex, 0.3)));
+      lg.addColorStop(0.55, css(shade(hex, 0.05)));
+      lg.addColorStop(1, css(shade(hex, -0.08)));
+      return lg;
+    };
+    paint(0, 0, face(color), mark ? face(mark) : null);
+    // gloss, clipped to the face
+    const gl = document.createElement("canvas");
+    gl.width = c.width;
+    gl.height = c.height;
+    const gg = gl.getContext("2d");
+    gg.font = font;
+    gg.direction = probe.direction;
+    gg.textAlign = "left";
+    gg.fillStyle = "#fff";
+    gg.fillText(text, ox, oy);
+    gg.globalCompositeOperation = "source-in";
+    const rg = gg.createRadialGradient(pad + inkW * 0.3, pad + inkH * 0.18, 0, pad + inkW * 0.3, pad + inkH * 0.18, Math.max(inkW, inkH) * 0.65);
+    rg.addColorStop(0, "rgba(255,255,255,0.55)");
+    rg.addColorStop(1, "rgba(255,255,255,0)");
+    gg.fillStyle = rg;
+    gg.fillRect(0, 0, gl.width, gl.height);
+    g.drawImage(gl, 0, 0);
+    return (spriteCache[key] = { c, ax: pad + inkW / 2, ay: pad + inkH / 2, inkW, inkH });
+  }
 
-  /** The largest size (up to ``max``) at which ``text`` fits ``width`` — long words shrink, short ones don't grow. */
-  const measureCtx = document.createElement("canvas").getContext("2d");
-  function fitFont(text, width, max) {
-    measureCtx.font = `700 ${max}px "Scheherazade"`;
-    measureCtx.direction = "rtl";
-    const w = measureCtx.measureText(text.replace(/[{}]/g, "")).width;
+  function drawSprite(sp, x, y, sx = 1, sy = sx, rot = 0, alpha = 1) {
+    if (alpha <= 0.001 || sx <= 0.001) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.scale(sx, sy);
+    ctx.drawImage(sp.c, -sp.ax, -sp.ay);
+    ctx.restore();
+  }
+
+  function halo(x, y, r, strength, warm = "255,238,196") {
+    if (strength <= 0.001) return;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${warm},${0.6 * strength})`);
+    g.addColorStop(0.5, `rgba(${warm},${0.22 * strength})`);
+    g.addColorStop(1, `rgba(${warm},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+
+  function beam(x0, y0, x1, y1, w0, w1, a) {
+    if (a <= 0.001) return;
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, `rgba(255,236,190,${a})`);
+    g.addColorStop(1, "rgba(255,236,190,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x0 - w0 / 2, y0);
+    ctx.lineTo(x0 + w0 / 2, y0);
+    ctx.lineTo(x1 + w1 / 2, y1);
+    ctx.lineTo(x1 - w1 / 2, y1);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ---------------------------------------------------------------- the bunting
+  const BUNT = { x0: 70, x1: W - 70, y: 40, sag: 46 };
+  const flagSize = () => Math.min(66, ((BUNT.x1 - BUNT.x0) / Math.max(N, 1)) * 0.86);
+  function flagPos(i) {
+    const n = Math.max(N, 1), u = (i + 0.5) / n;      // the first letter hangs at the right
+    const x = BUNT.x1 - u * (BUNT.x1 - BUNT.x0);
+    const y = BUNT.y + 4 * BUNT.sag * u * (1 - u);
+    return { x, y };
+  }
+  function drawBunting(t, alpha) {
+    if (alpha <= 0.001 || !N) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = "rgba(120,80,50,0.7)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(BUNT.x0 - 40, BUNT.y - 10);
+    ctx.quadraticCurveTo(W / 2, BUNT.y + BUNT.sag * 2, BUNT.x1 + 40, BUNT.y - 10);
+    ctx.stroke();
+    const fs = flagSize();
+    stations.forEach((s, i) => {
+      const { x, y } = flagPos(i);
+      const got = t >= s.end - 0.05;
+      const pop = got ? Math.exp(-5 * (t - s.end)) * Math.sin(14 * (t - s.end)) : 0;
+      const swing = Math.sin(t * 1.7 + i * 0.9) * 0.05 + pop * 0.15;
+      const col = TULIPS[i % TULIPS.length];
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(swing);
+      ctx.scale(1 + 0.18 * pop, 1 + 0.18 * pop);
+      ctx.fillStyle = css(shade(col, -0.25));
+      ctx.beginPath();
+      ctx.moveTo(-fs / 2 + 3, 3);
+      ctx.lineTo(fs / 2 + 3, 3);
+      ctx.lineTo(3, fs * 1.18 + 3);
+      ctx.fill();
+      const fg = ctx.createLinearGradient(0, 0, 0, fs * 1.15);
+      fg.addColorStop(0, css(shade(col, got ? 0.15 : 0.45)));
+      fg.addColorStop(1, css(shade(col, got ? -0.05 : 0.3)));
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.moveTo(-fs / 2, 0);
+      ctx.lineTo(fs / 2, 0);
+      ctx.lineTo(0, fs * 1.15);
+      ctx.fill();
+      if (got) {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = `700 ${Math.round(fs * 0.62)}px Scheherazade`;
+        ctx.textAlign = "center";
+        ctx.direction = "rtl";
+        ctx.fillText(s.base, 0, fs * 0.62);
+      }
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- stations
+  const GROUND = 985;
+  /** Where a letter leaving for its flag is, at progress f (an arc up and to the bunting). */
+  function flight(x0, y0, i, f, size0) {
+    const { x, y } = flagPos(i), fs = flagSize();
+    const e = easeInOut(f);
+    return { x: lerp(x0, x, e), y: lerp(y0, y + fs * 0.42, e) - 220 * Math.sin(Math.PI * e), s: lerp(1, (fs * 0.62) / size0, e) };
+  }
+
+  function letterStation(s, t, cam, night) {
+    const sx = stationX(s.idx) - cam.x + W / 2;
+    if (sx < -700 || sx > W + 700) return;
+    const ground = GROUND - cam.y;
+    const open = t < s.start ? 0 : easeOutCubic(prog(t, s.start + 0.45, s.start + 1.05));
+    const sway = Math.sin(t * 1.1 + s.idx) * 8;
+    const col = TULIPS[s.idx % TULIPS.length];
+    const cup = tulip(sx, ground, 175, 150, col, open, sway, night);
+    if (t < s.start || t >= s.end) return;
+
+    const sp = clay(s.text, { font: "700 470px Scheherazade", color: s.mark ? CLAY_INK : s.rim, mark: s.mark, depth: 20 });
+    const hover = { x: cup.x, y: 360 - cam.y };
+    const rise = easeOutBack(prog(t, s.start + 0.7, s.start + 1.3));
+    const e = env("letter", t), b = bounce("letter", t, s.start, s.end);
+    const fly = prog(t, s.end - 0.75, s.end - 0.05);
+    let x = cup.x, y = lerp(cup.y, hover.y, rise) + Math.sin(t * 1.6 + s.idx) * 9 * rise;
+    let scale = lerp(0.15, 1, rise);
+    beam(cup.x, cup.y, x, y, 70, 300, 0.22 * rise * (1 - fly));
+    halo(x, y, 420, (0.7 + 0.3 * e) * rise * (1 - fly));
+    if (fly > 0) {
+      const p = flight(x, y, s.idx, fly, 470);
+      x = p.x; y = p.y; scale = p.s;
+    }
+    drawSprite(sp, x, y, scale * (1 + 0.1 * b), scale * (1 - 0.12 * b), Math.sin(t * 1.1 + s.idx) * 0.025 * (1 - fly), clamp(rise * 2));
+  }
+
+  function tripleStation(s, t, cam, night) {
+    const sx0 = stationX(s.idx) - cam.x + W / 2;
+    if (sx0 < -1300 || sx0 > W + 1300) return;
+    const ground = GROUND - cam.y;
+    const offs = [470, 0, -470];                      // fetha on the right, then kesra, then damme
+    const open = t < s.start ? 0 : easeOutCubic(prog(t, s.start + 0.45, s.start + 1.05));
+    const cups = offs.map((o, k) => tulip(sx0 + o, ground, 150, 120, TULIPS[(s.idx + k) % TULIPS.length], open,
+      Math.sin(t * 1.1 + s.idx + k) * 7, night));
+    if (t < s.start || t >= s.end) return;
+    const beats = [0, 1, 2].map((k) => beatsIn(`form:${k}`, s.start, s.end)[0]);
+    const current = [2, 1, 0].find((k) => beats[k] && t >= beats[k].t);
+    const settle = t >= s.end - 1.0;
+    const fly = prog(t, s.end - 0.75, s.end - 0.05);
+    s.forms.forEach((f, k) => {
+      const sp = clay(f.text, { font: "700 300px Scheherazade", color: CLAY_INK, mark: f.mark, depth: 14 });
+      const rise = easeOutBack(prog(t, s.start + 0.7 + k * 0.12, s.start + 1.3 + k * 0.12));
+      const active = current === k && !settle;
+      const focus = current === undefined || settle ? 1 : active ? 1 : 0;
+      const lift = active ? 34 : 0;
+      const e = env(`form:${k}`, t), b = active ? bounce(`form:${k}`, t, s.start, s.end) : 0;
+      let x = cups[k].x, y = lerp(cups[k].y, 420 - cam.y - lift, rise) + Math.sin(t * 1.6 + k) * 7 * rise;
+      let scale = lerp(0.15, 1, rise) * (active ? 1.12 : focus ? 1 : 0.86);
+      const alpha = clamp(rise * 2) * (focus ? 1 : 0.45);
+      halo(x, y, 300, (active ? 0.6 + 0.4 * e : 0.25) * rise * (1 - fly));
+      if (fly > 0) {
+        const p = flight(x, y, s.idx, fly, 300);
+        x = p.x; y = p.y; scale = p.s;
+      }
+      drawSprite(sp, x, y, scale * (1 + 0.1 * b), scale * (1 - 0.12 * b), 0, alpha);
+    });
+  }
+
+  // the letters-in-words lesson: the letter above, three clay plaques below (DOM, so a
+  // letter inside a word can be coloured while the browser keeps the word joined)
+  const WORD_LABELS = ["Başta", "Ortada", "Sonda"];
+  const PLAQUE = { y: 600, w: 500, h: 300, xs: [1300, 710, 120] };
+  let overlayHTML = "";
+  function fitWord(text, width, max) {
+    const p = document.createElement("canvas").getContext("2d");
+    p.font = `700 ${max}px Scheherazade`;
+    const w = p.measureText(text.replace(/[{}]/g, "")).width;
     return Math.min(max, Math.floor((max * width) / w));
   }
+  const fitCache = {};
 
-  function wordHTML(text, color, rim) {
-    // {x} marks the letter; Chrome keeps the joining across the span
-    return text.replace(/\{([^}]+)\}/g, (_, c) => `<span style="color:${rim}">${c}</span>`);
-  }
-
-  function drawWords(scene, t) {
-    const pop = easeOutBack(prog(t, scene.start, scene.start + 0.6));
-    const isoBeat = (beatsByTarget.iso || []).find((b) => b.t >= scene.start && b.t < scene.end);
-    const wb = [0, 1, 2].map((k) => (beatsByTarget[`word:${k}`] || []).find((b) => b.t >= scene.start && b.t < scene.end));
-    const current = [2, 1, 0].find((k) => wb[k] && t >= wb[k].t);
-    const settle = scene.end - 0.5;
-    const focus = t >= settle ? "all" : current !== undefined ? current : isoBeat && t >= isoBeat.t ? "iso" : "all";
-    const lookOf = (who) => (focus === "all" || focus === who ? { op: 1, sc: focus === who ? 1.05 : 1, glow: focus === who }
-      : { op: 0.4, sc: 0.96, glow: false });
-
-    let html = "";
-    const iso = lookOf("iso"), ei = env("iso", t);
-    if (focus === "iso") html += rings(t, "iso", ISO.x + ISO.w / 2, ISO.y + ISO.w / 2, ISO.w / 2 + 10, scene.rim);
-    html += `<div class="card ${scene.heavy ? "heavy" : ""}" style="--c:${scene.rim};left:${ISO.x}px;top:${ISO.y}px;width:${ISO.w}px;height:${ISO.w}px;
-      border-radius:70px;transform:scale(${lerp(0.2, 1, pop) * iso.sc * (1 + 0.05 * ei)});opacity:${clamp(pop * 1.5) * iso.op}">
-      <img src="${glyphImage(scene.letter, scene.rim, ISO.w, 190)}" style="width:${ISO.w}px;height:${ISO.w}px"></div>`;
-    scene.words.forEach((w, k) => {
-      const lk = lookOf(k), e = env(`word:${k}`, t);
-      const x = WORDS.xs[k];
-      const glow = lk.glow ? `, 0 0 0 18px rgba(255,214,120,.45)` : "";
-      html += `<div class="card" style="--c:${scene.rim};left:${x}px;top:${WORDS.y}px;width:${WORDS.w}px;height:${WORDS.h}px;
-        border-radius:60px;flex-direction:column;
-        transform:scale(${lerp(0.2, 1, pop) * lk.sc * (1 + 0.03 * e)});opacity:${clamp(pop * 1.5) * lk.op};
-        box-shadow:0 26px 50px rgba(120,80,30,.16), inset 0 0 0 12px var(--c)${glow}">
-        <div style="position:absolute;top:22px;left:0;right:0;text-align:center;font:700 36px Nunito;color:#9A92A6">${WORD_LABELS[k]}</div>
-        <div dir="rtl" style="font:700 ${fitFont(w, WORDS.w - 70, 150)}px Scheherazade;color:${scene.color};line-height:1;padding-top:40px;white-space:nowrap">
-          ${wordHTML(w, scene.color, scene.rim)}</div></div>`;
-    });
-    const keys = scene.number === 0
-      ? [[scene.start, HOME], [scene.start + 0.35, LIFT], [scene.start + 0.7, wordBelow(0)]]
-      : [[scene.start, wordBelow(2)], [scene.start + 0.6, wordBelow(0)]];
-    wb.forEach((b, k) => { if (b && k > 0) keys.push([b.t - 0.35, wordBelow(k - 1)], [b.t, wordBelow(k)]); });
-    drawPen(t, track(t, keys), current !== undefined ? tap(t, `word:${current}`) : 0);
-    return html;
-  }
-
-  function drawTitle(scene, t) {
-    const k = easeOutBack(prog(t, scene.start + 0.1, scene.start + 0.8));
-    drawPen(t, HOME);
-    return `<div class="big-title" style="top:300px;font-size:220px;transform:scale(${k});letter-spacing:4px">
-      Elif<span style="color:#E4572E">-</span>Ba</div>
-      <div class="big-title" style="top:590px;font-size:76px;font-weight:700;color:#6B6575;opacity:${prog(t, scene.start + 0.5, scene.start + 1.0)}">
-      ${scene.subtitle}</div>`;
-  }
-
-  function drawBesmele(scene, t) {
-    const k = easeInOut(prog(t, scene.start + 0.1, scene.start + 1.4));
-    drawPen(t, HOME);
-    return `<div class="frame" style="opacity:${k}"></div>
-      <div class="besmele" style="opacity:${k};transform:translateY(${(1 - k) * 20}px)">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ</div>
-      <div class="big-title" style="top:650px;font-size:46px;font-weight:600;color:#8A6A3A;opacity:${k * 0.9}">
-        Bismillâhirrahmânirrahîm</div>`;
-  }
-
-  /** All the lesson's cards together, in rows of seven, right to left. */
-  function letterGrid(scene, t, y0, size, popFrom) {
-    const cols = 7, gap = Math.round(size * 0.16);
-    const w = cols * size + (cols - 1) * gap, x0 = (1920 - w) / 2;
-    return scene.texts.map((l, i) => {
-      const r = Math.floor(i / cols), c = i % cols;
-      const at = popFrom + i * 0.05;
-      const p = popFrom === null ? 1 : easeOutBack(prog(t, at, at + 0.4));
-      const x = x0 + (cols - 1 - c) * (size + gap), y = y0 + r * (size + gap);
-      return `<div class="chip" style="--c:${scene.rims[i]};left:${x}px;top:${y}px;width:${size}px;height:${size}px;
-        border-radius:${size * 0.27}px;transform:scale(${lerp(0.1, 1, p)});opacity:${clamp(p * 1.5)}">
-        <img src="${glyphImage(l, scene.colors[i], size, size * 0.64, scene.mark)}" style="width:${size}px;height:${size}px"></div>`;
-    }).join("");
-  }
-
-  function drawOutro(scene, t) {
-    const k = easeOutBack(prog(t, scene.start, scene.start + 0.7));
-    let html = `<div class="big-title" style="top:60px;font-size:150px;color:#E4572E;transform:scale(${k})">Aferin!</div>`;
-    html += letterGrid(scene, t, 290, 128, scene.start + 0.3);
-    fxLayer.innerHTML += stars(t, scene.start + 1.8, 960, 160, 16, 700);
-    drawPen(t, track(t, [[scene.start, SIDE], [scene.start + 0.5, LIFT], [scene.start + 0.9, HOME]]));
-    return html;
-  }
-
-  /** The video's thumbnail: its name, and every card of the lesson. */
-  function drawThumb(scene, t) {
-    penOpacity = 0;            // the cards need the whole frame
-    drawPen(t, HOME);
-    const head = `<div class="big-title" style="top:26px;font-size:170px;letter-spacing:3px">
-        Elif<span style="color:#E4572E">-</span>Ba <span style="color:#6B6575;font-size:120px">· ${scene.heading}</span></div>`;
-    if (scene.example) {
-      // the words lesson: one letter, and the three words it sits in
-      const ex = scene.example, W = 540, H = 380, xs = [1330, 690, 50], y = 640;
-      let html = head + `<div class="card" style="--c:${ex.rim};left:810px;top:250px;width:300px;height:300px;border-radius:70px">
-        <img src="${glyphImage(ex.letter, ex.rim, 300, 190)}" style="width:300px;height:300px"></div>`;
-      ex.words.forEach((w, k) => {
-        html += `<div class="card" style="--c:${ex.rim};left:${xs[k]}px;top:${y}px;width:${W}px;height:${H}px;border-radius:60px">
-          <div dir="rtl" style="font:700 ${fitFont(w, W - 70, 190)}px Scheherazade;color:${ex.color};line-height:1;white-space:nowrap">
-          ${wordHTML(w, ex.color, ex.rim)}</div></div>`;
-      });
-      return html;
+  /** The word as spans, one per letter, so the letter being said lights up while
+   *  Diyanet spells it — a child has to see *which* letter is being read. Only
+   *  colour and glow change (no underline: under a letter it reads as a kasra; no
+   *  scaling: it would break the joining). The lesson's own letter keeps its colour. */
+  const ARABIC = /[ء-ي]/;
+  function spelledWord(word, spell, t, rim, rimShade) {
+    let li = 0, inTarget = false, out = "";
+    for (const ch of word) {
+      if (ch === "{") { inTarget = true; continue; }
+      if (ch === "}") { inTarget = false; continue; }
+      if (!ARABIC.test(ch)) { out += ch; continue; }
+      const seg = spell && spell[li];
+      li += 1;
+      const now = seg && t >= seg[0] && t < seg[1];
+      if (now) {
+        out += `<span style="color:#FF7A00;text-shadow:0 2px 0 #B04A00,0 4px 0 #B04A00,0 6px 0 #B04A00,0 0 26px rgba(255,170,40,.95),0 0 60px rgba(255,190,80,.8)">${ch}</span>`;
+      } else if (inTarget) {
+        out += `<span style="color:${rim};text-shadow:0 2px 0 ${rimShade},0 4px 0 ${rimShade},0 6px 0 ${rimShade},0 10px 14px rgba(0,0,0,.18)">${ch}</span>`;
+      } else {
+        out += `<span>${ch}</span>`;
+      }
     }
-    if (!scene.triples) return head + letterGrid(scene, t, 262, 176, null);
-    // the harakat lesson: its first four letters, each with all three marks
-    return head + scene.triples.map((forms, i) => {
-      const col = 1 - (i % 2), row = Math.floor(i / 2);      // right to left, top to bottom
-      return tripleCard(forms, scene.colors[i], scene.rims[i], false, 120 + col * 860, 270 + row * 400, 820, 360, null);
-    }).join("");
+    return out;
+  }
+  function wordsStation(s, t, cam, night) {
+    const sx = stationX(s.idx) - cam.x + W / 2;
+    if (sx < -700 || sx > W + 700) return;
+    const ground = GROUND - cam.y;
+    const open = t < s.start ? 0 : easeOutCubic(prog(t, s.start + 0.45, s.start + 1.05));
+    const cup = tulip(sx, ground, 175, 150, TULIPS[s.idx % TULIPS.length], open, Math.sin(t * 1.1 + s.idx) * 8, night);
+    if (t < s.start || t >= s.end) return;
+    const sp = clay(s.letter, { color: s.rim, depth: 16 });
+    const rise = easeOutBack(prog(t, s.start + 0.7, s.start + 1.3));
+    const e = env("iso", t), b = bounce("iso", t, s.start, s.end);
+    const fly = prog(t, s.end - 0.75, s.end - 0.05);
+    let x = cup.x, y = lerp(cup.y, 290 - cam.y, rise) + Math.sin(t * 1.6) * 7 * rise;
+    let scale = lerp(0.12, 0.62, rise);
+    halo(x, y, 260, (0.5 + 0.5 * e) * rise * (1 - fly));
+    if (fly > 0) {
+      const p = flight(x, y, s.idx, fly, 400 * 0.62);
+      x = p.x; y = p.y; scale = p.s * 0.62;
+    }
+    drawSprite(sp, x, y, scale * (1 + 0.1 * b), scale * (1 - 0.12 * b), 0, clamp(rise * 2));
+
+    // plaques
+    const wb = [0, 1, 2].map((k) => beatsIn(`word:${k}`, s.start, s.end)[0]);
+    const current = [2, 1, 0].find((k) => wb[k] && t >= wb[k].t);
+    const settle = t >= s.end - 0.9;
+    const shift = sx - W / 2;                         // the plaques ride with the camera glide
+    const fade = 1 - prog(t, s.end - 0.5, s.end);
+    s.words.forEach((w, k) => {
+      const pop = easeOutBack(prog(t, s.start + 1.0 + k * 0.12, s.start + 1.5 + k * 0.12));
+      const active = current === k && !settle;
+      const dim = current !== undefined && !settle && !active;
+      const lift = active ? -18 : 0, sc = pop * (active ? 1.06 : dim ? 0.95 : 1);
+      const bob = Math.sin(t * 1.4 + k * 1.3) * 5;
+      const glow = active ? ", 0 0 0 14px rgba(255,214,120,.55), 0 0 60px 10px rgba(255,214,120,.45)" : "";
+      const size = (fitCache[w] ||= fitWord(w, PLAQUE.w - 70, 150));
+      const shadeCol = css(shade(s.rim, -0.45)), inkShade = "rgba(30,36,70,.55)";
+      const html = spelledWord(w, s.spell && s.spell[k], t, s.rim, shadeCol);
+      overlayHTML += `<div class="plaque" style="left:${PLAQUE.xs[k] + shift}px;top:${PLAQUE.y + lift + bob}px;
+        width:${PLAQUE.w}px;height:${PLAQUE.h}px;transform:scale(${sc});opacity:${clamp(pop * 1.4) * fade};
+        filter:${dim ? "saturate(.35) brightness(.93) contrast(.8)" : "none"};
+        box-shadow:0 10px 0 #E2CDB4, 0 26px 40px rgba(80,50,20,.28), inset 0 3px 0 rgba(255,255,255,.9)${glow}">
+        <div class="label">${WORD_LABELS[k]}</div>
+        <div class="word" style="font-size:${size}px;color:${CLAY_INK};text-shadow:0 2px 0 ${inkShade},0 4px 0 ${inkShade},0 6px 0 ${inkShade},0 10px 14px rgba(0,0,0,.18)">${html}</div></div>`;
+    });
   }
 
-  const DRAW = { besmele: drawBesmele, title: drawTitle, letter: drawLetter, triple: drawTriple, words: drawWords,
-    outro: drawOutro, thumb: drawThumb };
+  // ---------------------------------------------------------------- besmele, title, outro
+  function cartouche(cx, cy, w, h, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const r = h / 2;
+    const path = (inset) => {
+      ctx.beginPath();
+      ctx.moveTo(cx - w / 2 + r, cy - h / 2 + inset);
+      ctx.lineTo(cx + w / 2 - r, cy - h / 2 + inset);
+      ctx.arc(cx + w / 2 - r, cy, r - inset, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(cx - w / 2 + r, cy + h / 2 - inset);
+      ctx.arc(cx - w / 2 + r, cy, r - inset, Math.PI / 2, (3 * Math.PI) / 2);
+      ctx.closePath();
+    };
+    ctx.shadowColor = "rgba(90,60,20,0.35)";
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 18;
+    path(0);
+    const fill = ctx.createLinearGradient(0, cy - h / 2, 0, cy + h / 2);
+    fill.addColorStop(0, "rgba(255,252,240,0.94)");
+    fill.addColorStop(1, "rgba(250,236,212,0.94)");
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    const gold = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
+    gold.addColorStop(0, "#B8862B");
+    gold.addColorStop(0.5, "#F2D27A");
+    gold.addColorStop(1, "#B8862B");
+    ctx.strokeStyle = gold;
+    ctx.lineWidth = 9;
+    path(10);
+    ctx.stroke();
+    ctx.lineWidth = 3;
+    path(26);
+    ctx.stroke();
+    // eight-pointed stars at both ends
+    for (const sx of [cx - w / 2 + r * 0.55, cx + w / 2 - r * 0.55]) {
+      ctx.save();
+      ctx.translate(sx, cy);
+      ctx.fillStyle = gold;
+      for (let i = 0; i < 2; i++) {
+        ctx.rotate(Math.PI / 4);
+        ctx.fillRect(-26, -26, 52, 52);
+      }
+      ctx.fillStyle = "#FFF6DD";
+      ctx.beginPath();
+      ctx.arc(0, 0, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  const BESMELE = "بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ";   // plain kasra: U+06EA reads as a dot in this font
+  function drawBesmele(sc, t, cam) {
+    const k = easeInOut(prog(t, sc.start + 0.2, sc.start + 1.6));
+    const y = 470 + (1 - k) * 30;
+    cartouche(W / 2, y, 1560, 330, k);
+    const sp = clay(BESMELE, { font: "700 122px Scheherazade", color: "#D9A441", depth: 7 });
+    drawSprite(sp, W / 2, y - 6, 1, 1, 0, k);
+    // a slow band of light across the gold
+    const band = prog(t, sc.start + 1.4, sc.start + 4.2);
+    if (band > 0 && band < 1) {
+      const tmp = shimmerCanvas(sp, band);
+      ctx.save();
+      ctx.globalAlpha = k;
+      ctx.drawImage(tmp, W / 2 - sp.ax, y - 6 - sp.ay);
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha = k * 0.9;
+    ctx.fillStyle = "#8A6A3A";
+    ctx.font = "600 44px Nunito";
+    ctx.textAlign = "center";
+    ctx.fillText("Bismillâhirrahmânirrahîm", W / 2, y + 225);
+    ctx.restore();
+  }
+  let shimmer = null;
+  function shimmerCanvas(sp, f) {
+    shimmer ||= document.createElement("canvas");
+    shimmer.width = sp.c.width;
+    shimmer.height = sp.c.height;
+    const g = shimmer.getContext("2d");
+    g.clearRect(0, 0, shimmer.width, shimmer.height);
+    g.drawImage(sp.c, 0, 0);
+    g.globalCompositeOperation = "source-atop";
+    const x = lerp(-300, shimmer.width + 300, f);
+    const lg = g.createLinearGradient(x - 160, 0, x + 160, 0);
+    lg.addColorStop(0, "rgba(255,255,240,0)");
+    lg.addColorStop(0.5, "rgba(255,255,240,0.75)");
+    lg.addColorStop(1, "rgba(255,255,240,0)");
+    g.fillStyle = lg;
+    g.fillRect(0, 0, shimmer.width, shimmer.height);
+    g.globalCompositeOperation = "source-over";
+    return shimmer;
+  }
+
+  const TITLE_COLORS = ["#F3722C", "#F6B93B", "#E8505B", "#9D7BD8", "#5FA8D3", "#43AA8B", "#F28AA0"];
+  function drawTitle(sc, t, cam) {
+    const word = "Elif-Ba";
+    const font = "900 230px Nunito";
+    const p = document.createElement("canvas").getContext("2d");
+    p.font = font;
+    const widths = [...word].map((ch) => p.measureText(ch).width);
+    const total = widths.reduce((a, b) => a + b, 0);
+    let x = W / 2 - total / 2;
+    const baseY = 330 - cam.y * 0.0;
+    [...word].forEach((ch, i) => {
+      const at = sc.start + 0.9 + i * 0.09;
+      const drop = prog(t, at, at + 0.55);
+      const land = t - (at + 0.55);
+      const sq = land > 0 ? Math.exp(-5 * land) * Math.sin(14 * land) : 0;
+      const y = lerp(-250, baseY, easeOutCubic(drop)) + Math.sin(t * 1.5 + i * 0.7) * 6 * clamp(land);
+      const sp = clay(ch, { font, color: ch === "-" ? "#E4572E" : TITLE_COLORS[i % TITLE_COLORS.length], depth: 14 });
+      drawSprite(sp, x + widths[i] / 2, y, 1 + 0.12 * sq, 1 - 0.14 * sq, 0, clamp(drop * 3));
+      x += widths[i];
+    });
+    const sub = clay(sc.subtitle, { font: "800 90px Nunito", color: "#7A5CC8", depth: 8 });
+    const k = easeOutBack(prog(t, sc.start + 1.7, sc.start + 2.3));
+    drawSprite(sub, W / 2, 545, k, k, 0, clamp(k * 2));
+  }
+
+  function lantern(x, y, s, glowK) {
+    halo(x, y + 10 * s, 150 * s, 0.9 * glowK, "255,196,110");
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.strokeStyle = "rgba(120,80,40,0.8)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -78);
+    ctx.lineTo(0, -60);
+    ctx.stroke();
+    ctx.fillStyle = "#C2873A";
+    ctx.beginPath();
+    ctx.moveTo(-26, -40);
+    ctx.lineTo(0, -64);
+    ctx.lineTo(26, -40);
+    ctx.fill();
+    const body = ctx.createLinearGradient(0, -40, 0, 40);
+    body.addColorStop(0, "#FFE9A8");
+    body.addColorStop(1, "#FFB347");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(-30, -40);
+    ctx.lineTo(30, -40);
+    ctx.lineTo(36, 0);
+    ctx.lineTo(24, 40);
+    ctx.lineTo(-24, 40);
+    ctx.lineTo(-36, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#B5762C";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-12, 40);
+    ctx.lineTo(-12, -40);
+    ctx.moveTo(12, 40);
+    ctx.lineTo(12, -40);
+    ctx.stroke();
+    ctx.fillStyle = "#C2873A";
+    ctx.fillRect(-20, 40, 40, 10);
+    ctx.restore();
+  }
+
+  function drawOutro(sc, t, cam) {
+    // lanterns float up into the night
+    const night = nightOf(dayK(t));
+    for (let i = 0; i < 11; i++) {
+      const at = sc.start + 0.6 + hash(i + 50) * 1.6;
+      const f = t - at;
+      if (f < 0) continue;
+      const x = 120 + hash(i + 60) * (W - 240) + Math.sin(t * 0.9 + i) * 26;
+      const y = H + 120 - f * (90 + hash(i + 70) * 60);
+      lantern(x, y, 0.75 + hash(i + 80) * 0.5, night);
+    }
+    const k = easeOutBack(prog(t, sc.start + 1.4, sc.start + 2.1));
+    const land = t - (sc.start + 2.1);
+    const sq = land > 0 ? Math.exp(-5 * land) * Math.sin(14 * land) : 0;
+    const sp = clay("Aferin!", { font: "900 210px Nunito", color: "#FFC145", depth: 16 });
+    halo(W / 2, 470, 560, 0.5 * k, "255,214,140");
+    drawSprite(sp, W / 2, 470 + Math.sin(t * 1.4) * 8 * clamp(land), k * (1 + 0.1 * sq), k * (1 - 0.12 * sq), 0, clamp(k * 2));
+  }
 
   // ---------------------------------------------------------------- frame
+  function vignette() {
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
+    g.addColorStop(0, "rgba(40,20,50,0)");
+    g.addColorStop(1, "rgba(40,20,50,0.32)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
   window.seek = function seek(t) {
-    drawBackground(t);
-    fxLayer.innerHTML = "";
-    let html = "";
-    for (const scene of TL.scenes) {
-      if (t < scene.start - 0.001 || t >= scene.end) continue;
-      // One scene at a time: it fades out over its own last moments, and the next
-      // grows in after it has gone — never one letter on top of another.
-      const fade = scene.type === "outro" ? 1.2 : 0.3;
-      const op = 1 - easeInOut(prog(t, scene.end - fade, scene.end));
-      // the pen and inkwell are absent for the besmele, arrive with the title, leave with the outro
-      penOpacity = scene.type === "besmele" ? 0
-        : scene.type === "title" ? easeInOut(prog(t, scene.start, scene.start + 0.6))
-        : scene.type === "outro" ? op : 1;
-      html += `<div class="layer" style="opacity:${op}">${DRAW[scene.type](scene, t)}</div>`;
-      fxLayer.style.opacity = op;
+    const cam = camera(t), k = dayK(t), night = nightOf(k);
+    const sc = sceneAt(t);
+    overlayHTML = "";
+    drawSky(t, cam, k);
+    drawClouds(t, cam, k);
+    drawHorizon(t, cam, k);
+    drawHills(t, cam, k);
+    for (const s of stations) {
+      if (s.type === "letter") letterStation(s, t, cam, night);
+      else if (s.type === "triple") tripleStation(s, t, cam, night);
+      else wordsStation(s, t, cam, night);
     }
-    scenesLayer.innerHTML = html;
+    drawGrass(t, cam, k);
+    if (sc.type === "besmele") drawBesmele(sc, t, cam);
+    if (sc.type === "title") drawTitle(sc, t, cam);
+    if (sc.type === "outro") drawOutro(sc, t, cam);
+    drawBunting(t, clamp((t - firstStart) / 0.8) * (sc.type === "besmele" || sc.type === "title" ? 0 : 1));
+    vignette();
+    // fade in from dark at the start, out to night at the end
+    const fadeIn = 1 - prog(t, 0, 0.8), fadeOut = prog(t, TL.duration - 1.2, TL.duration);
+    const dark = Math.max(fadeIn, fadeOut);
+    if (dark > 0) {
+      ctx.fillStyle = `rgba(14,16,40,${dark})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    overlay.innerHTML = overlayHTML;
   };
 
   window.__duration = TL.duration;
   window.__ready = document.fonts.ready.then(() =>
-    Promise.all([document.fonts.load('700 100px "Scheherazade"', "ب"), document.fonts.load('800 60px "Nunito"', "Şş")]));
+    Promise.all([
+      document.fonts.load('700 100px "Scheherazade"', "ب"),
+      document.fonts.load('900 100px "Nunito"', "EŞ"),
+      document.fonts.load('800 100px "Nunito"', "Hş"),
+      document.fonts.load('600 40px "Nunito"', "â"),
+    ]));
 })();

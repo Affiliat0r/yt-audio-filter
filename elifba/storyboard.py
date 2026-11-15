@@ -37,8 +37,9 @@ ROOT = Path(__file__).resolve().parent
 AUDIO = ROOT / "audio"
 BESMELE = AUDIO / "quran" / "besmele_osmansahin.mp3"
 
-APPEAR = 0.7        # the card grows in before the name is said
-PAUSE = 2.5         # silence after each hearing: time to say it back
+APPEAR = 1.3        # the camera glides to the next tulip, it blooms, the letter rises
+PAUSE = 2.2         # silence after each hearing: time to say it back (the last one ends
+                    # with the letter flying up into the bunting)
 HEARINGS = 2        # how many times each name is said
 MAX_SECONDS = 300   # the owner's limit ...
 #: ... except where the owner chose a longer single video over several parts
@@ -117,6 +118,11 @@ class Script:
 def base_letter(text: str) -> str:
     """The letter without its harakat. A tatweel stays: Diyanet writes ha as هـ."""
     return "".join(ch for ch in text if not ("ً" <= ch <= "ْ" or ch in "ٰ۪ٖ"))
+
+
+#: Per spelled-word recording, when each letter name is said (see spelling.py).
+SPELLING_FILE = ROOT / "data" / "spelling.json"
+SPELLING: Dict[str, list] = json.loads(SPELLING_FILE.read_text(encoding="utf-8")) if SPELLING_FILE.exists() else {}
 
 
 def harfler_items() -> List[Dict]:
@@ -214,9 +220,13 @@ def words_segment(s: Script, item: Dict, number: int) -> None:
     s.wait(APPEAR)
     s.play(item["sound"], target="iso")
     s.wait(1.0)
+    spell = []
     for k, w in enumerate(item["words"]):
-        s.play(w["sound"], target=f"word:{k}")
+        start = s.play(w["sound"], target=f"word:{k}")
+        # when each letter of the word is said, so the screen can light it as it is read
+        spell.append([[round(start + a, 3), round(start + b, 3)] for a, b in SPELLING[w["sound"].name]])
         s.wait(WORD_GAP)
+    scene["spell"] = spell
     s.wait(0.3)
     s.close_scene(scene)
 
@@ -260,7 +270,7 @@ def episode(lesson: str = "harfler") -> Dict:
     s.close_scene(scene)
 
     scene = s.open_scene("title", subtitle=subtitle)
-    s.wait(3.0)
+    s.wait(3.4)
     s.close_scene(scene)
 
     for i, item in enumerate(items):
@@ -281,7 +291,7 @@ def episode(lesson: str = "harfler") -> Dict:
                          mark=MARK_COLOR if marked and "forms" not in items[0] else None,
                          triples=[[{"text": f["text"], "mark": HARAKAT_COLORS[f["hareke"]]} for f in it["forms"]]
                                   for it in items[:4]] if "forms" in items[0] else None)
-    s.wait(5.0)
+    s.wait(6.5)                # night falls, lanterns rise, "Aferin!"
     s.close_scene(scene)
 
     # a thumbnail name short enough for one line, and (for the words lesson) an example row

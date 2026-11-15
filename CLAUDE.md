@@ -416,6 +416,7 @@ the HTML/JS is a rendering engine, not a web app. Fuller notes: `elifba/README.m
 
 ```bash
 python -m elifba.fetch_audio                     # Diyanet recordings -> elifba/audio/ (gitignored; run from PowerShell)
+python -m elifba.spelling                        # when each letter is said in ders 2's spelled words -> data/spelling.json
 python -m elifba.render harekeler                # -> output/elifba/elifba_harekeler.mp4
 python -m elifba.render harekeler --stills 15,50 # a few PNG frames, to check a look
 python -m elifba.render harekeler --thumbnail    # -> output/elifba/elifba_harekeler_thumb.jpg
@@ -425,7 +426,8 @@ python -m elifba.render harekeler --thumbnail    # -> output/elifba/elifba_harek
 |---|---|
 | `curriculum.py` | Diyanet's 13-unit Elif-Ba course, ported, with the recording for every tile |
 | `storyboard.py` | `LESSONS` -> timed scenes, audio placements, beats, chapters |
-| `engine/` | `seek(t)` draws any frame as a pure function of time |
+| `engine/` | `seek(t)` draws any frame on one canvas as a pure function of time |
+| `spelling.py` | Times each letter name inside ders 2's spelled-word recordings (committed as `data/spelling.json`) |
 | `render.py` | Playwright + system Edge steps frames into NVENC; audio mixed in numpy |
 
 **Lessons follow the printed Diyanet Elif-Ba (2024)**, the owner's reference PDF:
@@ -458,9 +460,26 @@ plus Osman Şahin's besmele). Arabic TTS was tested and rejected (Whisper heard
 request. The owner chose Diyanet's audio knowing the rights question; credit
 Diyanet in the description.
 
-**No character with a face.** The companion is a kamış kalem (reed pen) and its
-divit (inkwell) — inanimate, grounded in Alak 96:1-5 ("kalemle öğreten"). It stands
-just outside the card and taps toward the letter as it is named.
+**The look (since 2026-11-15, after the owner found the card style "too dull"):**
+a soft 3D clay diorama at golden hour — an Ottoman tulip garden in layered
+parallax, domes and minarets on the horizon. The camera glides right to left
+from tulip to tulip; each tulip blooms, its letter rises in clay, squash-bounces
+on every hearing, then flies into a bunting that fills across the top. The
+ending is night: crescent, rising lanterns, "Aferin!". No characters or
+creatures, no faces (the earlier mascot was removed on Islamic grounds).
+
+**Keep the sky behind the letters empty.** Thin minarets or a cypress behind a
+letter read as an extra stroke (an alif): the skyline and trees are kept low,
+clouds stay in a high band and along the horizon, the sun sits in the top-right
+corner. No sparkles or particles near letters — emphasis is a halo and a bounce.
+
+**Ders 2 lights each letter as it is spelled.** Diyanet reads every word letter
+by letter; without the letter being read lit up, a child cannot follow. The
+timings come from aligning Diyanet's own letter-name recordings (as templates,
+by DTW on MFCCs) to each spelled word, then settling each cut on the nearest
+quiet moment — loudness gaps alone fail where names run together ("mim" into
+"ra"). The lit letter changes colour and glows only: no underline (a kasra), no
+scaling (it would break the joining across spans).
 
 **Nothing may sit on or near a letter that a child could read as part of it.**
 Three toddler-perspective reviews found: a bar beside alif read as a second alif;
