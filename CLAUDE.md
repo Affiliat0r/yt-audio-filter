@@ -434,9 +434,9 @@ python -m elifba.render harekeler --thumbnail    # -> output/elifba/elifba_harek
 
 | Ders | `lesson` | Content | Length | Published |
 |---|---|---|---|---|
-| 1 | `harfler` | every letter, named twice with pauses | 4:52 | `_WD5bIZTIYs` |
-| 2 | `kelime` | each letter at the start / middle / end of three words, spelled by Diyanet | 11:20 | `VKqEBgDu1aM` |
-| 3 | `harekeler` | every letter with fetha, kesra, damme together (اَ اِ اُ) | 4:29 | approved; not yet up (daily upload limit) |
+| 1 | `harfler` | every letter, named twice with pauses | 4:54 | `gcoG1JJR3M0` |
+| 2 | `kelime` | each letter at the start / middle / end of three words, spelled by Diyanet | 11:39 | `zdntEhp7eKU` |
+| 3 | `harekeler` | every letter with fetha, kesra, damme together (اَ اِ اُ) | 4:47 | rendered in the new look; not yet uploaded |
 | – | `fetha` | fetha only, the web course's order — **not part of the series** | 4:11 | – |
 
 Playlist "Elif-Ba": `PLdYHA_TLuNaM`. Uploads use `upload_with_explicit_metadata`

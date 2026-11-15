@@ -99,6 +99,7 @@
   function camera(t) {
     const sc = sceneAt(t);
     let x = TITLE_X, y = 0;
+    if (sc.type === "thumb") return { x: TITLE_X, y: 0 };
     if (sc.type === "besmele") y = -430;
     else if (sc.type === "title") y = lerp(-430, 0, easeInOut(prog(t, sc.start, sc.start + 1.8)));
     else if (sc.type === "outro") { x = stationX(N - 1); y = lerp(0, -430, easeInOut(prog(t, sc.start + 0.4, sc.start + 2.6))); }
@@ -954,6 +955,36 @@
     drawSprite(sp, W / 2, 470 + Math.sin(t * 1.4) * 8 * clamp(land), k * (1 + 0.1 * sq), k * (1 - 0.12 * sq), 0, clamp(k * 2));
   }
 
+  // ---------------------------------------------------------------- the thumbnail
+  // The lesson's name in clay over the garden, and what the lesson teaches:
+  // three letters on their tulips, the three harakat, or a letter in its words.
+  function drawThumb(sc, t, cam) {
+    const head = clay("Elif-Ba", { font: "900 210px Nunito", color: "#F3722C", depth: 16 });
+    drawSprite(head, W / 2, 150);
+    const sub = clay(sc.heading, { font: "800 104px Nunito", color: "#7A5CC8", depth: 10 });
+    drawSprite(sub, W / 2, 318);
+    const ground = GROUND - cam.y, xs = [1430, 960, 490];        // right to left
+    if (sc.example) {
+      // a letter and the three words it sits in, the letter lit in one of them
+      const ex = sc.example;
+      drawSprite(clay(ex.letter, { color: ex.rim, depth: 16 }), W / 2, 520, 0.55);
+      ex.words.forEach((w, k) => {
+        const html = spelledWord(w, null, 0, ex.rim, css(shade(ex.rim, -0.45)));
+        overlayHTML += `<div class="plaque" style="left:${[1300, 710, 120][k]}px;top:660px;width:500px;height:300px">
+          <div class="label">${WORD_LABELS[k]}</div>
+          <div class="word" style="font-size:${fitWord(w, 430, 160)}px;color:${CLAY_INK};text-shadow:0 2px 0 rgba(30,36,70,.55),0 4px 0 rgba(30,36,70,.55),0 6px 0 rgba(30,36,70,.55)">${html}</div></div>`;
+      });
+      return;
+    }
+    const picks = sc.triples ? sc.triples[1].map((f) => ({ text: f.text, color: CLAY_INK, mark: f.mark }))
+      : sc.texts.slice(0, 3).map((x, i) => ({ text: x, color: sc.rims[i], mark: null }));
+    picks.forEach((p, k) => {
+      const cup = tulip(xs[k], ground + 30, 105, 120, TULIPS[(k + 1) % TULIPS.length], 1, 0, 0);
+      halo(cup.x, 560, 300, 0.7);
+      drawSprite(clay(p.text, { font: "700 340px Scheherazade", color: p.color, mark: p.mark, depth: 16 }), cup.x, 560);
+    });
+  }
+
   // ---------------------------------------------------------------- frame
   function vignette() {
     const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
@@ -980,11 +1011,12 @@
     if (sc.type === "besmele") drawBesmele(sc, t, cam);
     if (sc.type === "title") drawTitle(sc, t, cam);
     if (sc.type === "outro") drawOutro(sc, t, cam);
+    if (sc.type === "thumb") drawThumb(sc, t, cam);
     drawBunting(t, clamp((t - firstStart) / 0.8) * (sc.type === "besmele" || sc.type === "title" ? 0 : 1));
     vignette();
     // fade in from dark at the start, out to night at the end
     const fadeIn = 1 - prog(t, 0, 0.8), fadeOut = prog(t, TL.duration - 1.2, TL.duration);
-    const dark = Math.max(fadeIn, fadeOut);
+    const dark = sc.type === "thumb" ? 0 : Math.max(fadeIn, fadeOut);   // a thumbnail is one still: no fades
     if (dark > 0) {
       ctx.fillStyle = `rgba(14,16,40,${dark})`;
       ctx.fillRect(0, 0, W, H);
