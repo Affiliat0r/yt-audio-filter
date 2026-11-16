@@ -437,7 +437,7 @@ python -m elifba.render harekeler --thumbnail    # -> output/elifba/elifba_harek
 | 1 | `harfler` | every letter, named twice with pauses | 4:54 | `gcoG1JJR3M0` |
 | 2 | `kelime` | each letter at the start / middle / end of three words, spelled by Diyanet | 11:39 | `zdntEhp7eKU` |
 | 3 | `harekeler` | every letter with fetha, kesra, damme together (اَ اِ اُ) | 4:47 | `bYrLiQX15Mk` |
-| 4 | `okuma` | reading words: three fetha syllables on three tulips, said one by one, slide together into the joined word, read whole | 4:45 | awaiting OK |
+| 4 | `okuma` | reading words: three fetha syllables on three tulips, said one by one, slide together into the joined word, read whole | 4:45 | `wRwwPBl34wI` |
 | – | `fetha` | fetha only, the web course's order — **not part of the series** | 4:11 | – |
 
 Ders 4 follows the owner's call (2026-11-16) that reading words comes before
