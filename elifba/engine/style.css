@@ -1,4 +1,7 @@
 @font-face { font-family: "Scheherazade"; src: url("fonts/ScheherazadeNew-Bold.ttf") format("truetype"); font-weight: 700; }
+/* the same font with blank vowel marks (python -m elifba.markless_font): lays out
+   exactly like Scheherazade, so it paints the letters under coloured marks */
+@font-face { font-family: "Markless Arabic"; src: url("fonts/MarklessArabic-Bold.ttf") format("truetype"); font-weight: 700; }
 @font-face { font-family: "Nunito"; src: url("fonts/Nunito.ttf") format("truetype"); font-weight: 200 1000; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

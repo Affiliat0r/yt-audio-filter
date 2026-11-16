@@ -190,6 +190,29 @@ def test_reading_lesson_builds_three_fetha_syllables_into_suitable_words():
     assert ep["duration"] <= MAX_SECONDS
 
 
+def test_markless_font_lays_out_exactly_like_scheherazade():
+    """The clay sprites paint the letters over coloured marks with this font.
+    It must differ from Scheherazade only in blank mark outlines: any change to
+    an advance or a positioning rule shifts the letters off their marks again
+    (as stripping the marks from the string did to سَاَلَ)."""
+    ttlib = pytest.importorskip("fontTools.ttLib")
+    from elifba.markless_font import SOURCE, TARGET, mark_glyphs
+
+    src, out = ttlib.TTFont(SOURCE), ttlib.TTFont(TARGET)
+    blank = mark_glyphs(src)
+    assert {src.getBestCmap()[cp] for cp in (0x064E, 0x0650, 0x064F, 0x0652, 0x0651)} <= blank
+    assert not any(g.startswith(("uni0653", "uni0654")) for g in blank)      # maddah, hamza stay
+    assert src["hmtx"].metrics == out["hmtx"].metrics
+    assert src["GPOS"].compile(src) == out["GPOS"].compile(out)
+    assert src["GSUB"].compile(src) == out["GSUB"].compile(out)
+    for name in src.getGlyphOrder():
+        if name in blank:
+            assert out["glyf"][name].numberOfContours == 0, name
+        else:
+            assert out["glyf"][name].numberOfContours == src["glyf"][name].numberOfContours, name
+    assert "Scheherazade" not in out["name"].getDebugName(1)             # OFL reserved name
+
+
 def test_script_cursor_advances_past_waits():
     s = Script()
     s.wait(1.5)

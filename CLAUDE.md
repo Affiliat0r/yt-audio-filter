@@ -502,6 +502,13 @@ that later *displays* long-kesra words must check its rendered frames first.
 **Network:** Diyanet refuses the sandboxed shell (403). Run `fetch_audio` from
 PowerShell.
 
+**Coloured harakat are painted with a second font.** A clay sprite draws the
+whole text in the mark colour, then the same text in `MarklessArabic-Bold.ttf`
+(Scheherazade with blank mark outlines, built by `python -m elifba.markless_font`)
+in ink. Do not strip the marks from the string instead: Scheherazade spaces
+letters apart so marks don't collide, so the stripped word is narrower and the
+ink lands beside its marks (the owner caught سَاَلَ in ders 4).
+
 **Sound numbering is positional** (`btn_1..N` by tile order, with quirks such as
 the fetha lesson's thick rows skipping a number). `curriculum.py` ports the
 site's helpers one for one; `tests/test_elifba.py` pins them.

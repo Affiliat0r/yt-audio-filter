@@ -70,6 +70,14 @@ app = [
     "streamlit>=1.30",
     "pillow>=10.0.0",
 ]
+# The Elif-Ba renderer (elifba/): headless Edge, the audio mix, the spelling
+# alignment, and the markless font build. Edge itself comes from the system.
+elifba = [
+    "playwright>=1.40",
+    "numpy>=1.24",
+    "librosa>=0.10",
+    "fonttools>=4.40",
+]
 
 [project.scripts]
 yt-audio-filter = "yt_audio_filter.cli:main"

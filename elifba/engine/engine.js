@@ -460,7 +460,10 @@
   // Each letter is modelled once on its own canvas: an extruded body, a rim of
   // light along the top-left edges, a gradient face and a soft gloss. Harakat,
   // where taught, are their own colour: the whole text is drawn in the mark's
-  // colour, the bare letter over it — what stays visible in that colour is the mark.
+  // colour, then the same text over it in a copy of the font whose marks are
+  // blank — what stays visible in that colour is the mark. (Stripping the marks
+  // from the string instead shifts the letters: the font spaces letters apart
+  // to keep marks from colliding, so سَاَلَ is narrower without them.)
   const spriteCache = {};
   function clay(text, { font = "700 400px Scheherazade", color = "#E4572E", mark = null, depth = 16 } = {}) {
     const key = `${text}|${font}|${color}|${mark}|${depth}`;
@@ -482,13 +485,15 @@
     g.textAlign = "left";
     g.textBaseline = "alphabetic";
     const ox = pad + m.actualBoundingBoxLeft, oy = pad + m.actualBoundingBoxAscent;
-    const bare = text.replace(HARAKAT, "");
+    const markless = font.replace("Scheherazade", '"Markless Arabic"');
     const paint = (dx, dy, baseFill, markFill) => {
       if (mark) {
         g.fillStyle = markFill;
         g.fillText(text, ox + dx, oy + dy);
         g.fillStyle = baseFill;
-        g.fillText(bare, ox + dx, oy + dy);
+        g.font = markless;
+        g.fillText(text, ox + dx, oy + dy);
+        g.font = font;
       } else {
         g.fillStyle = baseFill;
         g.fillText(text, ox + dx, oy + dy);
@@ -1102,6 +1107,7 @@
   window.__ready = document.fonts.ready.then(() =>
     Promise.all([
       document.fonts.load('700 100px "Scheherazade"', "ب"),
+      document.fonts.load('700 100px "Markless Arabic"', "ب"),
       document.fonts.load('900 100px "Nunito"', "EŞ"),
       document.fonts.load('800 100px "Nunito"', "Hş"),
       document.fonts.load('600 40px "Nunito"', "â"),
