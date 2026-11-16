@@ -203,11 +203,48 @@ def kelime_items(part: int) -> List[Dict]:
             for l in letters]
 
 
+#: Words from Diyanet's fetha Uygulama left out of the reading lesson: their meanings
+#: do not belong in a lesson for small children, even before the child understands them.
+UNSUITABLE_WORDS = {"لَعَنَ", "كَفَرَ", "سَقَرَ", "غَضَبَ", "ضَرَبَ", "مَكَرَ", "جَرَمَ", "بَطَشَ", "نَكَصَ", "غَلَظَ",
+                    "زَعَمَ", "رَفَثَ"}
+SYLLABLE_GAP = 0.3   # between the syllables of a word as they are said one by one
+JOIN = 1.2           # the syllables slide together into the joined word
+
+
+def okuma_items() -> List[Dict]:
+    """Lesson 4: reading words. The printed Elif-Ba's exercise page after the
+    harakat: short words built from letters with harakat. Only words of exactly
+    three fetha syllables are used — nothing not yet taught (no long vowels,
+    tenvin or sukun). Each syllable is said with Diyanet's fetha recording for
+    that letter, then the word with Diyanet's recording of the whole word."""
+    import re
+
+    fetha = _recordings(unit_fetha)
+    uyg = unit_fetha()[1]
+    folder = AUDIO / "elifba" / uyg["chapter"] / uyg["lesson"]
+    items = []
+    for row in uyg["groups"][0]["rows"]:
+        for tile in row["tiles"]:
+            word = tile["arabic"]
+            if " " in word or word in UNSUITABLE_WORDS:
+                continue
+            clusters = re.findall(r"[ء-ي][ً-ْٰ]*", word)
+            if len(clusters) != 3 or any(c[1:] != "َ" for c in clusters):
+                continue
+            letters = ["ا" if c[0] in "اأ" else c[0] for c in clusters]
+            if not all(l in fetha for l in letters):
+                continue
+            items.append({"text": word, "letter": letters[0], "sound": folder / f"{tile['sound']}.mp3",
+                          "syllables": [{"text": c, "sound": fetha[l][1]} for c, l in zip(clusters, letters)]})
+    return items
+
+
 #: number, items, subtitle on the title card, whether the cards show a coloured hareke
 LESSONS = {
     "harfler": (1, harfler_items, "Harfler", False),
     "kelime": (2, lambda: kelime_items(0), "Harfler ve Kelimeler", False),
     "harekeler": (3, harekeler_items, "Harekeler", True),
+    "okuma": (4, okuma_items, "Kelime Okuyalım", True),
     "fetha": (2, fetha_items, "Fetha", True),
 }
 
@@ -228,6 +265,42 @@ def words_segment(s: Script, item: Dict, number: int) -> None:
         s.wait(WORD_GAP)
     scene["spell"] = spell
     s.wait(0.3)
+    s.close_scene(scene)
+
+
+def build_length(item: Dict) -> float:
+    """How long build_segment will take for ``item``."""
+    syl = sum(duration(x["sound"]) + SYLLABLE_GAP for x in item["syllables"])
+    return APPEAR + syl + JOIN + HEARINGS * (duration(item["sound"]) + PAUSE)
+
+
+def fit_items(items: List[Dict], budget: float) -> List[Dict]:
+    """The longest prefix of ``items`` whose segments fit in ``budget`` seconds."""
+    out, used = [], 0.0
+    for it in items:
+        need = build_length(it) if "syllables" in it else 0.0
+        if used + need > budget:
+            break
+        out.append(it)
+        used += need
+    return out
+
+
+def build_segment(s: Script, item: Dict, number: int) -> None:
+    """Three syllables, each said as it lights up; they slide together into the
+    word; the word is read, a pause, read again."""
+    scene = s.open_scene("build", word=item["text"], syllables=[x["text"] for x in item["syllables"]],
+                         color=INK, rim=color_of(item["letter"]), mark=HARAKAT_COLORS["fetha"], number=number)
+    s.wait(APPEAR)
+    for k, syl in enumerate(item["syllables"]):
+        s.play(syl["sound"], target=f"syl:{k}")
+        s.wait(SYLLABLE_GAP)
+    join = s.t
+    s.beats.append({"t": round(join, 3), "dur": JOIN, "target": "join"})
+    s.wait(JOIN)
+    for _ in range(HEARINGS):
+        s.play(item["sound"], target="word")
+        s.wait(PAUSE)
     s.close_scene(scene)
 
 
@@ -260,6 +333,9 @@ def letter_segment(s: Script, item: Dict, number: int, marked: bool) -> None:
 def episode(lesson: str = "harfler") -> Dict:
     number, make, subtitle, marked = LESSONS[lesson]
     items = make()
+    if items and "syllables" in items[0]:
+        # as many words as fit: besmele (~8.6 s), title (3.4 s) and outro (6.5 s) take the rest
+        items = fit_items(items, LESSON_MAX_SECONDS.get(lesson, MAX_SECONDS) - 8.6 - 3.4 - 6.5 - 1.0)
     s = Script()
 
     scene = s.open_scene("besmele")
@@ -277,7 +353,9 @@ def episode(lesson: str = "harfler") -> Dict:
         if i % CHAPTER_EVERY == 0:
             last = items[min(i + CHAPTER_EVERY, len(items)) - 1]
             s.chapters.append({"t": round(s.t, 3), "title": f"{item['text']} – {last['text']}"})
-        if "words" in item:
+        if "syllables" in item:
+            build_segment(s, item, i)
+        elif "words" in item:
             words_segment(s, item, i)
         elif "forms" in item:
             triple_segment(s, item, i)
@@ -290,7 +368,9 @@ def episode(lesson: str = "harfler") -> Dict:
                          rims=[color_of(it["letter"]) for it in items],
                          mark=MARK_COLOR if marked and "forms" not in items[0] else None,
                          triples=[[{"text": f["text"], "mark": HARAKAT_COLORS[f["hareke"]]} for f in it["forms"]]
-                                  for it in items[:4]] if "forms" in items[0] else None)
+                                  for it in items[:4]] if "forms" in items[0] else None,
+                         build={"word": items[3]["text"], "syllables": [x["text"] for x in items[3]["syllables"]]}
+                         if "syllables" in items[0] else None)
     s.wait(6.5)                # night falls, lanterns rise, "Aferin!"
     s.close_scene(scene)
 

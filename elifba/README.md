@@ -9,9 +9,10 @@ printed Diyanet Elif-Ba (2024).
 
 | Ders | Lesson | Content | Length |
 |---|---|---|---|
-| 1 | `harfler` | Every letter, named twice, with a pause after each to say it back | 4:52 |
-| 2 | `kelime` | Each letter on its own, then at the start, middle and end of a word (Başta / Ortada / Sonda), each word spelled letter by letter | 11:20 |
-| 3 | `harekeler` | Every letter with fetha, kesra and damme together — اَ اِ اُ — each said in turn | 4:29 |
+| 1 | `harfler` | Every letter, named twice, with a pause after each to say it back | 4:54 |
+| 2 | `kelime` | Each letter on its own, then at the start, middle and end of a word (Başta / Ortada / Sonda), each word spelled letter by letter | 11:39 |
+| 3 | `harekeler` | Every letter with fetha, kesra and damme together — اَ اِ اُ — each said in turn | 4:47 |
+| 4 | `okuma` | Reading words: three syllables (بَ عَ ثَ) said one by one on three tulips, then slid together into the joined word (بَعَثَ), which is read twice | 4:45 |
 
 `fetha` (fetha only, in the order of Diyanet's web course) also exists but is
 not part of the series.

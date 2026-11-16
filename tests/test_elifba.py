@@ -173,6 +173,23 @@ def test_the_words_scene_carries_letter_timings_inside_each_word():
     assert word0["t"] <= first[0] and last[1] <= word0["t"] + word0["dur"] + 0.05
 
 
+@NEEDS_AUDIO
+def test_reading_lesson_builds_three_fetha_syllables_into_suitable_words():
+    from elifba.storyboard import UNSUITABLE_WORDS
+
+    ep = episode("okuma")
+    scenes = [s for s in ep["scenes"] if s["type"] == "build"]
+    assert len(scenes) >= 12
+    for sc in scenes:
+        assert len(sc["syllables"]) == 3 and all(x.endswith("َ") for x in sc["syllables"])
+        assert sc["word"] not in UNSUITABLE_WORDS
+    assert scenes[3]["word"] == "بَعَثَ" and scenes[3]["syllables"] == ["بَ", "عَ", "ثَ"]
+    syl = [a["path"] for a in ep["audio"] if "/fetha/fetha/" in a["path"]]
+    assert syl[9:12] == ["audio/elifba/fetha/fetha/btn_2.mp3", "audio/elifba/fetha/fetha/btn_12.mp3",
+                         "audio/elifba/fetha/fetha/btn_4.mp3"]   # bâ, ayn, se: each letter's own fetha recording
+    assert ep["duration"] <= MAX_SECONDS
+
+
 def test_script_cursor_advances_past_waits():
     s = Script()
     s.wait(1.5)

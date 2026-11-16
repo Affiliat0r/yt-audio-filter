@@ -79,10 +79,10 @@
   // ---------------------------------------------------------------- the lesson's stations
   const HARAKAT = /[ً-ْٰ۪ٖ]/g;
   const scenes = TL.scenes;
-  const stations = scenes.filter((s) => s.type === "letter" || s.type === "triple" || s.type === "words");
+  const stations = scenes.filter((s) => ["letter", "triple", "words", "build"].includes(s.type));
   stations.forEach((s, i) => {
     s.idx = i;
-    s.base = s.letter || (s.text || s.forms[0].text).replace(HARAKAT, "");
+    s.base = s.letter || (s.word || s.text || s.forms[0].text).replace(HARAKAT, "");
   });
   const N = stations.length;
   const STEP = 1700;
@@ -336,14 +336,14 @@
     return yAt;
   }
 
-  function drawHills(t, cam, k) {
+  function drawHills(t, cam, k, trees = true) {
     const night = nightOf(k), dim = (hex, a) => css(mix(shade(hex, a || 0), [30, 30, 70], night * 0.6));
     // middle hills with cypress rows
     const par = 0.45;
     const midY = hillLayer(cam, par, 800, 38, 0.0021, 22, 0.0049, dim("#A9D795"), dim("#8CC27F"));
     const from = Math.floor((cam.x - W / par) / 430), to = Math.ceil((cam.x + W / par) / 430);
     for (let c = from; c <= to; c++) {
-      if (hash(c + 77) < 0.35) continue;
+      if (!trees || hash(c + 77) < 0.35) continue;
       const wx = c * 430 + hash(c) * 200;
       const x = (wx - cam.x) * par + W / 2;
       if (x < -100 || x > W + 100) continue;
@@ -611,9 +611,13 @@
       ctx.fill();
       if (got) {
         ctx.fillStyle = "#FFFFFF";
-        ctx.font = `700 ${Math.round(fs * 0.62)}px Scheherazade`;
         ctx.textAlign = "center";
         ctx.direction = "rtl";
+        let size = Math.round(fs * 0.62);
+        ctx.font = `700 ${size}px Scheherazade`;
+        const wdt = ctx.measureText(s.base).width;
+        if (wdt > fs * 0.78) size = Math.floor((size * fs * 0.78) / wdt);   // a whole word must fit its flag
+        ctx.font = `700 ${size}px Scheherazade`;
         ctx.fillText(s.base, 0, fs * 0.62);
       }
       ctx.restore();
@@ -686,6 +690,63 @@
       }
       drawSprite(sp, x, y, scale * (1 + 0.1 * b), scale * (1 - 0.12 * b), 0, alpha);
     });
+  }
+
+  // reading words: three syllables on three tulips, said one by one; they slide
+  // together and become the joined word (the child sees the isolated letters
+  // change shape as they connect), which is then read whole
+  function buildStation(s, t, cam, night) {
+    const sx0 = stationX(s.idx) - cam.x + W / 2;
+    if (sx0 < -1300 || sx0 > W + 1300) return;
+    const ground = GROUND - cam.y;
+    const offs = [470, 0, -470];                      // the first syllable on the right
+    const open = t < s.start ? 0 : easeOutCubic(prog(t, s.start + 0.45, s.start + 1.05));
+    const cups = offs.map((o, k) => tulip(sx0 + o, ground, 150, 120, TULIPS[(s.idx + k) % TULIPS.length], open,
+      Math.sin(t * 1.1 + s.idx + k) * 7, night));
+    if (t < s.start || t >= s.end) return;
+    const sylBeats = [0, 1, 2].map((k) => beatsIn(`syl:${k}`, s.start, s.end)[0]);
+    const current = [2, 1, 0].find((k) => sylBeats[k] && t >= sylBeats[k].t);
+    const jb = beatsIn("join", s.start, s.end)[0];
+    // first the syllables slide together into the word's places (move), and only
+    // once they sit there does the joined word take over (fade): no double image
+    const move = jb ? easeInOut(prog(t, jb.t, jb.t + 0.7)) : 0;
+    // an instant swap at the flash's peak: never a frame with both drawn
+    const jk = jb && t >= jb.t + 0.72 ? 1 : 0;
+    // a short warm "pop" as the letters click together hides the swap
+    const pop = jb ? Math.max(0, 1 - Math.abs(t - (jb.t + 0.72)) / 0.18) : 0;
+    const allSaid = sylBeats[2] && t >= sylBeats[2].t + sylBeats[2].dur;
+    const fly = prog(t, s.end - 0.75, s.end - 0.05);
+
+    const word = clay(s.word, { font: "700 340px Scheherazade", color: CLAY_INK, mark: s.mark, depth: 18 });
+    const wordX = sx0, wordY = 330 - cam.y;
+    // where each syllable lands inside the word, right to left
+    const slot = (k) => wordX + word.inkW / 2 - ((k + 0.5) * word.inkW) / 3;
+
+    if (jk < 1) {
+      s.syllables.forEach((txt, k) => {
+        const sp = clay(txt, { font: "700 300px Scheherazade", color: CLAY_INK, mark: s.mark, depth: 14 });
+        const rise = easeOutBack(prog(t, s.start + 0.7 + k * 0.12, s.start + 1.3 + k * 0.12));
+        const active = current === k && !allSaid;
+        const focus = current === undefined || allSaid || active;
+        const e = env(`syl:${k}`, t), b = active ? bounce(`syl:${k}`, t, s.start, s.end) : 0;
+        const hx = cups[k].x, hy = lerp(cups[k].y, 430 - cam.y - (active ? 34 : 0), rise) + Math.sin(t * 1.6 + k) * 7 * rise;
+        const x = lerp(hx, slot(k), move), y = lerp(hy, wordY, move);
+        const scale = lerp(0.15, 1, rise) * (active ? 1.12 : focus ? 1 : 0.86) * lerp(1, 0.75, move);
+        if (move === 0) halo(x, y, 280, (active ? 0.6 + 0.4 * e : 0.25) * rise);
+        drawSprite(sp, x, y, scale * (1 + 0.1 * b), scale * (1 - 0.12 * b), 0, clamp(rise * 2) * (focus ? 1 : 0.45) * (1 - jk));
+      });
+    }
+    if (pop > 0) halo(wordX, wordY, 420, 1.6 * pop, "255,246,214");
+    if (jk > 0) {
+      const e = env("word", t), b = bounce("word", t, s.start, s.end);
+      let x = wordX, y = wordY + Math.sin(t * 1.5) * 8 * jk, scale = lerp(0.9, 1, jk);
+      halo(x, y, 460, (0.55 + 0.45 * e) * jk * (1 - fly));
+      if (fly > 0) {
+        const p = flight(x, y, s.idx, fly, 340);
+        x = p.x; y = p.y; scale = p.s;
+      }
+      drawSprite(word, x, y, scale * (1 + 0.08 * b), scale * (1 - 0.1 * b), 0, jk);
+    }
   }
 
   // the letters-in-words lesson: the letter above, three clay plaques below (DOM, so a
@@ -976,6 +1037,16 @@
       });
       return;
     }
+    if (sc.build) {
+      // the reading lesson: a word, and the syllables it is built from
+      halo(W / 2, 520, 420, 0.8);
+      drawSprite(clay(sc.build.word, { font: "700 300px Scheherazade", color: CLAY_INK, mark: sc.mark, depth: 18 }), W / 2, 530);
+      sc.build.syllables.forEach((syl, k) => {
+        const cup = tulip(xs[k], ground + 60, 70, 90, TULIPS[(k + 1) % TULIPS.length], 1, 0, 0);
+        drawSprite(clay(syl, { font: "700 170px Scheherazade", color: CLAY_INK, mark: sc.mark, depth: 10 }), cup.x, cup.y - 70);
+      });
+      return;
+    }
     const picks = sc.triples ? sc.triples[1].map((f) => ({ text: f.text, color: CLAY_INK, mark: f.mark }))
       : sc.texts.slice(0, 3).map((x, i) => ({ text: x, color: sc.rims[i], mark: null }));
     picks.forEach((p, k) => {
@@ -1001,10 +1072,13 @@
     drawSky(t, cam, k);
     drawClouds(t, cam, k);
     drawHorizon(t, cam, k);
-    drawHills(t, cam, k);
+    // no cypresses on a thumbnail: its letters sit low, right in the tree line,
+    // where an upright trunk reads as an alif
+    drawHills(t, cam, k, sc.type !== "thumb");
     for (const s of stations) {
       if (s.type === "letter") letterStation(s, t, cam, night);
       else if (s.type === "triple") tripleStation(s, t, cam, night);
+      else if (s.type === "build") buildStation(s, t, cam, night);
       else wordsStation(s, t, cam, night);
     }
     drawGrass(t, cam, k);
