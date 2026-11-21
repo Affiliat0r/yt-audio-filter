@@ -343,6 +343,38 @@ def _extract_stream_with_ffmpeg(source: Path, dest: Path, mode: StreamMode) -> P
     return dest
 
 
+#: Older than this, a yt-dlp is likely to fail YouTube's player challenge. The
+#: failure is silent: adaptive formats vanish and downloads drop to 360p or
+#: stop, which on 2026-11-21 looked like a bot block for a whole morning.
+YTDLP_STALE_DAYS = 60
+
+
+def ytdlp_age_days(version: Optional[str] = None, today=None) -> Optional[int]:
+    """Days since the installed yt-dlp was released (its version is its date)."""
+    import datetime
+
+    if version is None:
+        try:
+            from yt_dlp.version import __version__ as version
+        except ImportError:
+            return None
+    m = re.match(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", version or "")
+    if not m:
+        return None
+    released = datetime.date(*map(int, m.groups()))
+    return ((today or datetime.date.today()) - released).days
+
+
+def warn_if_ytdlp_stale() -> None:
+    """Say so loudly when yt-dlp is old, before it costs a debugging session."""
+    age = ytdlp_age_days()
+    if age is not None and age > YTDLP_STALE_DAYS:
+        logger.warning(
+            f"yt-dlp is {age} days old. If downloads fail or come down at 360p, "
+            "update it first: pip install -U yt-dlp yt-dlp-ejs (docs/lessons-learned.md)"
+        )
+
+
 def download_stream(
     url: str,
     output_dir: Path,
@@ -376,6 +408,8 @@ def download_stream(
             if candidate.exists() and candidate.stat().st_size > 0:
                 logger.info(f"Using cached {mode} download: {candidate.name}")
                 return candidate
+
+    warn_if_ytdlp_stale()
 
     # Stage 1: pytubefix client cascade (primary — no external runtime needed)
     if mode in ("video-only", "audio-only"):

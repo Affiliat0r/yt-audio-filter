@@ -368,7 +368,14 @@ def _link_video(item: CartoonItem) -> CatalogVideo:
 #: 720p, and it is worth being precise about why that is not a downgrade from
 #: the 1080p this used to default to.
 #:
-#: Sources come down at 640x360. The SABR wall means YouTube only serves
+#: Since 2026-11-21 most sources come down at 1080p (see
+#: ``youtube.YTDLP_CLIENT_ATTEMPTS``). This default is then a floor, not a
+#: target: music removal copies a taller stream as it is
+#: (``scale_height_for``), and an overlay render rises to its visual's height
+#: (``ffmpeg_overlay.resolution_for_source``). The rest of this note is why 720p
+#: is right for the sources that still arrive at 360p.
+#:
+#: Those come down at 640x360. The SABR wall meant YouTube only served
 #: format 18 for this content — measured across nine real sources, every
 #: adaptive format 403s on a full download (see ``youtube.YTDLP_CLIENT_ATTEMPTS``).
 #: So a 1080p render was never 1080p worth of detail; it was 360p stretched

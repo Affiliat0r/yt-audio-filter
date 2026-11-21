@@ -31,8 +31,9 @@ after the user says yes:
 PYTHONIOENCODING=utf-8 python -m yt_audio_filter.workflow_cli --approve "<the same request>"
 ```
 
-A render takes roughly 45 minutes per episode (Real-ESRGAN is on by default),
-so run the approve step in the background and report the result when it lands.
+A 1080p source skips Real-ESRGAN and renders in minutes. A 360p source is
+sharpened, which takes roughly 45 minutes per episode. Either way, run the
+approve step in the background and report the result when it lands.
 
 ## Things that go wrong
 
@@ -51,8 +52,14 @@ kurabiye adam one" gets searched verbatim and finds nothing useful. Translate
 it to what the channel actually titles things (here: `sevimli dostlar masal`),
 say which translation you chose, and let the approval gate catch a bad guess.
 
-**Sources arrive at 360p.** The SABR wall leaves only format 18, so output is
-reconstructed 720p, never real 1080p. Do not promise otherwise.
+**Most sources arrive at 1080p since 2026-11-21**, and are published at 1080p.
+Some still come down at 360p; those become sharpened 720p. Check the file
+before saying which.
+
+**Downloads failing or dropping to 360p?** Don't wait it out and don't reach for
+cookies. Update yt-dlp first (`pip install -U yt-dlp yt-dlp-ejs`); a stale one
+fails silently and looks like a bot block. A `yt-dlp is N days old` warning in
+the log means exactly this. Full story: `docs/lessons-learned.md`.
 
 ## Reporting
 

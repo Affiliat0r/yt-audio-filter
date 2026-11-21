@@ -11,6 +11,24 @@ stack, plus a video series that reuses the uploader:
 - **`yt-quran-overlay`** — added in feat/quran-overlay + feat/surah-input. Combines a YouTube visual (e.g. Toy Factory cartoons) with a separate Quran recitation audio, loops the visual to match audio length, applies EBU R128 loudnorm, overlays a channel logo, and optionally uploads to YouTube with a templated description. Three invocation modes (see "yt-quran-overlay tool" section below).
 - **`elifba/`** — the Elif-Ba series: animated lessons teaching the Arabic letters to three-year-olds, rendered from HTML/JS with Diyanet's recordings, following the printed Diyanet Elif-Ba (see "Elif-Ba videos" below and `elifba/README.md`).
 
+## Working on this repo
+
+**Lessons learned live in [docs/lessons-learned.md](docs/lessons-learned.md).**
+Two rules:
+
+1. **Before debugging** a failure that looks familiar (downloads failing, 360p,
+   bot blocks, upload limits), read the matching entry first.
+2. **After fixing** anything that took more than one wrong guess, add an entry:
+   symptom → what was tried → root cause → fix → rule → guarding tests. Link it
+   from the CLAUDE.md section it touches.
+
+When downloads break, the order is: **update yt-dlp** (`pip install -U yt-dlp
+yt-dlp-ejs`), then read its verbose log, then ask about cookies. Don't wait out
+an error you haven't explained. See the 2026-11-21 entry.
+
+When a premise changes (e.g. "sources are 360p"), grep the code, the
+`.claude/commands/` workflows and this file for it, and update every copy.
+
 ## Development Commands
 
 Standard for the toolchain: `pip install -e .`, `black src/`, `mypy src/`,
@@ -59,7 +77,7 @@ The new `yt-quran-overlay` tool uses an application-less chain in
 `youtube.download_stream()`:
 
 1. **pytubefix client cascade** (ANDROID_VR → IOS → ANDROID → MWEB → TV → WEB) — pure Python, no external runtimes
-2. **yt-dlp** with `tv_embedded`/`ios`/`web_embedded`/`android` client cascade and a `bestvideo / bestaudio / 18 / b` format fallback. Combined formats are post-stripped with FFmpeg `-c copy` to yield a clean stream-only file.
+2. **yt-dlp**, default clients first (1080p since 2026-11-21), then the `tv_embedded`/`ios`/`web_embedded`/`android` cascade, and a `bestvideo / bestaudio / 18 / b` format fallback. Combined formats are post-stripped with FFmpeg `-c copy` to yield a clean stream-only file.
 
 **Both** tools now use this chain. `cli.py` calls
 `youtube.download_video_with_metadata()`, a thin wrapper that runs
@@ -130,7 +148,9 @@ Two things had to line up, and both can rot again:
 
 An HD source skips Real-ESRGAN (`upscale._already_hd`): sharpening 1080p 2x
 would build 4K for hours. A 1080p source is then copied, not re-encoded, so
-music-removal output is real 1080p.
+music-removal output is real 1080p. `youtube.warn_if_ytdlp_stale` warns when
+yt-dlp is over 60 days old. The full incident, and what *not* to do next time,
+is in [docs/lessons-learned.md](docs/lessons-learned.md).
 
 The section below is the history of the wall, kept so the `--test` trap isn't
 rediscovered.
@@ -221,7 +241,7 @@ order.
 `youtube.download_stream()` is the application-less path:
 
 1. **pytubefix client cascade** (ANDROID_VR → IOS → ANDROID → MWEB → TV → WEB) — pure Python, no external runtimes. Delivers 160 kbps Opus audio for most videos.
-2. **yt-dlp fallback** with `tv_embedded/ios/web_embedded/android` client cascade and `bestvideo[ext=mp4]/bestvideo/18/b` format fallback. Format 18 is combined 360p mp4; post-downloaded, FFmpeg strips to the requested stream via `-c copy` when possible.
+2. **yt-dlp fallback**, default clients first (real 1080p since 2026-11-21), then the `tv_embedded/ios/web_embedded/android` cascade, and `bestvideo[ext=mp4]/bestvideo/18/b` format fallback. Format 18 is combined 360p mp4; post-downloaded, FFmpeg strips to the requested stream via `-c copy` when possible.
 
 No YTDownloader.exe, no Docker, no Node.js server required in the default path.
 
@@ -244,6 +264,9 @@ when available).
 1920×1080). This matches the x2 upscale target and avoids a second scale
 that would discard detail. Override with `--resolution 1920x1080` if you
 want 1080p output (render will upscale the 720p upscaled source back up).
+A visual taller than the asked resolution lifts the render to its own height,
+capped at 1080p (`ffmpeg_overlay.resolution_for_source`), so a 1080p source is
+never shrunk to 720p. See [docs/lessons-learned.md](docs/lessons-learned.md).
 
 **Two cache names, and they are not interchangeable:**
 

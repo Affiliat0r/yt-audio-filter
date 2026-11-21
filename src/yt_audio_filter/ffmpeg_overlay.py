@@ -409,6 +409,32 @@ def get_audio_duration(audio_path: Path) -> float:
     return float(duration)
 
 
+#: The tallest a visual may lift an overlay render to. Beyond this a source
+#: would push output toward 4K, which nothing on the channel needs.
+MAX_SOURCE_HEIGHT = 1080
+
+
+def resolution_for_source(resolution: Tuple[int, int], video_path: Path) -> Tuple[int, int]:
+    """``resolution``, raised to the visual's own height when that is taller.
+
+    Never shrink a good source. The 720p default was set when every visual
+    arrived at 360p; since 2026-11-21 most arrive at 1080p, and rendering
+    those at 720p would throw away detail we finally have. Capped at
+    MAX_SOURCE_HEIGHT; an unreadable probe keeps ``resolution`` unchanged.
+    """
+    from .ffmpeg import get_video_info
+
+    try:
+        height = int(get_video_info(video_path).get("height") or 0)
+    except Exception:  # noqa: BLE001 - a failed probe keeps what was asked for
+        return resolution
+    height = min(height, MAX_SOURCE_HEIGHT)
+    if height <= resolution[1]:
+        return resolution
+    width = (height * 16 // 9 + 1) // 2 * 2  # even, for h264's 4:2:0 grid
+    return (width, height)
+
+
 def render_overlay(
     video_path: Path,
     audio_path: Path,
@@ -448,6 +474,11 @@ def render_overlay(
             f"Output already exists: {output_path}",
             "Pass --force to overwrite.",
         )
+
+    lifted = resolution_for_source(resolution, video_path)
+    if lifted != resolution:
+        logger.info(f"Visual is {lifted[1]}p; rendering at {lifted[0]}x{lifted[1]}, not {resolution[0]}x{resolution[1]}")
+        resolution = lifted
 
     duration = get_audio_duration(audio_path)
     if max_duration is not None and duration > max_duration:
