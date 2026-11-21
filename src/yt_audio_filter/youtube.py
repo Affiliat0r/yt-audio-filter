@@ -285,35 +285,26 @@ _STREAM_PREFIX = {
 #: yt-dlp client configurations, tried in order until one delivers a file.
 #: ``None`` means "let yt-dlp pick its own defaults".
 #:
-#: The pinned ``tv_embedded/ios/web_embedded/android`` cascade comes first
-#: because it is the one that actually returns bytes. It is tempting to put the
-#: defaults first — they *list* far more, up to 1080p and 4K — but that listing
-#: is a mirage, and the trap is worth spelling out so nobody re-runs the
-#: experiment:
+#: **Defaults first, since 2026-11-21.** With yt-dlp 2026.10.26 and
+#: yt-dlp-ejs 0.8.0 the default clients download real 1080p in full: format
+#: 137+140 of MhouG7GgFYE (7:28) and of XgdI4wbLcOw (46:05, 766 MB) came down
+#: complete, no 403. That is a full download, not ``--test``, which stops
+#: after 10 KB and fooled an earlier retest.
 #:
-#: * ``yt-dlp -F`` with the default clients shows formats 137/399 (1080p).
-#: * ``yt-dlp -f 137 --test`` even succeeds — ``--test`` stops after 10 KB, and
-#:   the *first* range request is served.
-#: * A real download of the same format returns ``HTTP Error 403`` — sometimes
-#:   immediately, sometimes after ~10 MB. That is SABR (yt-dlp issue #12482).
+#: History, so nobody undoes this by mistake: from April to November 2026
+#: every adaptive format 403'd on a real download (SABR, yt-dlp #12482;
+#: measured 2026-08-30 on nine sources), and only the pinned
+#: ``tv_embedded/ios/web_embedded/android`` cascade returned bytes, at 360p
+#: (format 18). On 2026-11-21 that pinned cascade was bot-blocked outright
+#: ("Sign in to confirm you're not a bot") while the defaults on a current
+#: yt-dlp were not. An old yt-dlp (2025.12.08) also failed the player's
+#: n challenge ("found 0 n function possibilities"), which hides every
+#: adaptive format: keep yt-dlp and yt-dlp-ejs current.
 #:
-#: Measured 2026-08-30 across nine real sources from this channel
-#: (U_EhMEOolI0, itBhCjx-6fc, ezmsrB59mj8, _EJXu4QMSew, MIXk4TzlQ48,
-#: So5UzYxD2so, Xin8YQzI1dM, nnRF1MGrysI, w1k8szKtdWs): every adaptive format
-#: 403'd on a full download, on all nine. Verified with and without the bgutil
-#: PO Token plugin — it makes no difference. Format 18 (combined 640x360) is
-#: what is genuinely downloadable.
-#:
-#: So putting the defaults first would cost one failed attempt, and a partial
-#: download thrown away, on every single render — for nothing. They stay as a
-#: *fallback*, so that if the pinned clients ever stop being served the
-#: downloader tries something else rather than failing outright.
-#:
-#: Revisit when yt-dlp ships native SABR support: then ``None`` moves first
-#: and this project gets real 1080p sources without any other change.
+#: The pinned cascade stays as the fallback, for the day the defaults break.
 YTDLP_CLIENT_ATTEMPTS: Tuple[Optional[List[str]], ...] = (
-    ["tv_embedded", "ios", "web_embedded", "android"],
     None,
+    ["tv_embedded", "ios", "web_embedded", "android"],
 )
 
 

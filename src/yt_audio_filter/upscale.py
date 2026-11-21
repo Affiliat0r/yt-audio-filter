@@ -312,6 +312,19 @@ def _probe_size(src: Path):
     return int(width), int(height), (float(num) / float(den) if float(den) else float(num))
 
 
+#: A source this tall is already HD. Sharpening it 2x would make 4K: hours of
+#: GPU for a picture the render scales straight back down.
+HD_HEIGHT = 720
+
+
+def _already_hd(src: Path) -> bool:
+    """Whether ``src`` is at least HD_HEIGHT tall (False when ffprobe won't say)."""
+    try:
+        return _probe_size(Path(src))[1] >= HD_HEIGHT
+    except (FFmpegError, ValueError, OSError):
+        return False
+
+
 def _upscale_streaming(src: Path, dst: Path, upscaler, scale: int = 2) -> Path:
     """Decode, upscale and encode in one pass, with no frame touching disk.
 
@@ -516,6 +529,9 @@ def get_or_create_upscaled(
     if dst.exists() and dst.stat().st_size > 0:
         logger.info(f"Using cached upscaled visual: {dst.name}")
         return dst
+    if _already_hd(visual_path):
+        logger.info(f"Visual is already HD, not upscaling: {Path(visual_path).name}")
+        return Path(visual_path)
     # Built under another name and renamed on success. A crash part-way through
     # would otherwise leave a truncated file under the real name, and the check
     # above would trust it on the next run.
@@ -598,4 +614,7 @@ def get_or_create_sharpened(
     if dst.exists() and dst.stat().st_size > 0:
         logger.info(f"Using cached sharpened source: {dst.name}")
         return dst
+    if _already_hd(src):
+        logger.info(f"Source is already HD, not sharpening: {Path(src).name}")
+        return Path(src)
     return upscale_preserving_audio(Path(src), dst)

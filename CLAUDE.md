@@ -112,6 +112,29 @@ empirically-tested state of available downloaders. None bypass SABR:
 | `Cobalt v11` self-hosted with Firefox cookies | `error.api.youtube.api_error` on every URL — Google rejects cookies from container IP |
 | `Cobalt v11` + `YOUTUBE_SESSION_SERVER` (bgutil) | Format extraction succeeds (1080p h264 filename), tunnel still returns 0 bytes — SABR blocks the actual stream even with PO Tokens |
 
+**Fixed 2026-11-21: real 1080p downloads work again.** yt-dlp 2026.10.26 with
+yt-dlp-ejs 0.8.0 downloads full 1080p with its *default* clients — MhouG7GgFYE
+(7:28) and the 46-minute XgdI4wbLcOw (766 MB) came down complete, no 403. So
+`YTDLP_CLIENT_ATTEMPTS` now tries `None` first, with the pinned cascade behind it.
+Two things had to line up, and both can rot again:
+
+- **yt-dlp must be current.** 2025.12.08 failed the player's n challenge ("found
+  0 n function possibilities" from Deno), which silently hides every adaptive
+  format. When downloads suddenly drop to 360p or vanish, `pip install -U yt-dlp
+  yt-dlp-ejs` first.
+- **The pinned clients got bot-blocked** ("Sign in to confirm you're not a bot")
+  for the whole connection after a morning of downloads, while the defaults on
+  the new yt-dlp were not. Browser cookies (`--cookies-from-browser firefox`)
+  also got past it but were not needed, and they tie downloads to the owner's
+  Google account — don't wire them in without asking.
+
+An HD source skips Real-ESRGAN (`upscale._already_hd`): sharpening 1080p 2x
+would build 4K for hours. A 1080p source is then copied, not re-encoded, so
+music-removal output is real 1080p.
+
+The section below is the history of the wall, kept so the `--test` trap isn't
+rediscovered.
+
 **Re-measured 2026-08-30 — unchanged, and the retest has a trap in it.**
 With yt-dlp's *default* clients, `yt-dlp -F` now lists 1080p (137/399) and
 `yt-dlp -f 137 --test` even succeeds. Both are misleading: `--test` stops after
@@ -256,6 +279,10 @@ source past the total budget, emits an `upscale-skipped` event and falls back
 to a plain scale rather than failing the item.
 
 ### yt-studio output quality
+
+**Since 2026-11-21 most sources arrive at 1080p** (see the SABR section): those
+are used as they are, at 1080p, with no sharpening. Everything below applies to
+sources that still come down at 360p.
 
 **Default: sharpened 720p.** `DEFAULT_HEIGHT = 720` and `--upscale` is on
 unless `--no-upscale` says otherwise.

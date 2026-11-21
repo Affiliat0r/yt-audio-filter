@@ -1,24 +1,12 @@
 """Which client yt-dlp asks with decides what we can actually download.
 
-The pinned ``tv_embedded/ios/web_embedded/android`` cascade is only ever
-*offered* format 18 — a combined 640x360 stream — so every cartoon this project
-publishes comes down at 360p. The obvious reaction is to drop the pin, because
-yt-dlp's default clients list formats up to 1080p and 4K.
-
-That listing is a mirage, and this file exists so nobody spends an afternoon
-rediscovering it:
-
-* ``yt-dlp -F`` with the defaults shows 137/399 (1080p).
-* ``yt-dlp -f 137 --test`` succeeds — but ``--test`` stops after 10 KB, and the
-  first range request is served.
-* A real download of the same format returns ``HTTP Error 403``, sometimes at
-  once and sometimes after ~10 MB. That is SABR (yt-dlp issue #12482).
-
-Measured 2026-08-30 across nine real sources from this channel: every adaptive
-format 403'd on a full download, on all nine, with and without the bgutil PO
-Token plugin. So the pin is not what caps quality — it is what makes the
-download work at all, and it goes first. The defaults stay behind it as a
-fallback, and move to the front on the day yt-dlp ships SABR support.
+Since 2026-11-21 yt-dlp's default clients come first: on a current yt-dlp
+(2026.10.26, yt-dlp-ejs 0.8.0) they download real 1080p in full, while the
+pinned ``tv_embedded/ios/web_embedded/android`` cascade, which used to be the
+only thing that returned bytes (format 18, 360p, while SABR 403'd every
+adaptive download), was bot-blocked outright. The pinned cascade stays as the
+fallback. See ``youtube.YTDLP_CLIENT_ATTEMPTS`` for the measurements, and
+beware ``--test``: it stops after 10 KB and proves nothing about a full download.
 """
 
 from __future__ import annotations
@@ -35,16 +23,15 @@ from yt_audio_filter import youtube
 # ------------------------------------------------------- the attempt order
 
 
-def test_the_working_cascade_is_tried_first() -> None:
-    """Anything else costs a failed attempt on every render — see the module
-    docstring for the measurement."""
-    assert "tv_embedded" in (youtube.YTDLP_CLIENT_ATTEMPTS[0] or [])
+def test_the_defaults_are_tried_first() -> None:
+    """They are what downloads 1080p — see the module docstring."""
+    assert youtube.YTDLP_CLIENT_ATTEMPTS[0] is None
 
 
-def test_the_defaults_survive_as_a_fallback() -> None:
-    """So a downloader whose pinned clients stop being served tries something
+def test_the_pinned_cascade_survives_as_a_fallback() -> None:
+    """So a downloader whose default clients stop being served tries something
     else rather than failing outright."""
-    assert None in youtube.YTDLP_CLIENT_ATTEMPTS[1:]
+    assert any("tv_embedded" in (c or []) for c in youtube.YTDLP_CLIENT_ATTEMPTS[1:])
 
 
 def test_there_is_more_than_one_attempt() -> None:
@@ -140,15 +127,14 @@ def test_the_first_attempt_wins_and_nothing_else_is_tried(download) -> None:
     """The common case, and the reason ordering matters: no wasted round trip."""
     result, seen = download(failing_clients=set())
     assert result.exists()
-    assert seen == [CASCADE]
+    assert seen == [()], "the first attempt leaves player_client unset"
 
 
-def test_a_failed_attempt_falls_through_to_the_defaults(download) -> None:
-    """If YouTube stops serving the pinned clients, the run must not just die."""
-    result, seen = download(failing_clients={CASCADE})
+def test_a_failed_attempt_falls_through_to_the_pinned_cascade(download) -> None:
+    """If YouTube stops serving the default clients, the run must not just die."""
+    result, seen = download(failing_clients={()})
     assert result.exists()
-    assert len(seen) == 2
-    assert seen[1] == (), "the fallback attempt leaves player_client unset"
+    assert seen == [(), CASCADE]
 
 
 def test_every_attempt_failing_still_raises(download) -> None:
