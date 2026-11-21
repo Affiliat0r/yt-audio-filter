@@ -438,7 +438,7 @@ python -m elifba.render harekeler --thumbnail    # -> output/elifba/elifba_harek
 | 2 | `kelime` | each letter at the start / middle / end of three words, spelled by Diyanet | 11:39 | `zdntEhp7eKU` |
 | 3 | `harekeler` | every letter with fetha, kesra, damme together (اَ اِ اُ) | 4:47 | `bYrLiQX15Mk` |
 | 4 | `okuma` | reading words: three fetha syllables on three tulips, said one by one, slide together into the joined word, read whole | 4:45 | `wRwwPBl34wI` |
-| 1b | `karisik` | every letter again, shuffled (no alphabet neighbours side by side): 3 s of silence to name it, then Diyanet says it once | 4:19 | – |
+| 1b | `karisik` | every letter again, shuffled (no alphabet neighbours side by side): 3 s of silence to name it, then Diyanet says it once | 4:19 | `qFJ9_XT1epQ` |
 | 5 | `harekeli` | ten rows of three syllables, each row a fetha, a kesra and a damme; then Diyanet's five short-hareke words with a kesra or damme, built like ders 4 | 3:23 | – |
 | – | `fetha` | fetha only, the web course's order — **not part of the series** | 4:11 | – |
 
