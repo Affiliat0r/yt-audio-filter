@@ -13,6 +13,8 @@ printed Diyanet Elif-Ba (2024).
 | 2 | `kelime` | Each letter on its own, then at the start, middle and end of a word (Başta / Ortada / Sonda), each word spelled letter by letter | 11:39 |
 | 3 | `harekeler` | Every letter with fetha, kesra and damme together — اَ اِ اُ — each said in turn | 4:47 |
 | 4 | `okuma` | Reading words: three syllables (بَ عَ ثَ) said one by one on three tulips, then slid together into the joined word (بَعَثَ), which is read twice | 4:45 |
+| 1b | `karisik` | Every letter again, out of order: a silence to name it first, then Diyanet says it | 4:19 |
+| 5 | `harekeli` | Syllable rows mixing fetha, kesra and damme (اَ بِ تُ), then five words read the ders 4 way, each mark in its own colour | 3:23 |
 
 `fetha` (fetha only, in the order of Diyanet's web course) also exists but is
 not part of the series.

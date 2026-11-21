@@ -10,6 +10,11 @@ one video of about eleven minutes — Diyanet spells each word letter by letter,
 and the owner wanted it in one piece rather than three), 3. harekeler — every letter with all three harakat at once,
 اَ اِ اُ, as the book's table shows them. (A fetha-only lesson, the order of
 Diyanet's web course, is kept as ``fetha`` but is not part of the series.)
+4. reading words of three fetha syllables; 5. reading with mixed harakat —
+syllable rows, then the few words Diyanet has that use only short harakat.
+1b repeats the letters out of order, as a quiz (the owner asked for it on
+2026-11-21): each letter waits in silence before its name is said, so a child
+can name it first. There is still no comparison quiz between letters.
 
 * one letter on screen at a time, very large, with its own colour;
 * the only voice is Diyanet's human recording of each letter's name (and the
@@ -62,6 +67,7 @@ INK = "#2E3A59"
 #: One colour per hareke, the same in every letter, so each mark is recognised by colour too.
 HARAKAT_COLORS = {"fetha": "#E4572E", "kesra": "#1C7CB8", "damme": "#2A9D5B"}
 TRIPLE_GAP = 1.3    # after each of the three sounds: time to say it back
+GUESS = 3.0         # ders 1b: the letter waits in silence, for the child to name it first
 WORD_GAP = 0.9      # after each spelled word (they are long already: 3.5-5 s)
 
 
@@ -239,12 +245,89 @@ def okuma_items() -> List[Dict]:
     return items
 
 
+def karisik_items() -> List[Dict]:
+    """Ders 1b: every letter again, out of alphabet order. A fixed shuffle, so a
+    re-render is the same video; no letter sits next to its alphabet neighbour,
+    since a child who knows the order would otherwise just continue it."""
+    import random
+
+    letters = list(JE)
+    rng = random.Random(1)
+    while True:
+        rng.shuffle(letters)
+        if all(abs(JE.index(a) - JE.index(b)) > 1 for a, b in zip(letters, letters[1:])):
+            break
+    return [{"text": l, "letter": l, "sound": name_sound(l), "quiz": True} for l in letters]
+
+
+#: Words in Diyanet's kesra and damme pages that a child should not chant, as in ders 4.
+UNSUITABLE_WORDS_5 = {"فَفَزِعَ"}       # "and was terrified"
+
+
+def harekeli_items() -> List[Dict]:
+    """Ders 5: reading with all three harakat. First rows of three syllables, each
+    letter of the alphabet in turn and every row holding a fetha, a kesra and a
+    damme in a different order, read right to left; then the words Diyanet has
+    whose syllables use only these three marks, with at least one kesra or damme
+    (no long vowels or tenvin, which come later). Five words: a sixth, فَفَزِعَ,
+    means "was terrified" and is left out."""
+    import itertools
+    import re
+
+    units = {"fetha": _recordings(unit_fetha), "kesra": _recordings(unit_kesra), "damme": _recordings(unit_damme)}
+    by_mark = {"َ": "fetha", "ِ": "kesra", "ُ": "damme"}
+    orders = list(itertools.permutations(["fetha", "kesra", "damme"]))
+    letters = list(JE) + list(JE[:2])                  # 28 letters: the last row wraps to ا ب
+    items = []
+    for r in range(0, 30, 3):
+        row = letters[r:r + 3]
+        forms = []
+        for letter, hareke in zip(row, orders[(r // 3) % len(orders)]):
+            text, sound = units[hareke][letter]
+            if letter == "ى":
+                text = "ي" + text[1:]
+            forms.append({"text": text, "sound": sound, "hareke": hareke})
+        items.append({"text": " ".join(f["text"] for f in forms), "letter": row[0], "forms": forms})
+    items[0]["chapter"] = "Heceler"
+
+    words = []
+    for unit in (unit_kesra, unit_damme):
+        uyg = unit()[1]
+        folder = AUDIO / "elifba" / uyg["chapter"] / uyg["lesson"]
+        for group in uyg["groups"]:
+            for row in group["rows"]:
+                for tile in row["tiles"]:
+                    word = tile["arabic"]
+                    clusters = re.findall(r"[ء-ي][ً-ْٰ۪]*", word)
+                    if " " in word or "".join(clusters) != word or word in UNSUITABLE_WORDS_5:
+                        continue
+                    if not all(len(c) == 2 and c[1] in by_mark for c in clusters):
+                        continue
+                    if not any(by_mark[c[1]] != "fetha" for c in clusters) or not 3 <= len(clusters) <= 4:
+                        continue
+                    syllables = []
+                    for c in clusters:
+                        hareke, letter = by_mark[c[1]], "ا" if c[0] in "اأ" else c[0]
+                        syllables.append({"text": c, "sound": units[hareke][letter][1], "hareke": hareke})
+                    marks = {h: HARAKAT_COLORS[h] for h in HARAKAT_COLORS if any(x["hareke"] == h for x in syllables)}
+                    words.append({"text": word, "letter": clusters[0][0], "sound": folder / f"{tile['sound']}.mp3",
+                                  "syllables": syllables, "mark": marks,
+                                  # all three harakat, none above a tall stem: in وَطُبِعَ
+                                  # the damme over ط reaches into the thumbnail's title
+                                  "thumb": word == "وَوُضِعَ"})
+    words.sort(key=lambda w: len(w["syllables"]))             # three syllables first, then four
+    words[0]["chapter"] = "Kelimeler"
+    return items + words
+
+
 #: number, items, subtitle on the title card, whether the cards show a coloured hareke
 LESSONS = {
     "harfler": (1, harfler_items, "Harfler", False),
     "kelime": (2, lambda: kelime_items(0), "Harfler ve Kelimeler", False),
     "harekeler": (3, harekeler_items, "Harekeler", True),
     "okuma": (4, okuma_items, "Kelime Okuyalım", True),
+    "karisik": ("1b", karisik_items, "Bu Harf Hangisi?", False),
+    "harekeli": (5, harekeli_items, "Harekelerle Okuyalım", True),
     "fetha": (2, fetha_items, "Fetha", True),
 }
 
@@ -290,7 +373,8 @@ def build_segment(s: Script, item: Dict, number: int) -> None:
     """Three syllables, each said as it lights up; they slide together into the
     word; the word is read, a pause, read again."""
     scene = s.open_scene("build", word=item["text"], syllables=[x["text"] for x in item["syllables"]],
-                         color=INK, rim=color_of(item["letter"]), mark=HARAKAT_COLORS["fetha"], number=number)
+                         color=INK, rim=color_of(item["letter"]), mark=item.get("mark", HARAKAT_COLORS["fetha"]),
+                         number=number)
     s.wait(APPEAR)
     for k, syl in enumerate(item["syllables"]):
         s.play(syl["sound"], target=f"syl:{k}")
@@ -324,10 +408,25 @@ def letter_segment(s: Script, item: Dict, number: int, marked: bool) -> None:
                          rim=color_of(letter), mark=MARK_COLOR if marked else None,
                          heavy=letter in HEAVY, number=number)
     s.wait(APPEAR)
-    for _ in range(HEARINGS):
+    if item.get("quiz"):
+        s.wait(GUESS)                  # the child names it first
         s.play(item["sound"], target="letter")
         s.wait(PAUSE)
+    else:
+        for _ in range(HEARINGS):
+            s.play(item["sound"], target="letter")
+            s.wait(PAUSE)
     s.close_scene(scene)
+
+
+def _thumb_word(items: List[Dict]) -> Optional[Dict]:
+    """The word the thumbnail builds from its syllables: ders 4's fourth (بَعَثَ),
+    or the first that shows all three harakat."""
+    words = [it for it in items if "syllables" in it]
+    if not words:
+        return None
+    pick = next((w for w in words if w.get("thumb")), words[min(3, len(words) - 1)])
+    return {"word": pick["text"], "syllables": [x["text"] for x in pick["syllables"]], "mark": pick.get("mark")}
 
 
 def episode(lesson: str = "harfler") -> Dict:
@@ -349,8 +448,12 @@ def episode(lesson: str = "harfler") -> Dict:
     s.wait(3.4)
     s.close_scene(scene)
 
+    named = any("chapter" in it for it in items)
     for i, item in enumerate(items):
-        if i % CHAPTER_EVERY == 0:
+        if named:
+            if "chapter" in item:
+                s.chapters.append({"t": round(s.t, 3), "title": item["chapter"]})
+        elif i % CHAPTER_EVERY == 0:
             last = items[min(i + CHAPTER_EVERY, len(items)) - 1]
             s.chapters.append({"t": round(s.t, 3), "title": f"{item['text']} – {last['text']}"})
         if "syllables" in item:
@@ -369,8 +472,7 @@ def episode(lesson: str = "harfler") -> Dict:
                          mark=MARK_COLOR if marked and "forms" not in items[0] else None,
                          triples=[[{"text": f["text"], "mark": HARAKAT_COLORS[f["hareke"]]} for f in it["forms"]]
                                   for it in items[:4]] if "forms" in items[0] else None,
-                         build={"word": items[3]["text"], "syllables": [x["text"] for x in items[3]["syllables"]]}
-                         if "syllables" in items[0] else None)
+                         build=_thumb_word(items))
     s.wait(6.5)                # night falls, lanterns rise, "Aferin!"
     s.close_scene(scene)
 

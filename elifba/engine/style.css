@@ -2,6 +2,10 @@
 /* the same font with blank vowel marks (python -m elifba.markless_font): lays out
    exactly like Scheherazade, so it paints the letters under coloured marks */
 @font-face { font-family: "Markless Arabic"; src: url("fonts/MarklessArabic-Bold.ttf") format("truetype"); font-weight: 700; }
+/* each holds one hareke and nothing else: a word with mixed harakat colours each */
+@font-face { font-family: "Marks Fetha"; src: url("fonts/MarksFetha-Bold.ttf") format("truetype"); font-weight: 700; }
+@font-face { font-family: "Marks Kesra"; src: url("fonts/MarksKesra-Bold.ttf") format("truetype"); font-weight: 700; }
+@font-face { font-family: "Marks Damme"; src: url("fonts/MarksDamme-Bold.ttf") format("truetype"); font-weight: 700; }
 @font-face { font-family: "Nunito"; src: url("fonts/Nunito.ttf") format("truetype"); font-weight: 200 1000; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

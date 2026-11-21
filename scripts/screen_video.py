@@ -7,7 +7,8 @@ one, and captions alone miss decorations and unlisted words, so this does both:
   2. Episode split on the ~0.24s black frame between episodes, then sampled
      frames per episode laid out on contact sheets to look at.
 
-Usage: python scripts/screen_video.py <video-id-or-url> [frames_per_episode]
+Usage: python scripts/screen_video.py <video-id-or-url> [frames_per_episode] [--lang nl]
+(--lang picks the caption language and its keyword set; Turkish by default.)
 Prints the episode boundaries, the keyword hits mapped to episodes, and the
 contact sheet paths (cache/_screen/<id>_N.jpg) to open and look at.
 """
@@ -37,6 +38,27 @@ MUSIC = re.compile(
     r"konser|nağme|melodi|flüt|trompet|şarkıcı|\bmarş\b",
     re.IGNORECASE,
 )
+# Dutch sources (Gecko's Garage in het Nederlands). Sinterklaas belongs here:
+# it is the Dutch December feast, and a compilation hides it like Christmas.
+KEYWORDS_NL = re.compile(
+    r"halloween|spook|spoken|geest|skelet|pompoen|kerst|kerstman|kerstboom|sinterklaas|\bsint\b|"
+    r"zwarte piet|pieten|cadeau|kostuum|verkleed|dag van de doden|pasen|paasei|paashaas|valentijn|"
+    r"heks|tovenaar|tover|betover|magisch|\bfee\b|wens|verjaardag|jarig",
+    re.IGNORECASE,
+)
+SINGING_NL = re.compile(r"\[(?:zang|zingen|zingt|lied)[^\]]*\]", re.IGNORECASE)
+MUSIC_NL = re.compile(
+    r"liedje|\blied\b|zingen|zingt|muziek|gitaar|piano|viool|trommel|orkest|\bkoor\b|concert|"
+    r"\bband\b|fluit|trompet|zanger",
+    re.IGNORECASE,
+)
+LANG = "tr"
+if "--lang" in sys.argv:
+    i = sys.argv.index("--lang")
+    LANG = sys.argv[i + 1]
+    del sys.argv[i:i + 2]
+    if LANG == "nl":
+        KEYWORDS, SINGING, MUSIC = KEYWORDS_NL, SINGING_NL, MUSIC_NL
 
 
 def video_id(arg: str) -> str:
@@ -52,12 +74,12 @@ def caption_hits(vid: str) -> list:
     """
     base = OUT / f"cap_{vid}"
     run = subprocess.run(
-        [sys.executable, "-m", "yt_dlp", "--write-auto-sub", "--skip-download", "--sub-lang", "tr",
+        [sys.executable, "-m", "yt_dlp", "--write-auto-sub", "--skip-download", "--sub-lang", LANG,
          "--no-warnings", "--extractor-args", "youtubepot-bgutilscript:script_path=__disabled__",
          "-o", f"{base}.%(ext)s", f"https://www.youtube.com/watch?v={vid}"],
         capture_output=True, text=True,
     )
-    vtt = Path(f"{base}.tr.vtt")
+    vtt = Path(f"{base}.{LANG}.vtt")
     if not vtt.exists():
         tail = (run.stderr or run.stdout).strip().splitlines()[-1:] or ["no output"]
         print(f"WARNING: no captions fetched ({tail[0][:120]})")

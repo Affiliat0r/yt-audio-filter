@@ -63,19 +63,76 @@ def mark_glyphs(font: TTFont) -> set:
     return found
 
 
+#: one-hareke fonts, for words whose marks differ (ders 5: fetha, kesra and damme
+#: each in its own colour). Each draws only its own mark and nothing else, at the
+#: exact place Scheherazade puts it; the letters come from the markless font.
+HAREKE_CODES = {"fetha": "064E", "kesra": "0650", "damme": "064F"}
+
+
+def hareke_target(hareke: str) -> Path:
+    return FONTS / f"Marks{hareke.capitalize()}-Bold.ttf"
+
+
+def hareke_family(hareke: str) -> str:
+    return f"Marks {hareke.capitalize()}"
+
+
+def hareke_glyphs(font: TTFont, hareke: str) -> set:
+    """The mark glyphs that draw this hareke: its variants and shadda ligatures."""
+    code = HAREKE_CODES[hareke]
+    return {g for g in mark_glyphs(font) if code in g}
+
+
+def _flatten(font: TTFont, names: set) -> None:
+    """Turn composite glyphs into plain outlines. A kept composite can be built
+    from glyphs that must be blank (shadda-kesra uses the fetha glyph), and
+    keeping those parts would draw a fetha in the kesra colour."""
+    from fontTools.pens.recordingPen import DecomposingRecordingPen
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    glyph_set, glyf = font.getGlyphSet(), font["glyf"]
+    flat = {}
+    for name in names:
+        if glyf[name].isComposite():
+            # a TTGlyphPen alone would record the components again, not their outlines
+            rec = DecomposingRecordingPen(glyph_set)
+            glyph_set[name].draw(rec)
+            pen = TTGlyphPen(None)
+            rec.replay(pen)
+            flat[name] = pen.glyph()
+    for name, glyph in flat.items():
+        glyf[name] = glyph
+
+
+def _rename(font: TTFont, family: str) -> None:
+    for rec in font["name"].names:
+        if rec.nameID in (1, 3, 4, 6, 16, 21):
+            text = rec.toUnicode()
+            text = text.replace("Scheherazade New", family).replace("ScheherazadeNew", family.replace(" ", ""))
+            rec.string = text
+
+
 def build() -> Path:
     font = TTFont(SOURCE)
     glyf = font["glyf"]
     blank = mark_glyphs(font)
     for name in blank:
         glyf[name] = Glyph()            # no outline; advance and anchors untouched
-    for rec in font["name"].names:
-        if rec.nameID in (1, 3, 4, 6, 16, 21):
-            text = rec.toUnicode()
-            text = text.replace("Scheherazade New", FAMILY).replace("ScheherazadeNew", FAMILY.replace(" ", ""))
-            rec.string = text
+    _rename(font, FAMILY)
     font.save(TARGET)
     print(f"{TARGET.name}: {len(blank)} mark glyphs blanked")
+
+    for hareke in HAREKE_CODES:
+        font = TTFont(SOURCE)
+        glyf = font["glyf"]
+        keep = hareke_glyphs(font, hareke)
+        _flatten(font, keep)
+        for name in font.getGlyphOrder():
+            if name not in keep:
+                glyf[name] = Glyph()
+        _rename(font, hareke_family(hareke))
+        font.save(hareke_target(hareke))
+        print(f"{hareke_target(hareke).name}: {len(keep)} glyphs kept")
     return TARGET
 
 

@@ -213,6 +213,59 @@ def test_markless_font_lays_out_exactly_like_scheherazade():
     assert "Scheherazade" not in out["name"].getDebugName(1)             # OFL reserved name
 
 
+def test_each_hareke_font_draws_only_its_own_mark_where_scheherazade_does():
+    """Ders 5 colours fetha, kesra and damme apart with one font per hareke. Each
+    must keep Scheherazade's layout and draw nothing but its own mark: a kept
+    glyph built from parts once drew a fetha in the kesra font, and a pen that
+    copied component references instead of outlines once drew nothing at all."""
+    ttlib = pytest.importorskip("fontTools.ttLib")
+    from elifba.markless_font import HAREKE_CODES, SOURCE, hareke_target
+
+    src = ttlib.TTFont(SOURCE)
+    cmap = src.getBestCmap()
+    for hareke, code in HAREKE_CODES.items():
+        out = ttlib.TTFont(hareke_target(hareke))
+        assert src["hmtx"].metrics == out["hmtx"].metrics
+        assert src["GPOS"].compile(src) == out["GPOS"].compile(out)
+        drawn = {n for n in out.getGlyphOrder() if out["glyf"][n].numberOfContours != 0}
+        assert cmap[int(code, 16)] in drawn, hareke
+        assert all(code in n for n in drawn), (hareke, drawn)
+        assert not any(out["glyf"][n].isComposite() for n in drawn)
+        assert "Scheherazade" not in out["name"].getDebugName(1)
+
+
+@NEEDS_AUDIO
+def test_ders_1b_names_every_letter_once_out_of_order_after_a_silence():
+    from elifba.storyboard import GUESS
+
+    ep = episode("karisik")
+    scenes = [s for s in ep["scenes"] if s["type"] == "letter"]
+    letters = [s["text"] for s in scenes]
+    assert sorted(letters) == sorted(c.JE) and letters != c.JE
+    assert all(abs(c.JE.index(a) - c.JE.index(b)) > 1 for a, b in zip(letters, letters[1:]))
+    for sc in scenes:
+        said = [a for a in ep["audio"] if sc["start"] <= a["t"] < sc["end"]]
+        assert len(said) == 1 and said[0]["t"] - sc["start"] >= GUESS        # the child goes first
+    assert ep["duration"] <= MAX_SECONDS
+    assert episode("karisik")["items"] == ep["items"]                      # the same shuffle every time
+
+
+@NEEDS_AUDIO
+def test_ders_5_rows_mix_all_three_harakat_then_reads_words_from_the_right_units():
+    ep = episode("harekeli")
+    rows = [s for s in ep["scenes"] if s["type"] == "triple"]
+    words = [s for s in ep["scenes"] if s["type"] == "build"]
+    marks = {"#E4572E": "fetha", "#1C7CB8": "kesra", "#2A9D5B": "damme"}
+    assert len(rows) == 10 and all({marks[f["mark"]] for f in r["forms"]} == set(marks.values()) for r in rows)
+    assert [w["word"] for w in words] == ["اَمِنَ", "سُبُلَ", "فَطَفِقَ", "وَطُبِعَ", "وَوُضِعَ"]   # فَفَزِعَ left out
+    sub = next(w for w in words if w["word"] == "سُبُلَ")
+    said = [a["path"] for a in ep["audio"] if sub["start"] <= a["t"] < sub["end"]]
+    assert "/damme/damme/" in said[0] and "/damme/damme/" in said[1] and "/fetha/fetha/" in said[2]
+    assert sub["mark"] == {"fetha": "#E4572E", "damme": "#2A9D5B"}
+    assert [c_["title"] for c_ in ep["chapters"]] == ["Besmele", "Heceler", "Kelimeler"]
+    assert ep["duration"] <= MAX_SECONDS
+
+
 def test_script_cursor_advances_past_waits():
     s = Script()
     s.wait(1.5)

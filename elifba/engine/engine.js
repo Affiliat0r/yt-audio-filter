@@ -464,9 +464,12 @@
   // blank — what stays visible in that colour is the mark. (Stripping the marks
   // from the string instead shifts the letters: the font spaces letters apart
   // to keep marks from colliding, so سَاَلَ is narrower without them.)
+  // A word whose harakat differ takes ``mark`` as {fetha, kesra, damme}: each
+  // hareke is drawn from a font that holds only that mark, in its own colour.
   const spriteCache = {};
+  const HAREKE_FONT = { fetha: '"Marks Fetha"', kesra: '"Marks Kesra"', damme: '"Marks Damme"' };
   function clay(text, { font = "700 400px Scheherazade", color = "#E4572E", mark = null, depth = 16 } = {}) {
-    const key = `${text}|${font}|${color}|${mark}|${depth}`;
+    const key = `${text}|${font}|${color}|${JSON.stringify(mark)}|${depth}`;
     if (spriteCache[key]) return spriteCache[key];
     const probe = document.createElement("canvas").getContext("2d");
     probe.font = font;
@@ -486,10 +489,17 @@
     g.textBaseline = "alphabetic";
     const ox = pad + m.actualBoundingBoxLeft, oy = pad + m.actualBoundingBoxAscent;
     const markless = font.replace("Scheherazade", '"Markless Arabic"');
-    const paint = (dx, dy, baseFill, markFill) => {
-      if (mark) {
-        g.fillStyle = markFill;
-        g.fillText(text, ox + dx, oy + dy);
+    // [font, colour] per mark pass: one colour over the full text, or one pass per hareke
+    const marks = !mark ? [] : typeof mark === "string" ? [[font, mark]]
+      : Object.entries(mark).map(([h, col]) => [font.replace("Scheherazade", HAREKE_FONT[h]), col]);
+    const fills = (fn) => marks.map(([, col]) => fn(col));
+    const paint = (dx, dy, baseFill, markFills) => {
+      if (marks.length) {
+        marks.forEach(([f], i) => {
+          g.font = f;
+          g.fillStyle = markFills[i];
+          g.fillText(text, ox + dx, oy + dy);
+        });
         g.fillStyle = baseFill;
         g.font = markless;
         g.fillText(text, ox + dx, oy + dy);
@@ -499,12 +509,12 @@
         g.fillText(text, ox + dx, oy + dy);
       }
     };
-    const sideB = css(shade(color, -0.42)), sideM = mark ? css(shade(mark, -0.4)) : null;
     for (let i = depth; i >= 1; i--) {
       const k = i / depth;
-      paint(i * 0.45, i, css(mix(shade(color, -0.42), shade(color, -0.25), 1 - k)), mark ? css(mix(shade(mark, -0.4), shade(mark, -0.2), 1 - k)) : null);
+      paint(i * 0.45, i, css(mix(shade(color, -0.42), shade(color, -0.25), 1 - k)),
+        fills((col) => css(mix(shade(col, -0.4), shade(col, -0.2), 1 - k))));
     }
-    paint(-2.5, -2.5, css(shade(color, 0.6)), mark ? css(shade(mark, 0.6)) : null);       // rim light
+    paint(-2.5, -2.5, css(shade(color, 0.6)), fills((col) => css(shade(col, 0.6))));       // rim light
     const face = (hex) => {
       const lg = g.createLinearGradient(0, pad, 0, pad + inkH);
       lg.addColorStop(0, css(shade(hex, 0.3)));
@@ -512,7 +522,7 @@
       lg.addColorStop(1, css(shade(hex, -0.08)));
       return lg;
     };
-    paint(0, 0, face(color), mark ? face(mark) : null);
+    paint(0, 0, face(color), fills(face));
     // gloss, clipped to the face
     const gl = document.createElement("canvas");
     gl.width = c.width;
@@ -704,13 +714,15 @@
     const sx0 = stationX(s.idx) - cam.x + W / 2;
     if (sx0 < -1300 || sx0 > W + 1300) return;
     const ground = GROUND - cam.y;
-    const offs = [470, 0, -470];                      // the first syllable on the right
+    const n = s.syllables.length;
+    const gap = n > 3 ? 440 : 470;
+    const offs = s.syllables.map((_, k) => ((n - 1) / 2 - k) * gap);   // the first syllable on the right
     const open = t < s.start ? 0 : easeOutCubic(prog(t, s.start + 0.45, s.start + 1.05));
     const cups = offs.map((o, k) => tulip(sx0 + o, ground, 150, 120, TULIPS[(s.idx + k) % TULIPS.length], open,
       Math.sin(t * 1.1 + s.idx + k) * 7, night));
     if (t < s.start || t >= s.end) return;
-    const sylBeats = [0, 1, 2].map((k) => beatsIn(`syl:${k}`, s.start, s.end)[0]);
-    const current = [2, 1, 0].find((k) => sylBeats[k] && t >= sylBeats[k].t);
+    const sylBeats = s.syllables.map((_, k) => beatsIn(`syl:${k}`, s.start, s.end)[0]);
+    const current = [...sylBeats.keys()].reverse().find((k) => sylBeats[k] && t >= sylBeats[k].t);
     const jb = beatsIn("join", s.start, s.end)[0];
     // first the syllables slide together into the word's places (move), and only
     // once they sit there does the joined word take over (fade): no double image
@@ -719,17 +731,20 @@
     const jk = jb && t >= jb.t + 0.72 ? 1 : 0;
     // a short warm "pop" as the letters click together hides the swap
     const pop = jb ? Math.max(0, 1 - Math.abs(t - (jb.t + 0.72)) / 0.18) : 0;
-    const allSaid = sylBeats[2] && t >= sylBeats[2].t + sylBeats[2].dur;
+    const allSaid = sylBeats[n - 1] && t >= sylBeats[n - 1].t + sylBeats[n - 1].dur;
     const fly = prog(t, s.end - 0.75, s.end - 0.05);
 
     const word = clay(s.word, { font: "700 340px Scheherazade", color: CLAY_INK, mark: s.mark, depth: 18 });
-    const wordX = sx0, wordY = 330 - cam.y;
+    // a tall word (a damme over the stem of ط, a kesra under ب) is made smaller to
+    // fit between the bunting and the tulips, rather than touch either
+    const fit = Math.min(1, 450 / word.inkH);
+    const wordX = sx0, wordY = Math.max(330, 205 + (word.inkH * fit) / 2) - cam.y;
     // where each syllable lands inside the word, right to left
-    const slot = (k) => wordX + word.inkW / 2 - ((k + 0.5) * word.inkW) / 3;
+    const slot = (k) => wordX + (word.inkW * fit) / 2 - ((k + 0.5) * word.inkW * fit) / n;
 
     if (jk < 1) {
       s.syllables.forEach((txt, k) => {
-        const sp = clay(txt, { font: "700 300px Scheherazade", color: CLAY_INK, mark: s.mark, depth: 14 });
+        const sp = clay(txt, { font: `700 ${n > 3 ? 270 : 300}px Scheherazade`, color: CLAY_INK, mark: s.mark, depth: 14 });
         const rise = easeOutBack(prog(t, s.start + 0.7 + k * 0.12, s.start + 1.3 + k * 0.12));
         const active = current === k && !allSaid;
         const focus = current === undefined || allSaid || active;
@@ -744,7 +759,7 @@
     if (pop > 0) halo(wordX, wordY, 420, 1.6 * pop, "255,246,214");
     if (jk > 0) {
       const e = env("word", t), b = bounce("word", t, s.start, s.end);
-      let x = wordX, y = wordY + Math.sin(t * 1.5) * 8 * jk, scale = lerp(0.9, 1, jk);
+      let x = wordX, y = wordY + Math.sin(t * 1.5) * 8 * jk, scale = lerp(0.9, 1, jk) * fit;
       halo(x, y, 460, (0.55 + 0.45 * e) * jk * (1 - fly));
       if (fly > 0) {
         const p = flight(x, y, s.idx, fly, 340);
@@ -1045,10 +1060,14 @@
     if (sc.build) {
       // the reading lesson: a word, and the syllables it is built from
       halo(W / 2, 520, 420, 0.8);
-      drawSprite(clay(sc.build.word, { font: "700 300px Scheherazade", color: CLAY_INK, mark: sc.mark, depth: 18 }), W / 2, 530);
+      const bm = sc.build.mark || sc.mark, n = sc.build.syllables.length;
+      // a tall word shrinks and keeps below the title (a damme over و reached the heading)
+      const ws = clay(sc.build.word, { font: "700 300px Scheherazade", color: CLAY_INK, mark: bm, depth: 18 });
+      const wfit = Math.min(1, 340 / ws.inkH);              // the band between title and syllables
+      drawSprite(ws, W / 2, Math.max(530, 395 + (ws.inkH * wfit) / 2), wfit);
       sc.build.syllables.forEach((syl, k) => {
-        const cup = tulip(xs[k], ground + 60, 70, 90, TULIPS[(k + 1) % TULIPS.length], 1, 0, 0);
-        drawSprite(clay(syl, { font: "700 170px Scheherazade", color: CLAY_INK, mark: sc.mark, depth: 10 }), cup.x, cup.y - 70);
+        const cup = tulip(W / 2 + ((n - 1) / 2 - k) * (n > 3 ? 380 : 470), ground + 60, 70, 90, TULIPS[(k + 1) % TULIPS.length], 1, 0, 0);
+        drawSprite(clay(syl, { font: "700 170px Scheherazade", color: CLAY_INK, mark: bm, depth: 10 }), cup.x, cup.y - 70);
       });
       return;
     }
@@ -1108,6 +1127,9 @@
     Promise.all([
       document.fonts.load('700 100px "Scheherazade"', "ب"),
       document.fonts.load('700 100px "Markless Arabic"', "ب"),
+      document.fonts.load('700 100px "Marks Fetha"', "بَ"),
+      document.fonts.load('700 100px "Marks Kesra"', "بِ"),
+      document.fonts.load('700 100px "Marks Damme"', "بُ"),
       document.fonts.load('900 100px "Nunito"', "EŞ"),
       document.fonts.load('800 100px "Nunito"', "Hş"),
       document.fonts.load('600 40px "Nunito"', "â"),

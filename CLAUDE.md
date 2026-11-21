@@ -438,6 +438,8 @@ python -m elifba.render harekeler --thumbnail    # -> output/elifba/elifba_harek
 | 2 | `kelime` | each letter at the start / middle / end of three words, spelled by Diyanet | 11:39 | `zdntEhp7eKU` |
 | 3 | `harekeler` | every letter with fetha, kesra, damme together (اَ اِ اُ) | 4:47 | `bYrLiQX15Mk` |
 | 4 | `okuma` | reading words: three fetha syllables on three tulips, said one by one, slide together into the joined word, read whole | 4:45 | `wRwwPBl34wI` |
+| 1b | `karisik` | every letter again, shuffled (no alphabet neighbours side by side): 3 s of silence to name it, then Diyanet says it once | 4:19 | – |
+| 5 | `harekeli` | ten rows of three syllables, each row a fetha, a kesra and a damme; then Diyanet's five short-hareke words with a kesra or damme, built like ders 4 | 3:23 | – |
 | – | `fetha` | fetha only, the web course's order — **not part of the series** | 4:11 | – |
 
 Ders 4 follows the owner's call (2026-11-16) that reading words comes before
@@ -453,6 +455,10 @@ Playlist "Elif-Ba": `PLdYHA_TLuNaM`. Uploads use `upload_with_explicit_metadata`
 shown and said, with pauses to say it back; **5 minutes max** (`MAX_SECONDS`,
 enforced by render.py and a test). The one exception is ders 2, which the owner
 wanted in one 11-minute piece rather than three parts (`LESSON_MAX_SECONDS`).
+**Ders 1b is the one quiz-like lesson** (owner, 2026-11-21): letters out of order, a
+silence to name each before Diyanet does. Still no on-screen prompt and no
+comparison between letters.
+
 **No prompts** ("Dinle" / "Sen söyle" were removed), **no quiz** ("no comparison
 tests between letters"), no narrator. Don't add them back without asking. Every
 render goes to the owner for an OK before anything is uploaded.
@@ -508,6 +514,12 @@ whole text in the mark colour, then the same text in `MarklessArabic-Bold.ttf`
 in ink. Do not strip the marks from the string instead: Scheherazade spaces
 letters apart so marks don't collide, so the stripped word is narrower and the
 ink lands beside its marks (the owner caught سَاَلَ in ders 4).
+A word with mixed harakat (ders 5) passes `mark` as `{fetha, kesra, damme}`; each
+is then drawn from `Marks<Hareke>-Bold.ttf`, a copy that draws only that mark.
+Kept glyphs are decomposed to plain outlines: the shadda-kesra glyph is built
+from the fetha glyph, and a font that kept parts drew fethas in kesra blue.
+Diyanet has only six words of short harakat with a kesra or damme, so ders 5
+opens with syllable rows; فَفَزِعَ ("was terrified") is left out.
 
 **Sound numbering is positional** (`btn_1..N` by tile order, with quirks such as
 the fetha lesson's thick rows skipping a number). `curriculum.py` ports the
