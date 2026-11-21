@@ -125,6 +125,8 @@ def main() -> None:
     parser.add_argument("video_id")
     parser.add_argument("--cut", type=int, action="append", default=[],
                         help="episode number to remove (from screen_video.py); repeatable")
+    parser.add_argument("--expect", type=int,
+                        help="episode count screen_video.py reported; stop before cutting if the render differs")
     args = parser.parse_args()
 
     rendered = render(args.video_id)
@@ -132,6 +134,10 @@ def main() -> None:
     boundaries = find_boundaries(rendered)
     total = duration_of(rendered)
     print(f"{len(boundaries) + 1} episodes; separators at {[round(b[0], 1) for b in boundaries]}")
+    # the cut numbers came from screening the source; a render that splits into a
+    # different count would shift them and cut the wrong episodes
+    if args.expect and len(boundaries) + 1 != args.expect:
+        raise SystemExit(f"render has {len(boundaries) + 1} episodes, screening saw {args.expect}: not cutting")
     keep = keep_intervals(boundaries, args.cut, total)
     print("keeping", [(round(a, 1), round(b, 1)) for a, b in keep])
     cut = rendered.with_name(rendered.stem.replace("_filtered", "") + "_cut.mp4")
