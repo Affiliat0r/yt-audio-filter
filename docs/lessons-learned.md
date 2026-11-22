@@ -104,3 +104,30 @@ partial `cache/sharp_<id>_silent.mp4` so nothing can reuse it.
 - **A long batch on this PC needs it kept awake.** It sleeps overnight and
   pauses the run. Use `SetThreadExecutionState(ES_CONTINUOUS |
   ES_SYSTEM_REQUIRED)` for the batch's lifetime. Leave the display alone.
+
+---
+
+## 2026-11-22 — Niloya's short pieces belong to the *next* episode
+
+**Symptom.** The Niloya 27–39 cut was meant to remove episode 33 "Tiyatro" (a
+kemençe school play). After the cut, the join showed the title card "Tiyatro,
+33. Bölüm" and then played episode 34 under it.
+
+**Root cause.** Niloya compilations split at black into a ~5-minute episode and a
+~7-second piece. The 7-second piece was taken to be the end card *after* an
+episode, so the cut was `--cut 14 --cut 15`. It is the opposite: the piece is the
+cyan "üye ol" intro and then the title card of the episode that *follows*. The
+right cut was `--cut 13 --cut 14`. Nobody had sampled inside a 7-second piece.
+
+**Fix.** Re-cut from the finished render (no re-render needed), then check the
+join frame by frame before uploading. Caught before upload.
+
+**Rules:**
+
+- **Before choosing cut numbers, look at frames inside the short pieces** as
+  well as the long ones. Know whether a short piece opens the next episode or
+  closes the previous one.
+- **Always check frames at every join before uploading**, a second or two on
+  each side. That is what caught this.
+- Gecko compilations have only one short piece (the 6.5 s opener), so earlier
+  Gecko cuts were unaffected.
