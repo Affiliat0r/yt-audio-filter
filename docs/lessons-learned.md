@@ -73,3 +73,34 @@ Code changes (commit 51a0425 and the follow-up):
 
 **Guards:** `tests/test_download_quality.py`, `tests/test_hd_sources.py`,
 `tests/test_source_resolution.py`.
+
+---
+
+## 2026-11-22 — a stopped batch kept running and held the GPU for 22 hours
+
+**Symptom.** After the fix above, a 7.5-minute music removal took from 12:33 to
+08:56 the next day. The next item crawled too. The PC had also slept overnight,
+which looked like the whole explanation. It wasn't.
+
+**Root cause.** The first batch, started before the fix, was stopped by
+killing its `bash` script. On Windows that does **not** kill the grandchildren:
+the venv's `python.exe` is a launcher that starts the real interpreter as a
+child, and that interpreter plus its `ffmpeg` pipes kept running. It was
+sharpening the 46-minute Gecko source to 3840×2160 with Real-ESRGAN (the
+pre-fix code) and kept the GPU at 100% for 22 hours. Every later render shared
+the GPU with it.
+
+**Fix.** `taskkill /PID <launcher> /T /F` on the orphaned tree, then delete its
+partial `cache/sharp_<id>_silent.mp4` so nothing can reuse it.
+
+**Rules:**
+
+- **After stopping a batch, check that its processes are actually gone.** List
+  `python.exe`/`ffmpeg.exe` with their command lines
+  (`Get-CimInstance Win32_Process`) and kill leftover trees with `taskkill /T`.
+- **When something runs slower than it should, look at what else holds the GPU**
+  before settling on an explanation such as sleep or throttling. `nvidia-smi` at
+  100% with nothing of yours running is the tell.
+- **A long batch on this PC needs it kept awake.** It sleeps overnight and
+  pauses the run. Use `SetThreadExecutionState(ES_CONTINUOUS |
+  ES_SYSTEM_REQUIRED)` for the batch's lifetime. Leave the display alone.
