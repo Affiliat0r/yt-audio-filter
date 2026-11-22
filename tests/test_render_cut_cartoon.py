@@ -45,3 +45,15 @@ def test_an_episode_that_does_not_exist_is_refused():
 
     with pytest.raises(SystemExit):
         rcc.keep_intervals(SEPARATORS, [10], TOTAL)
+
+
+def test_a_fade_to_black_at_the_very_end_is_not_an_episode():
+    """The 1080p Gecko renders ended on a black 0.2 s from the end; counted, it
+    was a 23rd/24th "episode" and stopped both cuts at --expect."""
+    tail = (TOTAL - 0.2, TOTAL)
+    assert rcc.separators_only(SEPARATORS + [tail], TOTAL) == SEPARATORS
+
+
+def test_a_real_separator_near_the_end_is_kept():
+    late = (TOTAL - 5.0, TOTAL - 4.8)
+    assert rcc.separators_only(SEPARATORS + [late], TOTAL) == SEPARATORS + [late]

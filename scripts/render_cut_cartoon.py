@@ -41,6 +41,17 @@ def find_boundaries(path: Path) -> List[Tuple[float, float]]:
     ]
 
 
+#: A black that starts this close to the end is the file fading out, not a
+#: separator. The 1080p sources (2026-11-22) end on one, ~0.2 s from the end;
+#: counted, it made a 0.2 s "episode" and tripped --expect on both Gecko renders.
+TRAILING_BLACK_SECONDS = 1.0
+
+
+def separators_only(boundaries: List[Tuple[float, float]], total: float) -> List[Tuple[float, float]]:
+    """``boundaries`` without a fade to black at the very end of the file."""
+    return [b for b in boundaries if total - b[0] > TRAILING_BLACK_SECONDS]
+
+
 def duration_of(path: Path) -> float:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
@@ -131,8 +142,8 @@ def main() -> None:
 
     rendered = render(args.video_id)
     print(f"RENDERED {rendered} ({duration_of(rendered):.2f}s)", flush=True)
-    boundaries = find_boundaries(rendered)
     total = duration_of(rendered)
+    boundaries = separators_only(find_boundaries(rendered), total)
     print(f"{len(boundaries) + 1} episodes; separators at {[round(b[0], 1) for b in boundaries]}")
     # the cut numbers came from screening the source; a render that splits into a
     # different count would shift them and cut the wrong episodes
