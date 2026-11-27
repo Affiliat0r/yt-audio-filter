@@ -2,8 +2,8 @@
 
 A 308-second film set to Ahmed Taleb's recitation of Surah Nuh
 (`assets/audio/nuh_ahmed_taleb_eyVqGHfA5do.webm`, from
-youtube.com/watch?v=eyVqGHfA5do). 1920×1080, 24 fps, 7,399 frames, 28 shots,
-one per ayah, each cut on the reciter's breath.
+youtube.com/watch?v=eyVqGHfA5do). 1920×1080, 24 fps, 7,399 frames, one
+continuous shot.
 
 No image models, no image files, no fonts on screen: every frame is drawn by
 numpy, OpenCV and pycairo. The only sound is the recitation itself,
