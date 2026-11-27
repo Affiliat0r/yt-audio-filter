@@ -1,0 +1,290 @@
+{
+ "audio": "assets/audio/nuh_ahmed_taleb_eyVqGHfA5do.webm",
+ "audio_seconds": 308.26,
+ "fps": 24,
+ "frames": 7398,
+ "method": "Whisper (medium) word timestamps aligned to the Uthmani text, 226/226 words matched. Each cut is the centre of the deepest 300-3500 Hz energy dip between one ayah's last word and the first part of the next ayah's first word (Whisper folds pauses into the following word). The recitation has no ta'awwudh or basmala: it opens on ayah 1.",
+ "cuts": [
+  0.0,
+  16.91,
+  24.19,
+  30.49,
+  55.95,
+  64.89,
+  73.28,
+  100.05,
+  106.47,
+  116.63,
+  124.65,
+  131.85,
+  148.15,
+  153.99,
+  157.94,
+  166.48,
+  174.81,
+  181.45,
+  189.22,
+  196.1,
+  202.37,
+  216.46,
+  221.56,
+  236.14,
+  246.0,
+  264.53,
+  273.27,
+  287.13,
+  308.26
+ ],
+ "shots": [
+  {
+   "ayah": 1,
+   "start": 0.0,
+   "end": 16.91,
+   "seconds": 16.91,
+   "start_frame": 0,
+   "end_frame": 406
+  },
+  {
+   "ayah": 2,
+   "start": 16.91,
+   "end": 24.19,
+   "seconds": 7.28,
+   "start_frame": 406,
+   "end_frame": 581
+  },
+  {
+   "ayah": 3,
+   "start": 24.19,
+   "end": 30.49,
+   "seconds": 6.3,
+   "start_frame": 581,
+   "end_frame": 732
+  },
+  {
+   "ayah": 4,
+   "start": 30.49,
+   "end": 55.95,
+   "seconds": 25.46,
+   "start_frame": 732,
+   "end_frame": 1343
+  },
+  {
+   "ayah": 5,
+   "start": 55.95,
+   "end": 64.89,
+   "seconds": 8.94,
+   "start_frame": 1343,
+   "end_frame": 1557
+  },
+  {
+   "ayah": 6,
+   "start": 64.89,
+   "end": 73.28,
+   "seconds": 8.39,
+   "start_frame": 1557,
+   "end_frame": 1759
+  },
+  {
+   "ayah": 7,
+   "start": 73.28,
+   "end": 100.05,
+   "seconds": 26.77,
+   "start_frame": 1759,
+   "end_frame": 2401
+  },
+  {
+   "ayah": 8,
+   "start": 100.05,
+   "end": 106.47,
+   "seconds": 6.42,
+   "start_frame": 2401,
+   "end_frame": 2555
+  },
+  {
+   "ayah": 9,
+   "start": 106.47,
+   "end": 116.63,
+   "seconds": 10.16,
+   "start_frame": 2555,
+   "end_frame": 2799
+  },
+  {
+   "ayah": 10,
+   "start": 116.63,
+   "end": 124.65,
+   "seconds": 8.02,
+   "start_frame": 2799,
+   "end_frame": 2992
+  },
+  {
+   "ayah": 11,
+   "start": 124.65,
+   "end": 131.85,
+   "seconds": 7.2,
+   "start_frame": 2992,
+   "end_frame": 3164
+  },
+  {
+   "ayah": 12,
+   "start": 131.85,
+   "end": 148.15,
+   "seconds": 16.3,
+   "start_frame": 3164,
+   "end_frame": 3556
+  },
+  {
+   "ayah": 13,
+   "start": 148.15,
+   "end": 153.99,
+   "seconds": 5.84,
+   "start_frame": 3556,
+   "end_frame": 3696
+  },
+  {
+   "ayah": 14,
+   "start": 153.99,
+   "end": 157.94,
+   "seconds": 3.95,
+   "start_frame": 3696,
+   "end_frame": 3791
+  },
+  {
+   "ayah": 15,
+   "start": 157.94,
+   "end": 166.48,
+   "seconds": 8.54,
+   "start_frame": 3791,
+   "end_frame": 3996
+  },
+  {
+   "ayah": 16,
+   "start": 166.48,
+   "end": 174.81,
+   "seconds": 8.33,
+   "start_frame": 3996,
+   "end_frame": 4195
+  },
+  {
+   "ayah": 17,
+   "start": 174.81,
+   "end": 181.45,
+   "seconds": 6.64,
+   "start_frame": 4195,
+   "end_frame": 4355
+  },
+  {
+   "ayah": 18,
+   "start": 181.45,
+   "end": 189.22,
+   "seconds": 7.77,
+   "start_frame": 4355,
+   "end_frame": 4541
+  },
+  {
+   "ayah": 19,
+   "start": 189.22,
+   "end": 196.1,
+   "seconds": 6.88,
+   "start_frame": 4541,
+   "end_frame": 4706
+  },
+  {
+   "ayah": 20,
+   "start": 196.1,
+   "end": 202.37,
+   "seconds": 6.27,
+   "start_frame": 4706,
+   "end_frame": 4857
+  },
+  {
+   "ayah": 21,
+   "start": 202.37,
+   "end": 216.46,
+   "seconds": 14.09,
+   "start_frame": 4857,
+   "end_frame": 5195
+  },
+  {
+   "ayah": 22,
+   "start": 216.46,
+   "end": 221.56,
+   "seconds": 5.1,
+   "start_frame": 5195,
+   "end_frame": 5317
+  },
+  {
+   "ayah": 23,
+   "start": 221.56,
+   "end": 236.14,
+   "seconds": 14.58,
+   "start_frame": 5317,
+   "end_frame": 5667
+  },
+  {
+   "ayah": 24,
+   "start": 236.14,
+   "end": 246.0,
+   "seconds": 9.86,
+   "start_frame": 5667,
+   "end_frame": 5904
+  },
+  {
+   "ayah": 25,
+   "start": 246.0,
+   "end": 264.53,
+   "seconds": 18.53,
+   "start_frame": 5904,
+   "end_frame": 6349
+  },
+  {
+   "ayah": 26,
+   "start": 264.53,
+   "end": 273.27,
+   "seconds": 8.74,
+   "start_frame": 6349,
+   "end_frame": 6558
+  },
+  {
+   "ayah": 27,
+   "start": 273.27,
+   "end": 287.13,
+   "seconds": 13.86,
+   "start_frame": 6558,
+   "end_frame": 6891
+  },
+  {
+   "ayah": 28,
+   "start": 287.13,
+   "end": 308.26,
+   "seconds": 21.13,
+   "start_frame": 6891,
+   "end_frame": 7398
+  }
+ ],
+ "events": {
+  "9": {
+   "asrartu": 5.99
+  },
+  "16": {
+   "shams": 5.82
+  },
+  "18": {
+   "yukhrijukum": 4.01
+  },
+  "23": {
+   "names": [
+    7.1,
+    8.82,
+    11.06,
+    11.9,
+    12.84
+   ]
+  },
+  "25": {
+   "naran": 7.44
+  },
+  "28": {
+   "end": 19.53
+  }
+ }
+}
