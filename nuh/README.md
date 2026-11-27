@@ -6,26 +6,37 @@ youtube.com/watch?v=eyVqGHfA5do). 1920×1080, 24 fps, 7,399 frames, 28 shots,
 one per ayah, each cut on the reciter's breath.
 
 No image models, no image files, no fonts on screen: every frame is drawn by
-numpy, OpenCV, pycairo and Pillow. The only sound is the recitation itself,
-untouched: no music, no effects. No people, faces, animals or idols.
+numpy, OpenCV and pycairo. The only sound is the recitation itself,
+untouched: no music, no effects.
+
+**One quasi-static scene** (`night.py`): rain pouring off the edge of a
+shingled roof at night, the full moon behind thin cloud, a fence below. The
+camera never moves. Rain in four depths, water dripping off the eave, glints
+on the wet shingles and the cloud over the moon are what move.
+
+It is rendered in linear light and developed like a photograph: filmic tone
+curve, lens glare, depth of field, slight chromatic aberration, sensor grain.
+The moon carries the real maria (Imbrium, Serenitatis, Tranquillitatis,
+Crisium, Procellarum...) and the Tycho/Copernicus ray systems at their
+selenographic positions, projected on a sphere.
+
+The cuts below no longer cut the picture; they key gentle changes to the
+ayat: heavier rain in 11-12 ("He will send the sky upon you in abundance")
+and 25-27 (the flood), the cloud clearing off the moon in 16 ("the moon a
+light"), lighter rain in 28, and a fade after the last word.
 
 ```bash
 pip install opencv-python-headless scipy pycairo
-python -m nuh.render --mid          # one still per shot -> output/nuh/still_*.png
 python -m nuh.render --stills 30,120
 python -m nuh.render                # full film -> output/nuh/surah_nuh_ahmed_taleb.mp4
 ```
 
-The full render takes about 20 minutes on four CPU cores. It is resumable:
-finished chunks in `output/nuh/chunks/` are kept.
-
 | File | Role |
 |---|---|
-| `data/cuts.json` | the 28 shot boundaries and the word times some shots act on |
-| `paint.py` | primitives: gradients, ridges, glows, tileable noise, cairo layers, film finish |
-| `world.py` | the recurring world: sky by time of day, land, village, lamp, rain, water, stones |
-| `shots.py` | the 28 shots, each a pure function of time within the shot |
-| `render.py` | frame -> shot lookup, parallel chunked encode, mux with the recitation |
+| `data/cuts.json` | the 28 ayah boundaries and word times |
+| `paint.py` | tileable spectral noise and small helpers |
+| `night.py` | the scene: moon, set, rain, drips, glints, the photographic develop |
+| `render.py` | parallel chunked encode, mux with the recitation |
 
 ## How the cuts were found
 
@@ -41,39 +52,3 @@ place every cut.
    is searched from the end of one ayah's last word into the first part of the
    next ayah's first word. Within that window the cut goes at the centre of the
    deepest dip in 300–3500 Hz energy, which skips the hum.
-
-Word events (shot-local seconds) drive four moments: the window at
-"wa asrartu" (9), the sun at "ash-shams" (16), the sprouts returning at
-"wa yukhrijukum" (18), the lightning on each of the five names (23), and the
-red glow at "nāran" (25).
-
-## Shot list
-
-| Ayah | Picture |
-|---|---|
-| 1 | From black: the dark plain at first grey, a lamp is lit on the hill above the village |
-| 2–4 | The lamp on the hill: closer, a warm path down to the houses, the moon crossing the sky as the term runs out |
-| 5 | Day and night turning faster and faster |
-| 6 | The village windows go dark one by one |
-| 7 | House fronts at dusk: shutters close, cloth drops over windows, doors shut |
-| 8 | A sunlit open square at noon |
-| 9 | The square dims; at "wa asrartu", one lit window at night |
-| 10 | Clouds gather over cracked earth |
-| 11 | Rain; the cracks fill with water |
-| 12 | The plain greens, a river finds its bed, trees rise |
-| 13 | A vast turning sky above a thread of rooftops |
-| 14 | A drop, and rings, layer on layer |
-| 15 | Seven skies in bands, revealed as the camera rises |
-| 16 | The moon over water; at "ash-shams", the sun rises |
-| 17 | Shoots rise from the soil |
-| 18 | They wither and sink back; at "wa yukhrijukum", they rise again |
-| 19 | The earth from above, fields like the weave of a carpet |
-| 20 | Wide paths drawn across it |
-| 21 | Five plain uncarved stones at dusk, the village dim beyond |
-| 22 | The sky coils into a storm |
-| 23 | Lightning finds each stone as each name is recited |
-| 24 | Fog rolls in; the stones go dim |
-| 25 | The flood climbs the stones; a red glow at "nāran" |
-| 26 | The storm at its height over open sea |
-| 27 | Everything goes still |
-| 28 | One doorway lit gold; the water goes down and dawn rises |

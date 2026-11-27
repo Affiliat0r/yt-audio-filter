@@ -1,7 +1,7 @@
 """Render the Surah Nuh film: python -m nuh.render [--stills ...] [--shot N]
 
-The picture is drawn frame by frame from nuh.shots; the sound is the
-recitation, untouched. Cuts come from nuh/data/cuts.json (one shot per ayah).
+One quasi-static scene (nuh.night) for the whole recitation; the sound is
+the recitation, untouched. nuh/data/cuts.json keys gentle changes to the ayat.
 """
 
 from __future__ import annotations
@@ -35,20 +35,15 @@ def shot_at(T: float):
 
 
 def frame(f: int) -> np.ndarray:
-    from .paint import finish
-    from .shots import SHOTS
+    from .night import frame as night_frame
 
-    T = f / FPS
-    k, t, d = shot_at(T)
-    ev = CUTS["events"].get(str(k + 1), {})
-    img = SHOTS[k](t, d, ev)
-    return finish(img, f)
+    return night_frame(f / FPS, f)
 
 
 def encode_chunk(args):
     a, b, path = args
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "1920x1080", "-r", str(FPS),
-           "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-tune", "film",
+           "-i", "-", "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-tune", "grain",
            "-pix_fmt", "yuv420p", "-g", "48", str(path)]
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     t0 = time.time()
