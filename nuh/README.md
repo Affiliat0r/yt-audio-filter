@@ -9,21 +9,20 @@ No image models, no image files, no fonts on screen: every frame is drawn by
 numpy, OpenCV and pycairo. The only sound is the recitation itself,
 untouched: no music, no effects.
 
-**One quasi-static scene** (`night.py`): rain pouring off the edge of a
-shingled roof at night, the full moon behind thin cloud, a fence below. The
-camera never moves. Rain in four depths, water dripping off the eave, glints
-on the wet shingles and the cloud over the moon are what move.
-
-It is rendered in linear light and developed like a photograph: filmic tone
-curve, lens glare, depth of field, slight chromatic aberration, sensor grain.
-The moon carries the real maria (Imbrium, Serenitatis, Tranquillitatis,
-Crisium, Procellarum...) and the Tycho/Copernicus ray systems at their
-selenographic positions, projected on a sphere.
+**One quasi-static macro shot** (`leaf.py`): a single leaf hanging from a
+branch at night in the rain, the moon far behind it. The camera never moves.
+Raindrops strike the leaf, which dips and springs back as a damped spring;
+water beads slide to the tip, swell and fall. The lens is modelled at macro
+scale (1 mm = 16 px): the moon at infinity is a large defocus disc, glints
+behind are 9-blade bokeh with cat's-eyes off axis, depth of field is
+millimetres, and a 1/48 s shutter turns a 7 m/s raindrop into one
+frame-crossing streak. Each drop on the leaf is a small lens. Rendered in
+linear light and developed like a photograph (tone curve, glare, ghost,
+chromatic aberration, night grain).
 
 The cuts below no longer cut the picture; they key gentle changes to the
-ayat: heavier rain in 11-12 ("He will send the sky upon you in abundance")
-and 25-27 (the flood), the cloud clearing off the moon in 16 ("the moon a
-light"), lighter rain in 28, and a fade after the last word.
+ayat: more strikes in 11-12 ("He will send the sky upon you in abundance")
+and 25-27 (the flood), fewer in 28, and a fade after the last word.
 
 ```bash
 pip install opencv-python-headless scipy pycairo
@@ -35,7 +34,7 @@ python -m nuh.render                # full film -> output/nuh/surah_nuh_ahmed_ta
 |---|---|
 | `data/cuts.json` | the 28 ayah boundaries and word times |
 | `paint.py` | tileable spectral noise and small helpers |
-| `night.py` | the scene: moon, set, rain, drips, glints, the photographic develop |
+| `leaf.py` | the macro scene: leaf, drops, impacts, lens model, the photographic develop |
 | `render.py` | parallel chunked encode, mux with the recitation |
 
 ## How the cuts were found

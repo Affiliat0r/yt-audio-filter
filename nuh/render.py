@@ -1,6 +1,6 @@
 """Render the Surah Nuh film: python -m nuh.render [--stills ...] [--shot N]
 
-One quasi-static scene (nuh.night) for the whole recitation; the sound is
+One quasi-static macro shot (nuh.leaf) for the whole recitation; the sound is
 the recitation, untouched. nuh/data/cuts.json keys gentle changes to the ayat.
 """
 
@@ -35,9 +35,9 @@ def shot_at(T: float):
 
 
 def frame(f: int) -> np.ndarray:
-    from .night import frame as night_frame
+    from .leaf import frame as leaf_frame
 
-    return night_frame(f / FPS, f)
+    return leaf_frame(f / FPS, f)
 
 
 def encode_chunk(args):
