@@ -752,6 +752,38 @@ def develop(img, f):
     return (np.clip(s_, 0, 1) * 255 + 0.5).astype(np.uint8)
 
 
+def develop_render(img, f, exposure=1.3, sat=0.78, T=61.0):
+    """Grade a path-traced linear frame like a night exposure: rain streaks lit
+    by what is behind them, restrained glare, a deep black point, muted cool
+    colour, CA and grain."""
+    rr = np.random.default_rng(f * 31 + 9)
+    lightL = cv2.resize(cv2.GaussianBlur(cv2.resize(img, (W // 8, H // 8)), (0, 0), 3).mean(2), (W, H))
+    for blur, n, Lr, wid, gain in ((3.0, 60, (300, 700), 3, 1.0), (9.0, 22, (500, 1000), 8, 0.7)):
+        lay = np.zeros((H, W), np.float32)
+        for _ in range(n):
+            x, y = rr.uniform(0, W), rr.uniform(-700, H)
+            L = rr.uniform(*Lr)
+            sl = rr.normal(0.05, 0.02)
+            cv2.line(lay, (int(x * 16), int(y * 16)), (int((x + L * sl) * 16), int((y + L) * 16)), rr.uniform(0.3, 1.0), wid, cv2.LINE_AA, shift=4)
+        lay = cv2.GaussianBlur(lay, (0, 0), blur)
+        img = img + (lay * (0.0008 + 0.35 * np.minimum(lightL, 0.6)) * gain)[..., None] * MOON
+    lum = img.mean(2, keepdims=True)
+    img = (img * sat + lum * (1 - sat)) * np.array([0.92, 0.98, 1.08], np.float32)
+    small = cv2.resize(img, (W // 4, H // 4), interpolation=cv2.INTER_AREA)
+    glare = cv2.GaussianBlur(small, (0, 0), 2.0) * 0.04 + cv2.GaussianBlur(small, (0, 0), 10) * 0.04 + cv2.GaussianBlur(small, (0, 0), 40) * 0.035
+    img = img + cv2.resize(glare, (W, H), interpolation=cv2.INTER_LINEAR)
+    img = np.maximum(img - 0.0012, 0)  # black point
+    vig, mx, my, mx2, my2 = _lens()
+    out = aces(img * vig * exposure).astype(np.float32)
+    r_ = cv2.remap(np.ascontiguousarray(out[..., 0]), mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    b_ = cv2.remap(np.ascontiguousarray(out[..., 2]), mx2, my2, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    s_ = to_srgb(np.stack([r_, out[..., 1], b_], -1))
+    r = np.random.default_rng(f * 7 + 5)
+    g = cv2.GaussianBlur(r.normal(0, 1, (H, W)).astype(np.float32), (0, 0), 0.7)
+    s_ = s_ + g[..., None] * (0.008 + 0.014 * (1 - s_.mean(2, keepdims=True)) ** 2)
+    return (np.clip(s_, 0, 1) * 255 + 0.5).astype(np.uint8)
+
+
 def frame(T: float, f: int | None = None) -> np.ndarray:
     f = int(round(T * FPS)) if f is None else f
     return develop(frame_linear(T, f), f)
