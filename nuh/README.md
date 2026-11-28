@@ -5,37 +5,47 @@ A 308-second film set to Ahmed Taleb's recitation of Surah Nuh
 youtube.com/watch?v=eyVqGHfA5do). 1920×1080, 24 fps, 7,399 frames, one
 continuous shot.
 
-No image models, no image files, no fonts on screen: every frame is drawn by
-numpy, OpenCV and pycairo. The only sound is the recitation itself,
+No image models, no image files, no fonts on screen. Every frame is built
+from code: the scene is path-traced by Blender's Cycles through its Python
+module (`bpy`), with meshes, shaders and textures generated in numpy and
+handed to Blender in memory. The only sound is the recitation itself,
 untouched: no music, no effects.
 
-**One quasi-static macro shot** (`leaf.py`): a single leaf hanging from a
-branch at night in the rain, the moon far behind it. The camera never moves.
-Raindrops strike the leaf, which dips and springs back as a damped spring;
-water beads slide to the tip, swell and fall. The lens is modelled at macro
-scale (1 mm = 16 px): the moon at infinity is a large defocus disc, glints
-behind are 9-blade bokeh with cat's-eyes off axis, depth of field is
-millimetres, and a 1/48 s shutter turns a 7 m/s raindrop into one
-frame-crossing streak. Each drop on the leaf is a small lens. Rendered in
-linear light and developed like a photograph (tone curve, glare, ghost,
-chromatic aberration, night grain).
+**The shot**: one leaf hanging from a branch at night in the rain, the moon
+far behind it. The camera never moves. Optics are the renderer's: a 100 mm
+macro lens on a full-frame sensor, focused 33 cm away at f/5.6, so the moon
+at infinity is a soft defocus disc, depth of field is millimetres, every
+drop really refracts, and motion blur comes from a 1/48 s shutter.
 
-The cuts below no longer cut the picture; they key gentle changes to the
-ayat: more strikes in 11-12 ("He will send the sky upon you in abundance")
-and 25-27 (the flood), fewer in 28, and a fade after the last word.
+**One loop, cycled.** Because nothing but the water moves, the film is one
+seamless 8-second loop (192 core frames) repeated under the recitation:
+
+| Loop time | What happens |
+|---|---|
+| 0.9 s | a raindrop strikes the leaf: it jolts and rings down, a crown of droplets flies off, a fresh bead wobbles |
+| 1.6-3.6 s | the bead slides to the tip and merges with the pendant drop |
+| 5.6 s | the swollen pendant lets go and falls; the leaf springs up |
+| 8.0 s | the pendant has refilled and the leaf is back where the loop began |
 
 ```bash
-pip install opencv-python-headless scipy pycairo
-python -m nuh.render --stills 30,120
-python -m nuh.render                # full film -> output/nuh/surah_nuh_ahmed_taleb.mp4
+pip install bpy==5.3.0 opencv-python-headless scipy pycairo   # bpy needs the matching Python (3.13 here)
+python -m nuh.cycles_leaf --still 61 --out /tmp/leaf.exr       # one still
+python -m nuh.cycles_loop --frames 0:192                       # the core loop, ~95 s/frame on 4 CPU cores
+python -m nuh.assemble                                         # grade, loop under the audio, fade
 ```
+
+The loop render resumes where it stopped: finished frames in
+`output/nuh/loop/` are skipped.
 
 | File | Role |
 |---|---|
 | `data/cuts.json` | the 28 ayah boundaries and word times |
+| `cycles_leaf.py` | the scene: lens, leaf mesh and textures, water, moon, lights, the tree behind, rain |
+| `cycles_loop.py` | the loop's story as periodic functions of time; renders the core frames |
+| `leaf.py` | the earlier 2D renderer, and `develop_render`, the night grade applied to every frame |
+| `assemble.py` | grade the loop, cycle it under the recitation, fade, encode |
 | `paint.py` | tileable spectral noise and small helpers |
-| `leaf.py` | the macro scene: leaf, drops, impacts, lens model, the photographic develop |
-| `render.py` | parallel chunked encode, mux with the recitation |
+| `render.py` | the earlier 2D film renderer |
 
 ## How the cuts were found
 
