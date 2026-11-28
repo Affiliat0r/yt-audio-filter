@@ -1,22 +1,23 @@
 """The leaf in the rain, built and run in Blender.
 
     python -m nuh.blend_shot --save                     # build output/nuh/blend/nuh_leaf.blend
-    python -m nuh.blend_shot --still 60                 # render loop frame 60 (graded, PNG)
-    python -m nuh.blend_shot --frames 0:192             # render the loop
+    python -m nuh.blend_shot --raw --frames 0:192       # the loop as linear EXR, for PhotoCraft
+    python -m nuh.blend_shot --still 60                 # one frame with Blender's own preview grade
     python -m nuh.blend_shot --mechanics                # print the physics numbers
 
-Everything happens inside Blender: the scene, the motion (keyframes on a
-hinge, the drops and a shape-keyed hanging drop, every value from the
-physics in nuh.drops), the rain and the splash (Blender particle
-simulations under real gravity), the optics (Cycles' thin-lens camera), the
-grade (Blender's compositor, AgX), and the final film (the sequencer, see
-nuh.blend_film). The saved .blend opens and plays in Blender as it is.
+Blender does the scene, the motion (keyframes on a hinge, the drops and a
+shape-keyed hanging drop, every value from the physics in nuh.drops), the
+rain and the splash (Blender particle simulations under real gravity) and
+the optics (Cycles' thin-lens camera). With --raw it writes each frame as
+linear 32-bit EXR and stops there: PhotoCraft develops it (nuh.photocraft).
+Without --raw, a preview grade in Blender's compositor is applied. The saved
+.blend opens and plays in Blender as it is.
 
 World axes are Blender's: z up, gravity -z, metres. The geometry is written
 in a frame where y is up and the camera looks down -z, then hung under one
 root empty turned 90 degrees, so both read the same.
 
-The loop's story (8 s, seamless):
+The loop's story (8 s on screen, 4x slow motion: 2 s of real time, seamless):
   ~1.0 s  a raindrop strikes the leaf: the stalk takes its momentum and the
           leaf swings and rings down; spray flies off; a bead is left
   then    the bead slides down the steep leaf to its lower edge and along it
@@ -51,6 +52,7 @@ OUT = ROOT_DIR / "output" / "nuh"
 BLEND_DIR = OUT / "blend"
 BLEND = BLEND_DIR / "nuh_leaf.blend"
 FRAMES = OUT / "frames"
+RAW = OUT / "raw"  # linear EXR straight from Cycles
 
 FPS = 24
 LOOP_S = 8.0
@@ -959,6 +961,7 @@ def main(argv):
     ap.add_argument("--samples", type=int, default=96)
     ap.add_argument("--scale", type=int, default=100)
     ap.add_argument("--out")
+    ap.add_argument("--raw", action="store_true", help="linear EXR, no grade: PhotoCraft develops it (nuh.photocraft)")
     a = ap.parse_args(argv)
     if a.mechanics:
         mechanics(verbose=True)
@@ -976,9 +979,17 @@ def main(argv):
     elif a.frames:
         a0, a1 = map(int, a.frames.split(":"))
         todo = list(range(a0, a1))
-    FRAMES.mkdir(parents=True, exist_ok=True)
+    out_dir, ext = FRAMES, "png"
+    if a.raw:
+        sc.render.use_compositing = False
+        sc.render.image_settings.file_format = "OPEN_EXR"
+        sc.render.image_settings.color_depth = "32"
+        sc.render.image_settings.exr_codec = "ZIP"
+        sc.render.image_settings.color_mode = "RGB"
+        out_dir, ext = RAW, "exr"
+    out_dir.mkdir(parents=True, exist_ok=True)
     for fi in todo:
-        dst = Path(a.out) if a.out else FRAMES / f"f{fi:04d}.png"
+        dst = Path(a.out) if a.out else out_dir / f"f{fi:04d}.{ext}"
         if a.frames and dst.exists():
             continue
         t1 = time.time()

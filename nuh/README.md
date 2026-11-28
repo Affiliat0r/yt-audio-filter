@@ -1,53 +1,57 @@
-# Surah Nuh — a film drawn in code
+# Surah Nuh — a leaf in the rain
 
 A 308-second film set to Ahmed Taleb's recitation of Surah Nuh
 (`assets/audio/nuh_ahmed_taleb_eyVqGHfA5do.webm`, from
-youtube.com/watch?v=eyVqGHfA5do). 1920×1080, 24 fps, 7,399 frames, one
-continuous shot.
+youtube.com/watch?v=eyVqGHfA5do). 1920×1080, 24 fps. The only sound is the
+recitation, untouched.
 
-No image models, no image files, no fonts on screen. Every frame is built
-from code: the scene is path-traced by Blender's Cycles through its Python
-module (`bpy`), with meshes, shaders and textures generated in numpy and
-handed to Blender in memory. The only sound is the recitation itself,
-untouched: no music, no effects.
+**The shot**: the tip of one leaf at night in the rain, the moon behind it,
+through a 100 mm macro lens at f/5.6 focused 33 cm away. The camera never
+moves. Shot at 96 fps and played at 24: everything is in 4× slow motion,
+because at real speed the strike, the splash and the falling drop each last
+a frame or two and smear into nothing.
 
-**The shot**: one leaf hanging from a branch at night in the rain, the moon
-far behind it. The camera never moves. Optics are the renderer's: a 100 mm
-macro lens on a full-frame sensor, focused 33 cm away at f/5.6, so the moon
-at infinity is a soft defocus disc, depth of field is millimetres, every
-drop really refracts, and motion blur comes from a 1/48 s shutter.
+## The pipeline
 
-**One loop, cycled.** Because nothing but the water moves, the film is one
-seamless 8-second loop (192 core frames) repeated under the recitation:
-
-| Loop time | What happens |
-|---|---|
-| 0.9 s | a raindrop strikes the leaf: it jolts and rings down, a crown of droplets flies off, a fresh bead wobbles |
-| 1.6-3.6 s | the bead slides to the tip and merges with the pendant drop |
-| 5.6 s | the swollen pendant lets go and falls; the leaf springs up |
-| 8.0 s | the pendant has refilled and the leaf is back where the loop began |
+| Step | Tool | What it does |
+|---|---|---|
+| Physics | `drops.py` | hanging-drop shapes (Young–Laplace), when a drop lets go (critical volume, Harkins–Brown), resting-drop shapes, the bead's slide, the leaf's swing |
+| Scene, motion, render | Blender (`blend_shot.py`, `bpy`) | the scene, keyframes from the physics, rain and splash as Blender particle simulations under real gravity, Cycles path tracing with real optics; writes linear 32-bit EXR |
+| Develop | [PhotoCraft](https://github.com/storytold/photocraft) (`photocraft.py`) | the grade, through `photocraft-cli run`: Exposure, 16-bit, a Screened glow, Curves, Hue/Saturation, Color Balance, Lens Correction (chromatic aberration, vignette), Add Noise (grain) |
+| Encode | ffmpeg | the developed frames into a loop, cycled under the recitation with fades |
 
 ```bash
-pip install bpy==5.3.0 opencv-python-headless scipy pycairo   # bpy needs the matching Python (3.13 here)
-python -m nuh.cycles_leaf --still 61 --out /tmp/leaf.exr       # one still
-python -m nuh.cycles_loop --frames 0:192                       # the core loop, ~95 s/frame on 4 CPU cores
-python -m nuh.assemble                                         # grade, loop under the audio, fade
+pip install bpy==5.3.0 opencv-python-headless pycairo   # bpy needs Python 3.13
+git clone https://github.com/storytold/photocraft ../storytold/photocraft
+(cd ../storytold/photocraft && cargo build --release -p photocraft-cli)
+
+python -m nuh.blend_shot --mechanics              # the physics numbers
+python -m nuh.blend_shot --raw --frames 0:192     # ~85 s a frame on 4 CPU cores; resumes
+python -m nuh.photocraft                          # develop (~1 s a frame) and build the film
+python -m nuh.blend_shot --save                   # optional: output/nuh/blend/nuh_leaf.blend
 ```
 
-The loop render resumes where it stopped: finished frames in
-`output/nuh/loop/` are skipped.
+## The loop (8 s on screen, 2 s of real time, seamless)
 
-| File | Role |
+| Screen time | What happens, and the physics behind it |
 |---|---|
-| `data/cuts.json` | the 28 ayah boundaries and word times |
-| `cycles_leaf.py` | the scene: lens, leaf mesh and textures, water, moon, lights, the tree behind, rain |
-| `cycles_loop.py` | the loop's story as periodic functions of time; renders the core frames |
-| `leaf.py` | the earlier 2D renderer, and `develop_render`, the night grade applied to every frame |
-| `assemble.py` | grade the loop, cycle it under the recitation, fade, encode |
-| `paint.py` | tileable spectral noise and small helpers |
-| `render.py` | the earlier 2D film renderer |
+| 1.0 s | A 2.2 mm raindrop at its terminal 6.8 m/s strikes the leaf's face 65° from its normal. Its momentum swings the leaf on its stalk, a damped spring at 2.6 Hz: the tip moves up to 4 mm. Spray flies off; 60 % stays as a bead. |
+| 1–5 s | The bead runs down the steepest path to the lower edge, then along the edge to the tip, the edge's lowest point. Contact-angle hysteresis holds it back and veins make it jerk. It merges when it touches the hanging drop. |
+| 5.4 s | The hanging drop was just under the largest volume surface tension can hold on the tip (14.3 mm³). The bead takes it past that; it necks and lets go within 10 ms. 62 % falls under gravity, the rest stays. The leaf, lighter at its tip, springs up. |
+| to 8 s | Runoff from higher up the leaf swells the hanging drop back to where the loop began: water in equals water out, every loop. |
+
+The leaf hangs so that the physics works: its face is turned 50° toward the
+sky so rain can land on it, and it is steep enough that its tip is the
+lowest point of its edge. Resting drops are small enough for hysteresis to
+pin them, and none sit on the track the bead clears.
+
+The rain itself is in the scene but barely visible, as with a real camera:
+each drop smears across its exposure into a faint streak.
 
 ## How the cuts were found
+
+`data/cuts.json` holds the 28 ayah boundaries and word times, used for the
+fades.
 
 The recording has no true silences: a low hum runs under it and the quietest
 1% is still at −28 dB, so silence detection finds nothing. The reciter also
@@ -61,3 +65,10 @@ place every cut.
    is searched from the end of one ayah's last word into the first part of the
    next ayah's first word. Within that window the cut goes at the centre of the
    deepest dip in 300–3500 Hz energy, which skips the hum.
+
+## Other files
+
+| File | Role |
+|---|---|
+| `cycles_leaf.py` | the leaf's outline, its vein and translucency textures, shared materials |
+| `paint.py` | tileable spectral noise and small helpers |
