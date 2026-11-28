@@ -51,33 +51,34 @@ def cli() -> str:
     sys.exit("photocraft-cli not found: set PHOTOCRAFT_CLI or build it (cargo build --release -p photocraft-cli)")
 
 
-def recipe(fi: int):
-    """The develop, as PhotoCraft engine commands."""
+def recipe(fi: int, width: int = 1920):
+    """The develop, as PhotoCraft engine commands. Pixel sizes scale with the frame."""
+    k = width / 1920
     return [
         ("image.adjustments.exposure", {"exposure": 0.7}),
         ("image.mode.bits16", {}),
         ("layer.duplicate", {"name": "glow"}),
-        ("filter.blur.gaussianBlur", {"radius": 45}),
+        ("filter.blur.gaussianBlur", {"radius": 45 * k}),
         ("layer.setProps", {"blend": "Screen", "opacity": 0.22}),
         ("layer.flattenImage", {}),
         ("image.adjustments.curves", {"points": [[0, 5], [48, 38], [128, 126], [200, 212], [255, 246]]}),
         ("image.adjustments.hueSaturation", {"saturation": -14}),
         ("image.adjustments.colorBalance", {"shadows": [-5, 0, 7], "midtones": [-2, 0, 3], "highlights": [0, 0, -2]}),
         ("filter.lensCorrection", {"profile": "none", "redCyan": 14, "blueYellow": -9, "vignetteAmount": -42, "vignetteMidpoint": 38}),
-        ("filter.noise.addNoise", {"amount": 2.2, "distribution": "gaussian", "monochromatic": True, "seed": 1000 + fi}),
+        ("filter.noise.addNoise", {"amount": 2.2 * max(k, 0.6), "distribution": "gaussian", "monochromatic": True, "seed": 1000 + fi}),
     ]
 
 
-def develop(fi: int, force: bool = False) -> Path:
-    src = RAW / f"f{fi:04d}.exr"
-    dst = FRAMES / f"f{fi:04d}.png"
+def develop(fi: int, force: bool = False, raw: Path = RAW, frames: Path = FRAMES, width: int = 1920) -> Path:
+    src = raw / f"f{fi:04d}.exr"
+    dst = frames / f"f{fi:04d}.png"
     if dst.exists() and not force:
         return dst
     if not src.exists():
         sys.exit(f"missing raw frame {src}: render it with python -m nuh.blend_shot --raw --frames 0:{LOOP_FRAMES}")
-    FRAMES.mkdir(parents=True, exist_ok=True)
+    frames.mkdir(parents=True, exist_ok=True)
     cmd = [cli(), "run", str(src)]
-    for cid, params in recipe(fi):
+    for cid, params in recipe(fi, width):
         cmd += ["--cmd", cid, "--params", json.dumps(params)]
     tmp = dst.with_suffix(".part.png")
     cmd += ["--out", str(tmp), "--metadata", "none"]
@@ -111,11 +112,35 @@ def film():
     print("wrote", out, "and", small)
 
 
+PREVIEW = OUT / "preview"
+
+
+def preview():
+    """The half-size, low-sample loop (python -m nuh.blend_shot --raw --scale 50 --samples 16
+    --frames 0:192 --out-dir output/nuh/preview/raw), developed the same way, played twice
+    over the opening of the recitation."""
+    frames = PREVIEW / "frames"
+    for fi in range(LOOP_FRAMES):
+        develop(fi, raw=PREVIEW / "raw", frames=frames, width=960)
+    loop = PREVIEW / "loop.mp4"
+    run(["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", str(frames / "f%04d.png"), "-frames:v", str(LOOP_FRAMES),
+         "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", str(loop)])
+    out = PREVIEW / "nuh_preview.mp4"
+    run(["ffmpeg", "-v", "error", "-y", "-stream_loop", "1", "-i", str(loop), "-i", str(ROOT / CUTS["audio"]),
+         "-map", "0:v:0", "-map", "1:a:0", "-t", "16", "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out)])
+    print("wrote", out)
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--develop", type=int, help="develop one loop frame and stop")
     ap.add_argument("--force", action="store_true", help="develop again even if the frame exists")
+    ap.add_argument("--preview", action="store_true", help="develop the low-resolution preview loop")
     a = ap.parse_args(argv)
+    if a.preview:
+        preview()
+        return
     if a.develop is not None:
         print(develop(a.develop, force=True))
         return

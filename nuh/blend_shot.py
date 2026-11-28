@@ -67,18 +67,28 @@ H = np.array([-0.0585, 0.03, -0.0095])  # where the stalk leaves the branch
 STEEPEN = math.radians(34.0)  # the leaf hangs a little steeper than the old frame
 TILT = math.radians(50.0)  # its face turned up to the sky, so rain can land on it
 TIP_PX = (1185, 650)  # where the tip sits in the frame
+FSTOP = 8.0  # stopped down from 5.6: tighter bokeh, so rain behind the leaf reads
+SHUTTER = 0.25  # of a frame: 90 degrees at 96 fps, 1/384 s
 
 # ---------------------------------------------------------------- water
 THETA = math.radians(95)  # contact angle on the waxy leaf
-TIP_RC = 0.0004  # contact radius of the hanging drop on the drip tip
-RAIN_R = 0.0011  # the raindrop that strikes: 2.2 mm across
-RAIN_V = 6.8  # its terminal speed, m/s
+TIP_RC = 0.0006  # contact radius of the hanging drop, around the drip tip
+TIP_U = 0.985  # it hangs from 1.3 mm up the tip: the tip's end is inside the drop
+NECK_S = 0.03  # past critical, the drop stretches and necks for this long (s) before it snaps
+NECK_A = 0.5 * 9.81  # how fast the bulb pulls away while it necks (m/s^2)
+RAIN_V = 6.8  # a raindrop's terminal speed, m/s
+RAIN_RATE = 2000.0  # drops per m^2 per s through a horizontal plane: a downpour, ~40 mm/h
 SPLASH_KEEP = 0.6  # share of it left on the leaf as a bead
 LEAF_AREAL = 0.19  # leaf mass per area, kg/m^2 (0.25 mm thick)
-LEAF_FREQ = 2.6  # Hz, the leaf swinging on its stalk
-LEAF_ZETA = 0.08
-F_IMP = 23  # loop frame of the strike (it lands a quarter frame in)
-IMP_UV = (0.82, 0.25)
+LEAF_FREQ = 1.8  # Hz, the leaf swinging on its stalk
+LEAF_ZETA = 0.06
+# raindrops that strike the leaf in one loop: loop frame (it lands a quarter frame in),
+# where on the leaf (u along, v across), and its radius. Each leaves a bead that runs to the tip;
+# the last bead takes the hanging drop past what surface tension can hold.
+STRIKES = [
+    dict(frame=23, uv=(0.82, 0.25), r=0.0011),
+    dict(frame=120, uv=(0.90, 0.30), r=0.0010),
+]
 
 
 def rot(axis, ang):
@@ -195,23 +205,16 @@ def bead_path(u0, v0, ds=5e-5):
     return pts
 
 
-def mechanics(verbose=False):
-    """Every number the loop moves by. Times are loop seconds."""
-    dt_f = 1 / FPSP
-    t_imp = (F_IMP + 0.25) * dt_f
-    v_rain = 4 / 3 * math.pi * RAIN_R**3
-    v_bead = SPLASH_KEEP * v_rain
-    m_bead = W.RHO * v_bead
-    # the bead's path and its slide
-    path = bead_path(*IMP_UV)
+def strike_slide(uv, v_bead, seed):
+    """A bead's path from the strike to the hanging drop, and its slide along it."""
+    path = bead_path(*uv)
     P = np.array([world(np.array(u), np.array(v)) for u, v in path])
     seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
     s_at = np.concatenate([[0], np.cumsum(seg)])
     L = float(s_at[-1])
     gal = np.concatenate([[-W.G * (P[1, 1] - P[0, 1]) / max(seg[0], 1e-9)], -W.G * np.diff(P[:, 1]) / np.maximum(seg, 1e-9)])
     on_edge = np.array([abs(v) > 0.9 or u > 0.97 for u, v in path], float)
-    rng = np.random.default_rng(8101)
-    veins = rng.uniform(-1, 1, 400)
+    veins = np.random.default_rng(seed).uniform(-1, 1, 400)
 
     def along_g(s):
         return float(np.interp(s, s_at, gal))
@@ -224,32 +227,56 @@ def mechanics(verbose=False):
         base = np.interp(s, s_at, 5.2 - 1.9 * on_edge)
         return min(base * (1 + 0.32 * nz), 0.8 * along_g(s))
 
-    ts, ss = W.slide(L - 0.002, along_g,  # it merges when it touches the hanging drop
-                      start_speed=0.06, hyst=hyst, drag=160.0)
-    t_merge = t_imp + float(ts[-1])
-    f_merge = math.ceil(t_merge * FPSP)
-    t_drip = (f_merge + 1) / FPSP  # one frame of necking, then it goes
-    # the hanging drop
+    reach = L - 0.0025  # it merges when it touches the hanging drop
+    ts, ss = W.slide(reach, along_g, start_speed=0.06, hyst=hyst, drag=160.0)
+    return dict(path=path, P=P, s_at=s_at, L=L, ts=ts, ss=ss, v=v_bead)
+
+
+def mechanics(verbose=False):
+    """Every number the loop moves by. Times are physical seconds into the loop."""
+    strikes = []
+    for i, sk in enumerate(STRIKES):
+        v_rain = 4 / 3 * math.pi * sk["r"] ** 3
+        t_imp = (sk["frame"] + 0.25) / FPSP
+        b = strike_slide(sk["uv"], SPLASH_KEEP * v_rain, 8101 + i)
+        p, n, _, _ = frame_at(*sk["uv"])
+        b.update(t_imp=t_imp, t_merge=t_imp + float(b["ts"][-1]), v_rain=v_rain, r=sk["r"], p_imp=p, n_imp=n, frame=sk["frame"])
+        strikes.append(b)
+    last = max(strikes, key=lambda b: b["t_merge"])
+    t_c = last["t_merge"]  # the hanging drop passes critical
+    # it snaps about NECK_S later; the instant is put where the shutter is closed (the next 0.6 of a
+    # frame), so no exposure straddles it
+    t_b = (math.floor((t_c + NECK_S) * FPSP) + 0.6) / FPSP
     fam = W.pendant_family(TIP_RC)
     v_crit = fam[-1][0]
-    v_before = v_crit - 0.5 * v_bead
-    v_total = v_before + v_bead
+    v_total = v_crit + 0.6 * last["v"]
     v_fall = W.FALL_FRACTION * v_total
     v_rest = v_total - v_fall
-    q = (v_before - v_rest) / (LOOP_P - (t_drip - t_merge))  # inflow from the leaf above, m^3/s
+    others = sum(b["v"] for b in strikes if b is not last)
+    q = (v_crit - 0.4 * last["v"] - others - v_rest) / (LOOP_P - (t_b - t_c))  # runoff from higher up the leaf
+    assert q >= 0, "the beads alone overfill the hanging drop"
 
     def pendant_v(t):
+        """Volume hanging at the tip; during the neck, the whole drop."""
         t = t % LOOP_P
-        if t_merge <= t < t_drip:
+        if t_c <= t < t_b:
             return v_total
-        return v_rest + q * ((t - t_drip) % LOOP_P)
+        since = (t - t_b) % LOOP_P
+        v = v_rest + q * since
+        for b in strikes:
+            if b is not last and (b["t_merge"] - t_b) % LOOP_P <= since:
+                v += b["v"]
+        return v
 
-    def bead_s(t):
+    def bead_s(b, t):
         t = t % LOOP_P
-        if t < t_imp or t >= t_merge:
+        if t < b["t_imp"] or t >= b["t_merge"]:
             return None
-        return float(np.interp(t - t_imp, ts, ss))
+        return float(np.interp(t - b["t_imp"], b["ts"], b["ss"]))
 
+    for b in strikes:
+        if b is not last:
+            assert pendant_v(b["t_merge"] + 1e-4) < v_crit, "an earlier bead would already take it past critical"
     # the leaf on its stalk
     U, V = np.meshgrid(np.linspace(0, 1, 161), np.linspace(-1, 1, 81))
     Pg = world(U, V)
@@ -265,41 +292,47 @@ def mechanics(verbose=False):
     r = Pg - H
     rperp = r - (r @ A)[..., None] * A
     inertia = float((dm * (rperp**2).sum(-1)).sum())
-    tip = world(np.array(1.0), np.array(0.0))
+    tip = world(np.array(TIP_U), np.array(0.0))
 
     def torque_of(m, p):
         return float(A @ np.cross(p - H, m * W.G * DOWN))
 
     def torque(t):
         tq = torque_of(W.RHO * pendant_v(t), tip)
-        s = bead_s(t)
-        if s is not None:
-            tq += torque_of(m_bead, P[min(np.searchsorted(s_at, s), len(P) - 1)])
+        for b in strikes:
+            s = bead_s(b, t)
+            if s is not None:
+                tq += torque_of(W.RHO * b["v"], b["P"][min(np.searchsorted(b["s_at"], s), len(b["P"]) - 1)])
         return tq
 
-    tq_mean = float(np.mean([torque(t) for t in np.linspace(0, LOOP_P, 801)[:-1]]))
-    p_imp, n_imp, _, _ = frame_at(*IMP_UV)
-    vel = RAIN_V * DOWN
-    vn = vel.dot(n_imp) * n_imp
-    J = W.RHO * v_rain * (vn + 0.3 * (vel - vn))
-    kick = float(A @ np.cross(p_imp - H, J))
+    tq_mean = float(np.mean([torque(t) for t in np.linspace(0, LOOP_P, 1601)[:-1]]))
+    kicks = []
+    for b in strikes:
+        vel = RAIN_V * DOWN
+        vn = vel.dot(b["n_imp"]) * b["n_imp"]
+        J = W.RHO * b["v_rain"] * (vn + 0.3 * (vel - vn))  # momentum the leaf takes: all the normal part, some of the rest
+        b["kick"] = float(A @ np.cross(b["p_imp"] - H, J))
+        kicks.append((b["t_imp"], b["kick"]))
     times = np.arange(LOOP_FRAMES + 1) / FPSP
     fine = np.arange(LOOP_FRAMES * 4 + 1) / (FPSP * 4)  # quarter frames, for the motion-blur keys
-    th, k = W.swing(fine, inertia, LEAF_FREQ, LEAF_ZETA, lambda t: torque(t) - tq_mean, [(t_imp, kick)])
+    th, k = W.swing(fine, inertia, LEAF_FREQ, LEAF_ZETA, lambda t: torque(t) - tq_mean, kicks)
     mech = dict(
-        t_imp=t_imp, t_merge=t_merge, t_drip=t_drip, f_merge=f_merge, path=path, s_at=s_at, ts=ts, ss=ss,
-        v_bead=v_bead, v_crit=v_crit, v_before=v_before, v_fall=v_fall, v_rest=v_rest, q=q, fam=fam,
+        strikes=strikes, t_c=t_c, t_b=t_b, neck=t_b - t_c, v_crit=v_crit, v_total=v_total, v_fall=v_fall, v_rest=v_rest, q=q, fam=fam,
         A=A, inertia=inertia, k=k, theta=th, fine=fine, times=times, pendant_v=pendant_v, bead_s=bead_s,
-        p_imp=p_imp, n_imp=n_imp, kick=kick, path_len=L,
     )
     if verbose:
         tipdisp = np.abs(th) * np.linalg.norm(tip - H)
-        print(f"raindrop {v_rain * 1e9:.1f} mm3 at {RAIN_V} m/s, strikes at {t_imp:.2f} s, {math.degrees(math.acos(abs(n_imp @ DOWN))):.0f} deg from the leaf's normal")
-        print(f"bead {v_bead * 1e9:.2f} mm3 slides {L * 1e3:.1f} mm in {ts[-1]:.2f} s (mean {L / ts[-1] * 100:.2f} cm/s), path ends at u={path[-1][0]:.3f} v={path[-1][1]:.2f}")
-        print(f"hanging drop: critical {v_crit * 1e9:.2f} mm3; before merge {v_before * 1e9:.2f}, falls {v_fall * 1e9:.2f}, stays {v_rest * 1e9:.2f}; refills at {q * 1e9:.2f} mm3/s")
-        print(f"merge at {t_merge:.2f} s, lets go at {t_drip:.2f} s")
-        print(f"leaf: inertia {inertia:.3g} kg m2, stiffness {k:.3g} N m/rad, mass {dm.sum() * 1e3:.2f} g; kick {kick:.3g} N m s")
-        print(f"swing: max {math.degrees(np.abs(th).max()):.2f} deg, tip moves up to {tipdisp.max() * 1e3:.2f} mm; at loop end {math.degrees(th[-1]):.3f} vs start {math.degrees(th[0]):.3f}")
+        for i, b in enumerate(strikes):
+            inc = math.degrees(math.acos(abs(b["n_imp"] @ DOWN)))
+            print(f"strike {i}: {b['v_rain'] * 1e9:.1f} mm3 at {RAIN_V} m/s at {b['t_imp']:.2f} s (screen {b['t_imp'] * SLOW:.1f} s), {inc:.0f} deg off the normal; "
+                  f"bead {b['v'] * 1e9:.2f} mm3 runs {b['L'] * 1e3:.1f} mm, merges at {b['t_merge']:.2f} s (screen {b['t_merge'] * SLOW:.1f} s)")
+        print(f"hanging drop: critical {v_crit * 1e9:.2f} mm3, taken to {v_total * 1e9:.2f}; necks {(t_b - t_c) * 1e3:.0f} ms and snaps at {t_b:.2f} s (screen {t_b * SLOW:.1f} s); "
+              f"falls {v_fall * 1e9:.2f}, stays {v_rest * 1e9:.2f}; runoff {q * 1e9:.2f} mm3/s")
+        print(f"leaf: inertia {inertia:.3g} kg m2, stiffness {k:.3g} N m/rad, mass {dm.sum() * 1e3:.2f} g")
+        print(f"swing: max {math.degrees(np.abs(th).max()):.2f} deg, tip moves up to {tipdisp.max() * 1e3:.2f} mm; loop end {math.degrees(th[-1]):.3f} vs start {math.degrees(th[0]):.3f}")
+        for lab, t0 in [(f"strike {i}", b["t_imp"]) for i, b in enumerate(strikes)] + [("snap", t_b)]:
+            w = (fine >= t0) & (fine < t0 + 0.6)
+            print(f"  after {lab}: tip swings {np.ptp(th[w]) * np.linalg.norm(tip - H) * 1e3:.2f} mm peak to peak")
     return mech
 
 
@@ -441,7 +474,7 @@ def build(samples=96, scale=100):
     sc.render.resolution_percentage = scale
     sc.render.fps = FPS
     sc.render.use_motion_blur = True
-    sc.render.motion_blur_shutter = 0.5  # 180 degrees: 1/48 s
+    sc.render.motion_blur_shutter = SHUTTER
     sc.render.motion_blur_position = "START"
     sc.frame_start, sc.frame_end = F0, F0 + LOOP_FRAMES - 1
     sc.gravity = (0, 0, -W.G)
@@ -489,7 +522,8 @@ def build(samples=96, scale=100):
 
     # camera: 100 mm macro, focused on the bead's path
     mech = mechanics()
-    mid_u, mid_v = mech["path"][len(mech["path"]) // 2]
+    path0 = mech["strikes"][0]["path"]
+    mid_u, mid_v = path0[len(path0) // 2]
     focus_pt = world(np.array(mid_u), np.array(mid_v))
     cam_d = bpy.data.cameras.new("macro")
     cam_d.lens = C.FOCAL_MM
@@ -499,7 +533,7 @@ def build(samples=96, scale=100):
     cam_d.clip_end = 500
     cam_d.dof.use_dof = True
     cam_d.dof.focus_distance = float(C.CAM_Z - focus_pt[2])
-    cam_d.dof.aperture_fstop = C.FSTOP
+    cam_d.dof.aperture_fstop = FSTOP
     cam_d.dof.aperture_blades = 0
     cam = link(bpy.data.objects.new("cam", cam_d), root)
     cam.location = cam_o
@@ -511,20 +545,20 @@ def build(samples=96, scale=100):
     moon = mesh_object("moon", mv, mf, C.simple_material("moon", None, emission=(0.82, 0.88, 1.0), strength=14.0), root)
     moon.location = cam_o + md * 120.0
     sun_d = bpy.data.lights.new("moonlight", "SUN")
-    sun_d.energy = 1.1
+    sun_d.energy = 3.0
     sun_d.color = (0.78, 0.86, 1.0)
     sun_d.angle = math.radians(0.52)
     sun = link(bpy.data.objects.new("moonlight", sun_d), root)
     sun.rotation_mode = "QUATERNION"
     sun.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(md)
-    tip_w = Vector(world(np.array(1.0), np.array(0.0)))
-    for name, energy, size, loc, aim in (("fill", 3.0, 0.12, (-0.22, 0.30, 0.42), (0, 0, 0)), ("kicker", 1.6, 0.03, (tip_w.x + 0.047, tip_w.y - 0.09, 0.14), tuple(tip_w))):
-        ld = bpy.data.lights.new(name, "AREA")
-        ld.energy, ld.size, ld.color = energy, size, (0.82, 0.9, 1.0)
-        lo = link(bpy.data.objects.new(name, ld), root)
-        lo.location = loc
-        lo.rotation_mode = "QUATERNION"
-        lo.rotation_quaternion = Vector((0, 0, 1)).rotation_difference((Vector(loc) - Vector(aim)).normalized())
+    # a streetlamp 2.5 m behind the tree, off frame upper left. The tree's canopy shades the leaf from
+    # it (light linking stands in for that shadow): it lights the rain and the water falling in open air.
+    st_d = bpy.data.lights.new("streetlamp", "AREA")
+    st_d.energy, st_d.size, st_d.color = 20000.0, 0.3, (1.0, 0.78, 0.5)
+    street = link(bpy.data.objects.new("streetlamp", st_d), root)
+    street.location = (cx - 0.9, cy + 0.7, -2.5)
+    street.rotation_mode = "QUATERNION"
+    street.rotation_quaternion = Vector((0, 0, 1)).rotation_difference((street.location - Vector((cx, cy, -0.5))).normalized())
 
     # the tree behind: wet leaves at real distances
     r = np.random.default_rng(6201)
@@ -639,7 +673,7 @@ def build(samples=96, scale=100):
     leaf.collision.use_particle_kill = True
 
     # drops resting on the leaf: small enough that hysteresis pins them, none on the track the bead clears
-    path_p = np.array([local(np.array(u), np.array(v)) for u, v in mech["path"]])
+    path_p = np.array([local(np.array(u), np.array(v)) for b in mech["strikes"] for u, v in b["path"]])
     r = np.random.default_rng(6401)
     made = 0
     for k in range(400):
@@ -652,7 +686,7 @@ def build(samples=96, scale=100):
         _, pl, nl, downl, _ = local_frame(u, v)
         if np.min(np.linalg.norm(path_p - pl, axis=1)) < R + 0.0015:
             continue
-        if np.linalg.norm(pl - path_p[-1]) < 0.004:  # beside the hanging drop it would have merged into it
+        if np.linalg.norm(pl - local(np.array(TIP_U), np.array(0.0))) < 0.0045:  # beside the hanging drop it would have merged into it
             continue
         slope = float(np.linalg.norm(downl))
         dv_, df_ = W.sessile_mesh(vol, THETA, slope)
@@ -663,34 +697,42 @@ def build(samples=96, scale=100):
         made += 1
 
     # the moving water
-    v_bead = mech["v_bead"]
-    bv, bf = W.sessile_mesh(v_bead, THETA, 0.9)
-    bead = mesh_object("bead", bv, bf, water, hinge)
-    bead.rotation_mode = "QUATERNION"
+    beads, raindrops = [], []
+    for i, st_ in enumerate(mech["strikes"]):
+        bv, bf = W.sessile_mesh(st_["v"], THETA, 0.9)
+        bo = mesh_object(f"bead{i}", bv, bf, water, hinge)
+        bo.rotation_mode = "QUATERNION"
+        beads.append(bo)
+        rv, rf = sphere_mesh(f"raindrop{i}", st_["r"])
+        raindrops.append(mesh_object(f"raindrop{i}", rv, rf, water, root))
     fam = mech["fam"]
     vols = [f[0] for f in fam]
     lo_i = max(0, int(np.searchsorted(vols, mech["v_rest"] * 0.9)) - 1)
     pick = np.unique(np.linspace(lo_i, len(fam) - 1, 14).astype(int))
-    profiles = [W.resample_profile(fam[i][1], fam[i][2], 64) for i in pick]
-    pf, shapes = W.pendant_mesh(profiles)
+    profiles = [W.resample_profile(fam[i][1], fam[i][2], 72) for i in pick]
+    xc, zc = profiles[-1]
+    necks = [neck_profile(xc, zc, k / 3) for k in (1, 2, 3)]
+    pf, shapes = W.pendant_mesh(profiles + necks)
     pend = mesh_object("pendant", shapes[0], pf, water, root)
     pend.shape_key_add(name="Basis")
-    for i, sv in zip(pick, shapes):
-        sk = pend.shape_key_add(name=f"v{fam[i][0] * 1e9:.2f}")
+    for i, sv in zip(list(pick) + ["neck1", "neck2", "neck3"], shapes):
+        name = i if isinstance(i, str) else f"v{fam[i][0] * 1e9:.2f}"
+        sk = pend.shape_key_add(name=name)
         sk.data.foreach_set("co", np.array(sv, np.float32).ravel())
     pend["volumes_mm3"] = [float(fam[i][0] * 1e9) for i in pick]
     r_fall = (3 * mech["v_fall"] / (4 * math.pi)) ** (1 / 3)
-    fv, ff = sphere_mesh("falling", r_fall)
+    fv, ff = sphere_mesh("falling", r_fall, 48, 24)
     falling = mesh_object("falling", fv, ff, water, root)
-    rv, rf = sphere_mesh("raindrop", RAIN_R)
-    raindrop = mesh_object("raindrop", rv, rf, water, root)
-    rec = bpy.data.collections.new("kick_receivers")
-    for o in (pend, falling):
-        rec.objects.link(o)
-    bpy.data.objects["kicker"].light_linking.receiver_collection = rec
+    sv_, sf_ = sphere_mesh("satellite", 0.0003, 16, 8)
+    satellite = mesh_object("satellite", sv_, sf_, water, root)
 
-    animate(sc, mech, hinge, bead, pend, falling, raindrop, pick)
+    animate(sc, mech, hinge, beads, pend, falling, satellite, raindrops, (xc, zc))
     particles(sc, root, mech, cx, cy, water)
+    lit = bpy.data.collections.new("streetlamp_reaches")
+    for o in bpy.data.objects:
+        if o.name in ("rain_source", "pendant", "falling", "satellite") or o.name.startswith("raindrop"):
+            lit.objects.link(o)
+    street.light_linking.receiver_collection = lit
     compositor(sc)
     sc.frame_set(F0)
     return sc
@@ -711,7 +753,23 @@ def hinge_rotation(theta):
 MECH_A = None
 
 
-def animate(sc, mech, hinge, bead, pend, falling, raindrop, pick):
+def neck_profile(x, z, stage):
+    """The critical hanging drop, stage (0..1) of the way through necking: the bulb
+    pulls down, the water above it thins to a thread. Contact stays put."""
+    tau = stage * NECK_S
+    d = 0.5 * NECK_A * tau * tau
+    thin = 0.93 * stage**1.3
+    ie = int(np.argmax(x))
+    x2, z2 = x.copy(), z.copy()
+    z2[: ie + 1] -= d
+    w = (z[ie + 1 :] - z[ie]) / (z[-1] - z[ie])
+    z2[ie + 1 :] = z[ie + 1 :] - d * (1 - w)
+    x2[ie + 1 :] = np.maximum(x[ie + 1 :] * (1 - thin * np.sin(np.pi * np.clip(w, 0, 1)) ** 0.6), 4e-5)
+    x2[-1] = x[-1]
+    return x2, z2
+
+
+def animate(sc, mech, hinge, beads, pend, falling, satellite, raindrops, crit):
     global MECH_A
     MECH_A = mech["A"]
     fine, th = mech["fine"], mech["theta"]
@@ -719,79 +777,111 @@ def animate(sc, mech, hinge, bead, pend, falling, raindrop, pick):
     for t, a in zip(fine, th):
         _key(hinge, "rotation_quaternion", F0 + t * FPSP, hinge_rotation(a))
     vols = np.array(pend["volumes_mm3"]) * 1e-9
-    keys = pend.data.shape_keys.key_blocks
-    tip_l = local(np.array(1.0), np.array(0.0))
+    kb = pend.data.shape_keys.key_blocks
+    vol_keys = [k for k in kb[1:] if not k.name.startswith("neck")]
+    neck_keys = [kb["neck1"], kb["neck2"], kb["neck3"]]
+    hang_l = local(np.array(TIP_U), np.array(0.0))
     R_at = lambda t: rot(MECH_A, float(np.interp(t % LOOP_P, fine, th))) @ R0
-    t_imp, t_merge, t_drip = mech["t_imp"], mech["t_merge"], mech["t_drip"]
-    f_drip = round(t_drip * FPSP)
-    for fi in range(LOOP_FRAMES + 1):
-        f = F0 + fi
-        t = fi / FPSP
-        # the hanging drop: its shape for its volume, at the tip
-        tip_w = H + R_at(t) @ tip_l
-        _key(pend, "location", f, Vector(tip_w + np.array([0.0, 0.00015, 0.0])))
-        vol = mech["pendant_v"](t)
-        x = float(np.clip(np.interp(vol, vols, np.arange(len(vols))), 0, len(vols) - 1))
-        for i, kb in enumerate(keys[1:]):
-            kb.value = max(0.0, 1 - abs(x - i))
-            kb.keyframe_insert("value", frame=f)
-        sq = (1.0, 1.0, 1.0)
-        if fi == mech["f_merge"] % LOOP_FRAMES:
-            sq = (0.86, 1.28, 0.86)  # past critical: it necks
-        a = fi - f_drip
-        if 0 <= a < 4:
-            sq = [(1.1, 0.78, 1.1), (0.94, 1.1, 0.94), (1.03, 0.96, 1.03), (1.0, 1.0, 1.0)][a]  # the rest snaps back and rings
-        _key(pend, "scale", f, sq)
-        # the bead
-        s = mech["bead_s"](t)
-        vis = s is not None
-        if vis:
-            k = min(int(np.searchsorted(mech["s_at"], s)), len(mech["path"]) - 1)
-            u, v = mech["path"][k]
+    hang_at = lambda t: H + R_at(t) @ hang_l
+    t_c, t_b = mech["t_c"], mech["t_b"]
+
+    def weights(t):
+        t = t % LOOP_P
+        w = {k.name: 0.0 for k in kb[1:]}
+        if t_c <= t < t_b:  # necking: from the critical shape through the three neck stages
+            x = (t - t_c) / (t_b - t_c) * 3
+            stages = [vol_keys[-1]] + neck_keys
+            for i, k in enumerate(stages):
+                w[k.name] = max(0.0, 1 - abs(x - i))
+            return w
+        x = float(np.clip(np.interp(mech["pendant_v"](t), vols, np.arange(len(vols))), 0, len(vols) - 1))
+        for i, k in enumerate(vol_keys):
+            w[k.name] = max(0.0, 1 - abs(x - i))
+        return w
+
+    # the hanging drop: keyed every frame, and at each instant something changes between frames
+    events = [t_c] + [t_c + (t_b - t_c) * k / 3 for k in (1, 2)] + [t_b - 1e-5, t_b + 1e-5]
+    for b in mech["strikes"]:
+        events += [b["t_merge"] - 1e-5, b["t_merge"] + 1e-5]
+    samples = sorted(set([fi / FPSP for fi in range(LOOP_FRAMES + 1)] + [e % LOOP_P for e in events]))
+    for t in samples:
+        f = F0 + t * FPSP
+        _key(pend, "location", f, Vector(hang_at(t)))
+        for name, val in weights(t).items():
+            kb[name].value = val
+            kb[name].keyframe_insert("value", frame=f)
+    # the water left on the tip snaps back and rings (~65 Hz: a frame or two at 96 fps)
+    fb = F0 + t_b * FPSP
+    _key(pend, "scale", fb - 0.01, (1, 1, 1))
+    for i, sq in enumerate([(1.12, 0.74, 1.12), (0.93, 1.12, 0.93), (1.04, 0.95, 1.04), (0.99, 1.02, 0.99), (1, 1, 1)]):
+        _key(pend, "scale", fb + 0.01 + i, sq)
+    # the drop that falls: it leaves from the bottom of the necked shape with the bulb's speed,
+    # stretched, then falls freely and rings between prolate and oblate
+    xc, zc = crit
+    end = neck_profile(xc, zc, 1.0)
+    r_fall = (3 * mech["v_fall"] / (4 * math.pi)) ** (1 / 3)
+    apex_y = end[1][0] - zc[-1]  # apex below the contact, after necking
+    p0 = hang_at(t_b) + np.array([0, apex_y + r_fall * 1.15, 0])
+    v_tip = (hang_at(t_b + 0.005) - hang_at(t_b - 0.005)) / 0.01
+    v0 = v_tip + DOWN * NECK_A * mech["neck"]
+    rng = np.random.default_rng(9101)
+    _key(falling, "scale", fb - 0.01, (0, 0, 0))
+    _key(falling, "location", fb - 0.01, Vector(p0))
+    for a in range(0, 16):
+        tt = a / FPSP
+        pos = p0 + v0 * tt + 0.5 * tt * tt * W.G * DOWN
+        e = 0.28 * math.exp(-tt * 40) * math.cos(2 * math.pi * 62 * tt) + 0.04 * float(rng.uniform(-1, 1)) * math.exp(-tt * 10)
+        _key(falling, "location", fb + 0.01 + a, Vector(pos))
+        _key(falling, "scale", fb + 0.01 + a, (1 / math.sqrt(1 + e), 1 + e, 1 / math.sqrt(1 + e)))
+    _key(falling, "scale", fb + 16, (0, 0, 0))
+    # the thread breaks into a satellite droplet, which trails the drop
+    neck_y = float(np.interp(0.55, (end[1] - end[1][0]) / (end[1][-1] - end[1][0]), end[1])) - zc[-1]
+    s0 = hang_at(t_b) + np.array([0, neck_y, 0])
+    _key(satellite, "scale", fb - 0.01, (0, 0, 0))
+    _key(satellite, "location", fb - 0.01, Vector(s0))
+    for a in range(0, 16):
+        tt = a / FPSP
+        _key(satellite, "location", fb + 0.01 + a, Vector(s0 + (v_tip + DOWN * 0.6 * NECK_A * mech["neck"]) * tt + 0.5 * tt * tt * W.G * DOWN))
+        _key(satellite, "scale", fb + 0.01 + a, (1, 1, 1))
+    _key(satellite, "scale", fb + 16, (0, 0, 0))
+    # each strike: the raindrop arrives, and leaves a bead that runs down to the hanging drop
+    for b, bead, rd in zip(mech["strikes"], beads, raindrops):
+        fi_imp = F0 + b["t_imp"] * FPSP
+        for fi in range(LOOP_FRAMES + 1):
+            f = F0 + fi
+            t = fi / FPSP
+            s_ = mech["bead_s"](b, t)
+            if s_ is None:
+                _key(bead, "scale", f, (0.0, 0.0, 0.0))
+                continue
+            k = min(int(np.searchsorted(b["s_at"], s_)), len(b["path"]) - 1)
+            u, v = b["path"][k]
             _, pl, nl, downl, _ = local_frame(u, v)
             _key(bead, "location", f, Vector(pl))
             _key(bead, "rotation_quaternion", f, surface_rotation(nl, downl))
-            speed = float(np.interp(t - t_imp + 0.02, mech["ts"], mech["ss"]) - np.interp(t - t_imp, mech["ts"], mech["ss"])) / 0.02
+            speed = float(np.interp(t - b["t_imp"] + 0.02, b["ts"], b["ss"]) - np.interp(t - b["t_imp"], b["ts"], b["ss"])) / 0.02
             st = 1 + min(speed / 0.05, 1) * 0.18
             _key(bead, "scale", f, (st, 1 / math.sqrt(st), 1 / math.sqrt(st)))
-        else:
-            _key(bead, "scale", f, (0.0, 0.0, 0.0))
-    # the strike: the raindrop arrives on the leaf a quarter frame into F_IMP
-    fi_imp = F0 + t_imp * FPSP
-    p = mech["p_imp"]
-    for df in (-3.0, 0.0):
-        _key(raindrop, "location", fi_imp + df, Vector(p - DOWN * RAIN_V * (-df) / FPSP + mech["n_imp"] * RAIN_R))
-        _key(raindrop, "scale", fi_imp + df, (1, 1, 1))
-    _key(raindrop, "scale", fi_imp + 0.05, (0, 0, 0))
-    _key(raindrop, "scale", fi_imp - 3.05, (0, 0, 0))
-    _key(bead, "scale", fi_imp - 0.01, (0, 0, 0))
-    _key(bead, "scale", fi_imp + 0.1, (1, 1, 1))
-    # the falling drop: free fall from where the hanging drop necked, with the tip's own velocity
-    h_crit = float(-np.array(pend.data.shape_keys.key_blocks[-1].data[0].co)[1])
-    r_fall = (3 * mech["v_fall"] / (4 * math.pi)) ** (1 / 3)
-    tip0 = H + R_at(t_drip) @ tip_l
-    tip1 = H + R_at(t_drip + 0.01) @ tip_l
-    v0 = (tip1 - tip0) / 0.01 + np.array([0, -0.04, 0])
-    p0 = tip0 + np.array([0, -(h_crit - r_fall), 0])
-    rng = np.random.default_rng(9101)
-    _key(falling, "scale", f_drip + F0 - 0.01, (0, 0, 0))
-    for a in range(0, 12):
-        tt = a / FPSP
-        pos = p0 + v0 * tt + 0.5 * tt * tt * W.G * DOWN
-        wob = 0.12 * math.exp(-tt * 12) * float(rng.uniform(-1, 1))
-        _key(falling, "location", f_drip + F0 + a, Vector(pos))
-        _key(falling, "scale", f_drip + F0 + a, (1 - wob, 1 + wob, 1 - wob))
-    _key(falling, "scale", f_drip + F0 + 12, (0, 0, 0))
-    for o in (hinge, pend, bead, falling, raindrop):
+        _key(bead, "scale", fi_imp - 0.01, (0, 0, 0))
+        _key(bead, "scale", fi_imp + 0.1, (1, 1, 1))
+        fm = F0 + b["t_merge"] * FPSP
+        _key(bead, "scale", fm - 0.01, (1, 1, 1))
+        _key(bead, "scale", fm + 0.01, (0, 0, 0))
+        p = b["p_imp"]
+        for df in (-3.0, 0.0):
+            _key(rd, "location", fi_imp + df, Vector(p - DOWN * RAIN_V * (-df) / FPSP + b["n_imp"] * b["r"]))
+            _key(rd, "scale", fi_imp + df, (1, 1, 1))
+        _key(rd, "scale", fi_imp + 0.05, (0, 0, 0))
+        _key(rd, "scale", fi_imp - 3.05, (0, 0, 0))
+    for o in [pend, falling, satellite] + beads + raindrops:
         if o.animation_data and o.animation_data.action:
             for fc in fcurves(o):
-                if fc.data_path in ("scale",) and o is not pend:
+                if fc.data_path == "scale":
                     for kp in fc.keyframe_points:
                         kp.interpolation = "LINEAR"
-    if pend.data.shape_keys.animation_data:
-        for fc in fcurves(pend.data.shape_keys):
-            for kp in fc.keyframe_points:
-                kp.interpolation = "LINEAR"
+    for fc in fcurves(pend.data.shape_keys):
+        for kp in fc.keyframe_points:
+            kp.interpolation = "LINEAR"
 
 
 def fcurves(idblock):
@@ -814,23 +904,48 @@ def particles(sc, root, mech, cx, cy, water):
     unit_v, unit_f = sphere_mesh("unit", 1.0, 16, 10)
     drop_src = mesh_object("rain_source", unit_v, unit_f, water, root)
     drop_src.location = (0, 50, 0)  # the instanced shape; out of sight itself
-    rate = 250.0  # drops per m^2 per s: moderate rain, ~5 mm/h
+    rate = RAIN_RATE  # drops per m^2 per s
 
-    def emitter(name, x0, x1, z0, z1, y, frames, life):
-        verts = [(x0, y, z0), (x1, y, z0), (x1, y, z1), (x0, y, z1)]
+    # the leaf is sheltered by its own tree: no rain falls straight onto it (the strikes come through gaps)
+    Pl = world(*np.meshgrid(np.linspace(0, 1, 60), np.linspace(-1, 1, 30)))
+    hole = (Pl[..., 0].min() - 0.004, Pl[..., 0].max() + 0.004, Pl[..., 2].min() - 0.004, Pl[..., 2].max() + 0.004)
+
+    def rects(x0, x1, z0, z1):
+        hx0, hx1, hz0, hz1 = hole
+        if hx1 <= x0 or hx0 >= x1 or hz1 <= z0 or hz0 >= z1:
+            return [(x0, x1, z0, z1)]
+        out = []
+        if hz0 > z0:
+            out.append((x0, x1, z0, hz0))
+        if hz1 < z1:
+            out.append((x0, x1, hz1, z1))
+        zz0, zz1 = max(z0, hz0), min(z1, hz1)
+        if hx0 > x0:
+            out.append((x0, hx0, zz0, zz1))
+        if hx1 < x1:
+            out.append((hx1, x1, zz0, zz1))
+        return out
+
+    def emitter(name, x0, x1, z0, z1, y, frames, life, seed):
+        verts, faces, area = [], [], 0.0
+        for rx0, rx1, rz0, rz1 in rects(x0, x1, z0, z1):
+            k = len(verts)
+            verts += [(rx0, y, rz0), (rx1, y, rz0), (rx1, y, rz1), (rx0, y, rz1)]
+            faces.append((k, k + 3, k + 2, k + 1))
+            area += (rx1 - rx0) * (rz1 - rz0)
         me = bpy.data.meshes.new(name)
-        me.from_pydata(verts, [], [(0, 3, 2, 1)])
+        me.from_pydata(verts, [], faces)
         o = link(bpy.data.objects.new(name, me), root)
         o.show_instancer_for_render = False
         o.show_instancer_for_viewport = False
         ps = o.modifiers.new(name, "PARTICLE_SYSTEM").particle_system
         st = ps.settings
-        area = (x1 - x0) * (z1 - z0)
         st.count = int(rate * area * (frames[1] - frames[0]) / FPSP)
         st.frame_start, st.frame_end = frames
         st.lifetime = life
         st.emit_from = "FACE"
         st.use_emit_random = True
+        st.use_even_distribution = True
         st.physics_type = "NEWTON"
         st.timestep = 1 / FPSP  # slow motion: each frame advances 1/96 s of real time
         st.normal_factor = 0.0
@@ -842,48 +957,50 @@ def particles(sc, root, mech, cx, cy, water):
         st.particle_size = 0.001
         st.size_random = 0.5
         st.use_rotations = False
-        ps.seed = hash(name) % 1000
+        ps.seed = seed
         ps.point_cache.frame_start = frames[0]
         ps.point_cache.frame_end = F0 + LOOP_FRAMES + 2
         return o
 
     d_far = 6.0
     wf = (C.CAM_Z + d_far) * C.HFOV_T * 1.15
-    emitter("rain_back", cx - wf, cx + wf, -d_far, -0.015, cy + 0.85, (F0 - 60, F0 + LOOP_FRAMES + 2), 12 * SLOW)
+    frames = (F0 - 60, F0 + LOOP_FRAMES + 2)
+    emitter("rain_back", cx - wf, cx + wf, -d_far, 0.0, cy + 0.85, frames, 12 * SLOW, 11)
     wn = C.CAM_Z * C.HFOV_T * 1.2
-    emitter("rain_front", cx - wn, cx + wn, 0.015, 0.25, cy + 0.07, (F0 - 60, F0 + LOOP_FRAMES + 2), 4 * SLOW)
+    emitter("rain_front", cx - wn, cx + wn, 0.0, 0.25, cy + 0.07, frames, 4 * SLOW, 23)
 
-    # the splash: spray off the strike, thrown forward and up, falling under gravity
-    p, n = mech["p_imp"], mech["n_imp"]
-    downl = DOWN - DOWN.dot(n) * n
-    me = bpy.data.meshes.new("splash")
-    s = 0.0006
-    me.from_pydata([(-s, -s, 0), (s, -s, 0), (s, s, 0), (-s, s, 0)], [], [(0, 1, 2, 3)])
-    sp = link(bpy.data.objects.new("splash", me), root)
-    sp.location = tuple(p + n * 0.0002)
-    sp.rotation_mode = "QUATERNION"
-    sp.rotation_quaternion = surface_rotation(n, downl)
-    sp.show_instancer_for_render = False
-    ps = sp.modifiers.new("splash", "PARTICLE_SYSTEM").particle_system
-    st = ps.settings
-    f_hit = F0 + mech["t_imp"] * FPSP
-    st.count = 26
-    st.frame_start = st.frame_end = f_hit
-    st.lifetime = 40
-    st.emit_from = "FACE"
-    st.physics_type = "NEWTON"
-    st.timestep = 1 / FPSP
-    st.normal_factor = 0.55
-    st.object_align_factor = (1.1, 0.0, 0.0)
-    st.factor_random = 0.9
-    st.drag_factor = 0.15
-    st.render_type = "OBJECT"
-    st.instance_object = drop_src
-    st.particle_size = 0.00026
-    st.size_random = 0.65
-    ps.seed = 17
-    ps.point_cache.frame_start = F0
-    ps.point_cache.frame_end = F0 + LOOP_FRAMES + 2
+    # the splash: spray off each strike, thrown forward and up, falling under gravity
+    for i, b in enumerate(mech["strikes"]):
+        p, n = b["p_imp"], b["n_imp"]
+        downl = DOWN - DOWN.dot(n) * n
+        me = bpy.data.meshes.new(f"splash{i}")
+        s = 0.0006
+        me.from_pydata([(-s, -s, 0), (s, -s, 0), (s, s, 0), (-s, s, 0)], [], [(0, 1, 2, 3)])
+        sp = link(bpy.data.objects.new(f"splash{i}", me), root)
+        sp.location = tuple(p + n * 0.0002)
+        sp.rotation_mode = "QUATERNION"
+        sp.rotation_quaternion = surface_rotation(n, downl)
+        sp.show_instancer_for_render = False
+        ps = sp.modifiers.new(f"splash{i}", "PARTICLE_SYSTEM").particle_system
+        st = ps.settings
+        f_hit = F0 + b["t_imp"] * FPSP
+        st.count = int(26 * (b["r"] / 0.0011) ** 3)
+        st.frame_start = st.frame_end = f_hit
+        st.lifetime = 40
+        st.emit_from = "FACE"
+        st.physics_type = "NEWTON"
+        st.timestep = 1 / FPSP
+        st.normal_factor = 0.55
+        st.object_align_factor = (1.1, 0.0, 0.0)
+        st.factor_random = 0.9
+        st.drag_factor = 0.15
+        st.render_type = "OBJECT"
+        st.instance_object = drop_src
+        st.particle_size = 0.00026
+        st.size_random = 0.65
+        ps.seed = 17 + i
+        ps.point_cache.frame_start = F0
+        ps.point_cache.frame_end = F0 + LOOP_FRAMES + 2
     sc.frame_start = F0 - 60
     override = {"scene": sc}
     with bpy.context.temp_override(**override):
@@ -962,6 +1079,7 @@ def main(argv):
     ap.add_argument("--scale", type=int, default=100)
     ap.add_argument("--out")
     ap.add_argument("--raw", action="store_true", help="linear EXR, no grade: PhotoCraft develops it (nuh.photocraft)")
+    ap.add_argument("--out-dir", help="where frames go (default output/nuh/raw or output/nuh/frames)")
     a = ap.parse_args(argv)
     if a.mechanics:
         mechanics(verbose=True)
@@ -987,6 +1105,8 @@ def main(argv):
         sc.render.image_settings.exr_codec = "ZIP"
         sc.render.image_settings.color_mode = "RGB"
         out_dir, ext = RAW, "exr"
+    if a.out_dir:
+        out_dir = Path(a.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for fi in todo:
         dst = Path(a.out) if a.out else out_dir / f"f{fi:04d}.{ext}"
