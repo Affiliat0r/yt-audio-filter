@@ -67,6 +67,7 @@ H = np.array([-0.0585, 0.03, -0.0095])  # where the stalk leaves the branch
 STEEPEN = math.radians(34.0)  # the leaf hangs a little steeper than the old frame
 TILT = math.radians(50.0)  # its face turned up to the sky, so rain can land on it
 TIP_PX = (1185, 650)  # where the tip sits in the frame
+MOON_PX = (1235, 735)  # the moon sits behind the hanging drop: the drop shows it refracted, and falls across it
 FSTOP = 8.0  # stopped down from 5.6: tighter bokeh, so rain behind the leaf reads
 SHUTTER = 0.25  # of a frame: 90 degrees at 96 fps, 1/384 s
 
@@ -491,7 +492,7 @@ def build(samples=96, scale=100):
 
     cx, cy = camera_xy()
     cam_o = Vector((cx, cy, C.CAM_Z))
-    md = C.ndc_dir(1452, 262)  # the moon's direction from the camera, build frame
+    md = C.ndc_dir(*MOON_PX)  # the moon's direction from the camera, build frame
     md_world = Vector((md.x, -md.z, md.y))
 
     # world: a dim night sky, brighter toward the moon
@@ -551,8 +552,8 @@ def build(samples=96, scale=100):
     sun = link(bpy.data.objects.new("moonlight", sun_d), root)
     sun.rotation_mode = "QUATERNION"
     sun.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(md)
-    # a streetlamp 2.5 m behind the tree, off frame upper left. The tree's canopy shades the leaf from
-    # it (light linking stands in for that shadow): it lights the rain and the water falling in open air.
+    # a streetlamp 2.5 m behind the tree, off frame upper left. The tree's canopy shades the leaf and
+    # the water around it from the lamp (light linking stands in for that shadow): it lights the rain.
     st_d = bpy.data.lights.new("streetlamp", "AREA")
     st_d.energy, st_d.size, st_d.color = 20000.0, 0.3, (1.0, 0.78, 0.5)
     street = link(bpy.data.objects.new("streetlamp", st_d), root)
@@ -730,7 +731,7 @@ def build(samples=96, scale=100):
     particles(sc, root, mech, cx, cy, water)
     lit = bpy.data.collections.new("streetlamp_reaches")
     for o in bpy.data.objects:
-        if o.name in ("rain_source", "pendant", "falling", "satellite") or o.name.startswith("raindrop"):
+        if o.name == "rain_source" or o.name.startswith("raindrop"):
             lit.objects.link(o)
     street.light_linking.receiver_collection = lit
     compositor(sc)
@@ -904,6 +905,8 @@ def particles(sc, root, mech, cx, cy, water):
     unit_v, unit_f = sphere_mesh("unit", 1.0, 16, 10)
     drop_src = mesh_object("rain_source", unit_v, unit_f, water, root)
     drop_src.location = (0, 50, 0)  # the instanced shape; out of sight itself
+    spray_src = mesh_object("spray_source", unit_v, unit_f, water, root)  # the same, for spray under the canopy
+    spray_src.location = (0, 52, 0)
     rate = RAIN_RATE  # drops per m^2 per s
 
     # the leaf is sheltered by its own tree: no rain falls straight onto it (the strikes come through gaps)
@@ -995,7 +998,7 @@ def particles(sc, root, mech, cx, cy, water):
         st.factor_random = 0.9
         st.drag_factor = 0.15
         st.render_type = "OBJECT"
-        st.instance_object = drop_src
+        st.instance_object = spray_src
         st.particle_size = 0.00026
         st.size_random = 0.65
         ps.seed = 17 + i
