@@ -116,8 +116,9 @@ def leaf_textures(nu=4096, nv=2048):
     micro = cv2.resize(fbm_tex(1024, 512, 5103, base=120, octaves=3), (nu, nv))
     blot = cv2.resize(fbm_tex(512, 256, 5106, base=5, octaves=5), (nu, nv))
     veins = np.clip(mid + 0.9 * sec + 0.55 * tert, 0, 1)
-    cells = cv2.resize(fbm_tex(2048, 1024, 5108, base=420, octaves=2), (nu, nv))
-    height = (0.6 * mid - 0.35 * sec - 0.25 * tert + 0.12 * micro + 0.10 * cells).astype(np.float32)
+    cells = cv2.resize(fbm_tex(2048, 1024, 5108, base=220, octaves=2), (nu, nv))
+    patch = smooth(0.35, 0.75, cv2.resize(fbm_tex(512, 256, 5109, base=4, octaves=4), (nu, nv)))
+    height = (0.6 * mid - 0.35 * sec - 0.25 * tert + 0.12 * micro + 0.045 * cells * patch).astype(np.float32)
     lam = np.array([0.10, 0.26, 0.03], np.float32)
     vein_c = np.array([0.24, 0.36, 0.09], np.float32)
     # light through the leaf is uneven: thicker and thinner tissue, and the shade of leaves above
@@ -235,7 +236,7 @@ def leaf_material():
     nt.links.new(tex_f.outputs["Color"], pr.inputs["Base Color"])
     pr.inputs["Roughness"].default_value = 0.28
     pr.inputs["Coat Weight"].default_value = 1.0  # waxy cuticle, wet
-    pr.inputs["Coat Roughness"].default_value = 0.08
+    pr.inputs["Coat Roughness"].default_value = 0.13
     nt.links.new(bump.outputs["Normal"], pr.inputs["Normal"])
     nt.links.new(bump.outputs["Normal"], pr.inputs["Coat Normal"])
     tr = nt.nodes.new("ShaderNodeBsdfTranslucent")
@@ -408,6 +409,17 @@ def build_scene(T: float, scale: int, samples: int):
     fill.rotation_quaternion = Vector((0, 0, 1)).rotation_difference((Vector((-0.22, 0.30, 0.42)) - Vector((0, 0, 0))).normalized())
     sc.collection.objects.link(fill)
 
+    # a small kicker below frame, lower right: makes the pendant drop the brightest point
+    kick_d = bpy.data.lights.new("kicker", "AREA")
+    kick_d.energy = 1.6
+    kick_d.size = 0.03
+    kick_d.color = (0.85, 0.92, 1.0)
+    kick = bpy.data.objects.new("kicker", kick_d)
+    kick.location = (0.09, -0.11, 0.14)
+    kick.rotation_mode = "QUATERNION"
+    kick.rotation_quaternion = Vector((0, 0, 1)).rotation_difference((Vector((0.09, -0.11, 0.14)) - Vector((0.043, -0.017, -0.006))).normalized())
+    sc.collection.objects.link(kick)
+
     # the tree behind: wet leaves at real distances, catching moonlight
     r = np.random.default_rng(6201)
     back_mat = bpy.data.materials.new("backleaf")
@@ -492,7 +504,18 @@ def build_scene(T: float, scale: int, samples: int):
         bp.radius = rad
         bp.handle_left_type = bp.handle_right_type = "AUTO"
     po = bpy.data.objects.new("petiole", pet)
-    po.data.materials.append(simple_material("petiole", (0.05, 0.08, 0.02), rough=0.4, coat=0.5))
+    pmat = simple_material("petiole", (0.03, 0.05, 0.014), rough=0.45, coat=0.4)
+    pnt = pmat.node_tree
+    pn = pnt.nodes.new("ShaderNodeTexNoise")
+    pn.inputs["Scale"].default_value = 300.0
+    pr_ = [n for n in pnt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"][0]
+    ramp = pnt.nodes.new("ShaderNodeMix")
+    ramp.data_type = "RGBA"
+    ramp.inputs["A"].default_value = (0.022, 0.036, 0.010, 1)
+    ramp.inputs["B"].default_value = (0.05, 0.065, 0.02, 1)
+    pnt.links.new(pn.outputs["Fac"], ramp.inputs["Factor"])
+    pnt.links.new(ramp.outputs["Result"], pr_.inputs["Base Color"])
+    po.data.materials.append(pmat)
     sc.collection.objects.link(po)
 
     # the leaf
@@ -510,7 +533,7 @@ def build_scene(T: float, scale: int, samples: int):
         drop(f"d{k}", p + n * rad * flat * 0.32, n, rad, wm, flat=flat, stretch=1.0 + 0.15 * min(rad / 0.002, 1))
     # the pendant drop at the tip
     p, n = leaf_normal(1.0, 0.0)
-    drop("tip", p + Vector((0.0004, -0.0011, 0.0)), Vector((0, -1, 0.15)).normalized(), 0.0014, wm, flat=1.15)
+    drop("tip", p + Vector((0.0004, -0.0013, 0.0004)), Vector((0, -1, 0.15)).normalized(), 0.0017, wm, flat=1.15)
 
     # rain: drops falling through the scene, blurred by the shutter
     sc.frame_set(1)
@@ -525,6 +548,7 @@ def build_scene(T: float, scale: int, samples: int):
             continue
         bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=float(r.uniform(0.0008, 0.0016)), location=(x, y, z))
         o = bpy.context.active_object
+        o.name = f"rain{k}"
         o.data.materials.append(rain_mat)
         o.visible_shadow = False
         vel = 7.0 / 24.0  # metres per frame
@@ -537,6 +561,7 @@ def build_scene(T: float, scale: int, samples: int):
         x, y = float(r.uniform(-span_x, span_x)), float(r.uniform(-span_x * 0.56, span_x * 0.56))
         bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=float(r.uniform(0.0012, 0.002)), location=(x, y, z))
         o = bpy.context.active_object
+        o.name = f"rainlens{k}"
         o.data.materials.append(rain_mat)
         o.visible_shadow = False
         o.keyframe_insert("location", frame=1)
