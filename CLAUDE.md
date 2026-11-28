@@ -149,7 +149,7 @@ Two things had to line up, and both can rot again:
 An HD source skips Real-ESRGAN (`upscale._already_hd`): sharpening 1080p 2x
 would build 4K for hours. A 1080p source is then copied, not re-encoded, so
 music-removal output is real 1080p. `youtube.warn_if_ytdlp_stale` warns when
-yt-dlp is over 60 days old. The full incident, and what *not* to do next time,
+yt-dlp is over 21 days old. The full incident, and what *not* to do next time,
 is in [docs/lessons-learned.md](docs/lessons-learned.md).
 
 The section below is the history of the wall, kept so the `--test` trap isn't

@@ -49,7 +49,7 @@ Code changes (commit 51a0425 and the follow-up):
   visual's own height (capped at 1080p). The 720p default was chosen for 360p
   sources, so it would now have *shrunk* every 1080p visual.
 - `youtube.warn_if_ytdlp_stale`: warns once a download starts if yt-dlp is
-  older than 60 days (`YTDLP_STALE_DAYS`).
+  older than 60 days (`YTDLP_STALE_DAYS`; lowered to 21 on 2026-11-28, see below).
 
 **Rules:**
 
@@ -131,3 +131,27 @@ join frame by frame before uploading. Caught before upload.
   each side. That is what caught this.
 - Gecko compilations have only one short piece (the 6.5 s opener), so earlier
   Gecko cuts were unaffected.
+
+---
+
+## 2026-11-28 — the same stale yt-dlp, one week later
+
+**Symptom.** Screening twelve Gecko compilations, every caption fetch failed
+with `This video is not available`, so every keyword scan reported 0 hits.
+The video downloads themselves still worked, because they fell back to format 18.
+
+**Root cause.** It was the 2026-11-21 failure again. YouTube shipped a new
+player (`b485e332`), and yt-dlp 2026.10.26, only 26 days old, failed its
+n challenge. yt-dlp 2026.11.23 already handled it.
+
+**Fix.** `pip install -U yt-dlp yt-dlp-ejs`, then rerun. That took two minutes,
+because the rule above was followed this time instead of rediscovered.
+
+**Rules:**
+
+- **"0 keyword hits" is only clean if captions were scanned.** The screen
+  prints `captions: scanned N cues` when they were and `NO CAPTIONS` when they
+  weren't. Read that line before reading the hit count. `screen_video.py` now
+  adds an update-yt-dlp hint when the fetch fails this way.
+- **yt-dlp goes stale in weeks, not months.** `YTDLP_STALE_DAYS` is now 21.
+  Update before a screening batch, not after it fails.

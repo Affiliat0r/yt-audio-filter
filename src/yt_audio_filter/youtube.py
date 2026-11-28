@@ -343,10 +343,11 @@ def _extract_stream_with_ffmpeg(source: Path, dest: Path, mode: StreamMode) -> P
     return dest
 
 
-#: Older than this, a yt-dlp is likely to fail YouTube's player challenge. The
+#: Older than this, a yt-dlp may fail YouTube's player challenge (2026-11-28: a
+#: 26-day-old release already did; YouTube changes its player within weeks). The
 #: failure is silent: adaptive formats vanish and downloads drop to 360p or
 #: stop, which on 2026-11-21 looked like a bot block for a whole morning.
-YTDLP_STALE_DAYS = 60
+YTDLP_STALE_DAYS = 21
 
 
 def ytdlp_age_days(version: Optional[str] = None, today=None) -> Optional[int]:

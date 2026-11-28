@@ -83,6 +83,10 @@ def caption_hits(vid: str) -> list:
     if not vtt.exists():
         tail = (run.stderr or run.stdout).strip().splitlines()[-1:] or ["no output"]
         print(f"WARNING: no captions fetched ({tail[0][:120]})")
+        if "challenge" in run.stderr or "not available" in run.stderr:
+            # 2026-11-28: a stale yt-dlp failed YouTube's n challenge and every
+            # caption fetch said "This video is not available" (docs/lessons-learned.md)
+            print("HINT: this is what a stale yt-dlp looks like: pip install -U yt-dlp yt-dlp-ejs, then rerun")
         return None
     hits, seen = [], set()
     cues = re.findall(r"(\d\d):(\d\d):(\d\d)\.\d+ --> .*?\n(.*?)(?=\n\n|\Z)",
